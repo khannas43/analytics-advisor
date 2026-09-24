@@ -1,0 +1,2458 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark" data-lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analytics Advisor | एनालिटिक्स एडवाइजर</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --font-sans: 'Plus Jakarta Sans', 'Noto Sans Devanagari', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', Consolas, Menlo, monospace;
+  --bg-app: #0b0e14;
+  --bg-card: #141923;
+  --bg-card-sub: #1c2331;
+  --bg-surface: #242d3e;
+  --bg-input: #0e121a;
+  --border: #273245;
+  --border-focus: #38bdf8;
+  --text-main: #f1f5f9;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  --primary: #38bdf8;
+  --primary-hover: #0284c7;
+  --primary-glow: rgba(56, 189, 248, 0.15);
+  --primary-contrast: #031324;
+  --accent: #f59e0b;
+  --accent-soft: rgba(245, 158, 11, 0.12);
+  --success: #10b981;
+  --success-soft: rgba(16, 185, 129, 0.12);
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.12);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 14px -2px rgba(0,0,0,0.4);
+  --shadow-lg: 0 12px 30px -4px rgba(0,0,0,0.55);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+}
+[data-theme="light"] {
+  --bg-app: #f8fafc;
+  --bg-card: #ffffff;
+  --bg-card-sub: #f1f5f9;
+  --bg-surface: #e2e8f0;
+  --bg-input: #ffffff;
+  --border: #cbd5e1;
+  --border-focus: #0284c7;
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --text-dim: #94a3b8;
+  --primary: #0284c7;
+  --primary-hover: #0369a1;
+  --primary-glow: rgba(2, 132, 199, 0.12);
+  --primary-contrast: #ffffff;
+  --accent: #d97706;
+  --accent-soft: rgba(217, 119, 6, 0.12);
+  --success: #059669;
+  --success-soft: rgba(5, 150, 105, 0.1);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.1);
+  --shadow-sm: 0 1px 3px rgba(15,23,42,0.06);
+  --shadow-md: 0 4px 14px -2px rgba(15,23,42,0.08);
+  --shadow-lg: 0 12px 32px -4px rgba(15,23,42,0.12);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  margin: 0;
+  background-color: var(--bg-app);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  line-height: 1.5;
+  transition: background-color 0.2s, color 0.2s;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+.app {
+  display: flex;
+  min-height: 100vh;
+  position: relative;
+  width: 100%;
+}
+/* Collapsible Left Sidebar */
+.sidebar {
+  width: 250px;
+  background-color: var(--bg-card);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  z-index: 30;
+  transition: width 0.25s cubic-bezier(0.2, 0, 0, 1), transform 0.25s ease;
+  overflow: hidden;
+}
+.sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  border-right: none;
+  pointer-events: none;
+}
+.brand {
+  padding: 20px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.brand-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+}
+.brand-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--primary), #6366f1);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.brand-info h1 {
+  font-size: 15.5px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.brand-info span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.panel-toggle-btn {
+  background: var(--bg-card-sub);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.panel-toggle-btn:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--bg-surface);
+}
+.nav {
+  padding: 18px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  white-space: nowrap;
+}
+.nav button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+.nav button svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2;
+  stroke: currentColor;
+  fill: none;
+  flex-shrink: 0;
+}
+.nav button:hover {
+  background-color: var(--bg-card-sub);
+  color: var(--text-main);
+}
+.nav button.active {
+  background-color: var(--primary-glow);
+  color: var(--primary);
+  border-color: rgba(56, 189, 248, 0.25);
+  font-weight: 600;
+}
+.sidebar-footer {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  white-space: nowrap;
+}
+.control-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.theme-switch-btn, .lang-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-card-sub);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.theme-switch-btn:hover, .lang-toggle-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+/* Reopen Floating Buttons */
+.sidebar-reopen-btn {
+  position: fixed;
+  top: 18px;
+  left: 18px;
+  z-index: 40;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  transition: all 0.15s;
+}
+.sidebar-reopen-btn:hover {
+  background: var(--bg-surface);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.sidebar.collapsed ~ .sidebar-reopen-btn {
+  display: flex;
+}
+/* Main Workspace */
+.main {
+  flex: 1;
+  padding: 30px 40px;
+  max-width: 100%;
+  min-width: 0;
+  transition: padding-left 0.25s cubic-bezier(0.2, 0, 0, 1);
+}
+.sidebar.collapsed ~ .main {
+  padding-left: 68px;
+}
+.page { display: none; }
+.page.active { display: block; animation: fadeIn 0.2s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+.top-action-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 22px;
+  gap: 16px;
+}
+.page-header h2 {
+  font-size: 23px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  margin-bottom: 4px;
+  color: var(--text-main);
+}
+.page-header .sub {
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+  font-size: 13px;
+  background: var(--bg-card);
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+.breadcrumb span {
+  color: var(--text-muted);
+  cursor: pointer;
+  font-weight: 500;
+  transition: color 0.15s;
+}
+.breadcrumb span:hover { color: var(--primary); }
+.breadcrumb b { color: var(--text-main); font-weight: 600; }
+.crumb-sep { color: var(--text-dim) !important; cursor: default !important; }
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+.card:hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.card .tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+  display: inline-block;
+  background: var(--accent-soft);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+.card h3 {
+  margin: 0 0 6px;
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.card p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 22px 24px;
+  margin-bottom: 22px;
+  box-shadow: var(--shadow-sm);
+}
+.section h4 {
+  margin: 0 0 4px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--primary-glow);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.section .desc {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  margin: 0 0 16px;
+}
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+@media (max-width: 1024px) { .two-col { grid-template-columns: 1fr; } }
+
+.pick {
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+.pick .ttl {
+  font-size: 11.5px;
+  color: var(--text-main);
+  letter-spacing: 0.4px;
+  margin-bottom: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pick .ttl::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+.row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 130px;
+}
+.field label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+select, input[type=text], input[type=number] {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: inherit;
+  transition: all 0.15s;
+  outline: none;
+  width: 100%;
+}
+select:focus, input[type=text]:focus, input[type=number]:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--primary-glow);
+}
+.stepper-wrap {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  overflow: hidden;
+  width: fit-content;
+}
+.stepper-wrap input[type=text] {
+  border: none;
+  background: transparent;
+  text-align: center;
+  padding: 8px 4px;
+  width: 62px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  cursor: not-allowed;
+}
+.stepper-wrap button {
+  background: var(--bg-card-sub);
+  color: var(--text-main);
+  border: none;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: bold;
+  transition: background-color 0.15s;
+}
+.stepper-wrap button:hover {
+  background: var(--bg-surface);
+  color: var(--primary);
+}
+
+button.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: var(--primary);
+  color: var(--primary-contrast);
+  border: 1px solid transparent;
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+button.btn:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+button.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+button.btn.secondary {
+  background: var(--bg-card-sub);
+  color: var(--text-main);
+  border: 1px solid var(--border);
+}
+button.btn.secondary:hover:not(:disabled) {
+  background: var(--bg-surface);
+  border-color: var(--text-muted);
+}
+button.btn.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+button.btn.danger:hover:not(:disabled) {
+  background: var(--danger);
+  color: #fff;
+}
+button.btn.sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.ms {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.ms > button {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.ms-panel {
+  display: none;
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 100%;
+  min-width: 240px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  box-shadow: var(--shadow-lg);
+}
+.ms.right .ms-panel { left: auto; right: 0; }
+.ms.open .ms-panel { display: block; }
+.ms-act {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 8px 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 6px;
+}
+.ms-act a {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+.ms-panel label {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px;
+  font-size: 12.5px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  color: var(--text-main);
+}
+.ms-panel label:hover {
+  background: var(--bg-card-sub);
+}
+.ms-panel input[type=checkbox] {
+  accent-color: var(--primary);
+  width: auto;
+}
+
+.mode-switch { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+.mode-switch .mode-label { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-right: 4px; }
+.mode-switch button {
+  background: var(--bg-card-sub); border: 1px solid var(--border); color: var(--text-muted);
+  padding: 7px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600;
+  font-family: inherit; cursor: pointer; transition: all 0.15s;
+}
+.mode-switch button:hover { color: var(--text-main); }
+.mode-switch button.active { background: var(--primary-glow); border-color: var(--primary); color: var(--primary); }
+.single-only { display: none; }
+#p2[data-mode="single"] .dest-only { display: none !important; }
+#p2[data-mode="single"] .single-only { display: flex; }
+#p2[data-mode="single"] .two-col { grid-template-columns: 1fr; }
+.tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+}
+.tabs button {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.tabs button:hover { color: var(--text-main); }
+.tabs button.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+.where-row {
+  display: grid;
+  grid-template-columns: 1.3fr 1.2fr 1fr auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed var(--border);
+}
+.where-row:last-child { border-bottom: none; }
+.results-scroll {
+  overflow-x: auto;
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12.8px;
+  white-space: nowrap;
+}
+th, td {
+  padding: 9px 14px;
+  text-align: left;
+}
+th {
+  background: var(--bg-card-sub);
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+th.pk { color: var(--accent); }
+th[data-c] { cursor: pointer; user-select: none; }
+th[data-c]:hover { color: var(--primary); background: var(--bg-surface); }
+td {
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  color: var(--text-main);
+}
+tr:hover td { background: var(--bg-surface); }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  background: var(--primary-glow);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+.empty {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 24px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-app);
+}
+
+/* Pagination Bar */
+.custom-pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  font-size: 13px;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.pg-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pg-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.pg-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-main);
+  padding: 6px 28px 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  width: auto;
+}
+.pg-select-wrap::after {
+  content: "▾";
+  position: absolute;
+  right: 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.pg-center {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.pg-center strong {
+  font-weight: 700;
+  color: var(--text-main);
+}
+.pg-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pg-btn {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+[data-theme="light"] .pg-btn {
+  border: 1px solid rgba(0,0,0,0.15);
+  background: rgba(0,0,0,0.03);
+}
+.pg-btn:hover:not(:disabled) {
+  background: var(--bg-surface);
+  color: var(--text-main);
+  border-color: var(--text-muted);
+}
+.pg-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Stat Grid */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.stat {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stat .num {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1;
+  font-family: var(--font-mono);
+}
+.stat .lbl {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.query-box {
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  flex: 1;
+  min-width: 260px;
+  white-space: pre-wrap;
+}
+.status-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.status-matched { background: var(--success-soft); color: var(--success); }
+.status-source { background: var(--accent-soft); color: var(--accent); }
+.status-dest { background: var(--danger-soft); color: var(--danger); }
+
+/* ==============================================================
+   REPORT ANALYSIS TWO-PANE LAYOUT WITH DEDICATED COLLAPSIBLE RIGHT PANEL
+   ============================================================== */
+.report-workspace {
+  display: flex;
+  gap: 22px;
+  align-items: flex-start;
+  position: relative;
+  width: 100%;
+}
+.report-results-pane {
+  flex: 1;
+  min-width: 0;
+  transition: all 0.25s ease;
+}
+.report-controls-panel {
+  width: 380px;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  transition: width 0.25s cubic-bezier(0.2, 0, 0, 1), opacity 0.2s ease, transform 0.25s ease;
+  overflow: hidden;
+  position: sticky;
+  top: 20px;
+}
+.report-controls-panel.collapsed {
+  width: 0;
+  opacity: 0;
+  border: none;
+  pointer-events: none;
+  margin: 0;
+}
+.report-panel-inner {
+  width: 380px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.report-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.report-panel-header h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ctrl-card {
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+.ctrl-card h5 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ctrl-card .ctrl-sub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+@media (max-width: 1160px) {
+  .report-workspace { flex-direction: column-reverse; }
+  .report-controls-panel, .report-panel-inner { width: 100%; position: static; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <!-- COLLAPSIBLE LEFT SIDEBAR -->
+  <aside class="sidebar" id="app-sidebar">
+    <div class="brand">
+      <div class="brand-left">
+        <div class="brand-icon">D</div>
+        <div class="brand-info">
+          <h1 data-t="appTitle">Analytics Advisor</h1>
+          <span data-t="appSub">No-code Query Platform</span>
+        </div>
+      </div>
+      <button class="panel-toggle-btn" onclick="toggleSidebar()" title="Collapse sidebar">
+        ‹
+      </button>
+    </div>
+
+    <nav class="nav">
+      <button class="active" data-page="p1" onclick="showPage('p1',this)">
+        <svg viewBox="0 0 24 24"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path></svg>
+        <span data-t="navOverview">Database Overview</span>
+      </button>
+      <button data-page="p2" onclick="showPage('p2',this)">
+        <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"></path></svg>
+        <span data-t="navQueryBuilder">Query Builder</span>
+      </button>
+      <button data-page="p3" onclick="showPage('p3',this)">
+        <svg viewBox="0 0 24 24"><path d="M18 20V10M12 20V4M6 20v-6"></path></svg>
+        <span data-t="navDashboard">Result Dashboard</span>
+      </button>
+    </nav>
+
+    <!-- Theme & Language Toggles in Sidebar Footer -->
+    <div class="sidebar-footer">
+      <div class="control-group">
+        <span data-t="lblTheme">Appearance</span>
+        <button class="theme-switch-btn" id="theme-btn" onclick="toggleTheme()">
+          <span id="theme-icon">☀️</span>
+          <span id="theme-label" data-t="themeLight">Light</span>
+        </button>
+      </div>
+      <div class="control-group">
+        <span data-t="lblLanguage">Language</span>
+        <button class="lang-toggle-btn" id="lang-btn" onclick="toggleLanguage()">
+          <span id="lang-icon">🌐</span>
+          <span id="lang-label">हिन्दी (HI)</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Reopen floating button when left sidebar is collapsed -->
+  <button class="sidebar-reopen-btn" id="sidebar-reopen" onclick="toggleSidebar()" title="Expand Sidebar">
+    ›
+  </button>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="main" id="main-content">
+
+    <!-- PAGE 1: DATABASE OVERVIEW -->
+    <div class="page active" id="p1">
+      <div class="top-action-bar">
+        <div class="page-header">
+          <h2 data-t="p1Title">Database Overview</h2>
+          <p class="sub" data-t="p1Sub">Drill down: Source System → Layer → Table Group → Table → Attributes &amp; Data Types</p>
+        </div>
+      </div>
+      <div class="breadcrumb" id="p1-crumbs"><span class="crumb-sep"><b>Database</b></span></div>
+      <div id="p1-body"><div class="card-grid"><div class="card" onclick="drill('sys','crm')"><div class="tag">SOURCE SYSTEM</div><h3>CRM System</h3><p>Customer relationship management platform · 2 layer(s)</p></div><div class="card" onclick="drill('sys','erp')"><div class="tag">SOURCE SYSTEM</div><h3>ERP System</h3><p>Enterprise resource planning platform · 2 layer(s)</p></div></div></div>
+    </div>
+
+    <!-- PAGE 2: QUERY BUILDER -->
+    <div class="page" id="p2" data-mode="dual">
+      <div class="top-action-bar">
+        <div class="page-header">
+          <h2 data-t="p2Title">No-Code Query Builder</h2>
+          <p class="sub" data-t="p2Sub">Extract records from a source table and analyse them in a report — no SQL needed.</p>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="active" id="tab-1" onclick="qbTab(1)" data-t="tabExtract">1. Extract Records</button>
+        <button id="tab-2" onclick="qbTab(2)" data-t="tabReport">2. Report Analysis</button>
+      </div>
+
+      <!-- TAB 1: EXTRACT RECORDS -->
+      <div id="qb1">
+        <div class="mode-switch" id="mode-switch">
+          <span class="mode-label" data-t="lblMode">Analysis mode</span>
+          <button type="button" class="active" data-mode="dual" onclick="setMode('dual')" data-t="modeDual">Source &amp; Destination</button>
+          <button type="button" data-mode="single" onclick="setMode('single')" data-t="modeSingle">Single Source</button>
+        </div>
+        <div class="section">
+          <h4><span class="step-num">1</span> <span data-t="secChooseTables" data-t-dual="secChooseTables" data-t-single="secChooseTablesSingle">Choose Source &amp; Destination Table</span></h4>
+          <p class="desc" data-t="secChooseTablesDesc">Pick any table from any Source System / Layer / Table Group.</p>
+          <div class="two-col">
+            <div class="pick">
+              <div class="ttl" data-t="lblSourceTable">Source Table</div>
+              <div class="row" id="s-row"><div class="field"><label>Source System</label><select id="s-sys" onchange="cascade('s','sys')"><option value="crm">CRM System</option><option value="erp">ERP System</option></select></div><div class="field"><label>Layer</label><select id="s-layer" onchange="cascade('s','layer')"><option value="crm_raw">Raw Layer</option><option value="crm_curated">Curated Layer</option></select></div><div class="field"><label>Table Group</label><select id="s-group" onchange="cascade('s','group')"><option value="crm_raw_cust">Customer Data</option></select></div><div class="field"><label>Table</label><select id="s-table" onchange="pickChanged('s')"><option value="customers_raw">customers_raw</option></select></div></div>
+            </div>
+            <div class="pick dest-only">
+              <div class="ttl" data-t="lblDestTable">Destination Table</div>
+              <div class="row" id="d-row"><div class="field"><label>Source System</label><select id="d-sys" onchange="cascade('d','sys')"><option value="crm">CRM System</option><option value="erp">ERP System</option></select></div><div class="field"><label>Layer</label><select id="d-layer" onchange="cascade('d','layer')"><option value="crm_raw">Raw Layer</option><option value="crm_curated">Curated Layer</option></select></div><div class="field"><label>Table Group</label><select id="d-group" onchange="cascade('d','group')"><option value="crm_cur_cust">Customer Master</option></select></div><div class="field"><label>Table</label><select id="d-table" onchange="pickChanged('d')"><option value="customers_curated">customers_curated</option></select></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h4><span class="step-num">2</span> <span data-t="secSelectAttrs" data-t-dual="secSelectAttrs" data-t-single="secSelectAttrsSingle">Select Source &amp; Destination Attributes</span></h4>
+          <p class="desc" data-t="secSelectAttrsDesc">Open each drop-down and tick one or more columns to extract.</p>
+          <div class="two-col">
+            <div class="pick" id="s-attr-body"><div class="ttl">SOURCE · customers_raw</div><div class="ms" id="ms-s-attrs"><button type="button" onclick="msToggle('s-attrs',event)"><span>Select attributes (multiple)</span><span>▾</span></button><div class="ms-panel" onclick="event.stopPropagation()"><div class="ms-act"><a onclick="msAll('s-attrs',true)">Select all</a><a onclick="msAll('s-attrs',false)">Clear</a></div><label><input type="checkbox" onchange="msPick('s-attrs',0,this.checked)"> customer_id</label><label><input type="checkbox" onchange="msPick('s-attrs',1,this.checked)"> full_name</label><label><input type="checkbox" onchange="msPick('s-attrs',2,this.checked)"> email</label><label><input type="checkbox" onchange="msPick('s-attrs',3,this.checked)"> city</label></div></div></div>
+            <div class="pick dest-only" id="d-attr-body"><div class="ttl">DESTINATION · customers_curated</div><div class="ms" id="ms-d-attrs"><button type="button" onclick="msToggle('d-attrs',event)"><span>Select attributes (multiple)</span><span>▾</span></button><div class="ms-panel" onclick="event.stopPropagation()"><div class="ms-act"><a onclick="msAll('d-attrs',true)">Select all</a><a onclick="msAll('d-attrs',false)">Clear</a></div><label><input type="checkbox" onchange="msPick('d-attrs',0,this.checked)"> cust_id</label><label><input type="checkbox" onchange="msPick('d-attrs',1,this.checked)"> name</label><label><input type="checkbox" onchange="msPick('d-attrs',2,this.checked)"> email</label><label><input type="checkbox" onchange="msPick('d-attrs',3,this.checked)"> region</label></div></div></div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h4><span class="step-num">3</span> <span data-t="secPrimaryKeys" data-t-dual="secPrimaryKeys" data-t-single="secPrimaryKeysSingle">Select Source &amp; Destination Primary Key</span></h4>
+          <p class="desc" data-t="secPrimaryKeysDesc" data-t-dual="secPrimaryKeysDesc" data-t-single="secPrimaryKeysDescSingle">Only attributes selected above appear here. Rows match where keys are equal.</p>
+          <div class="two-col">
+            <div class="field">
+              <label data-t="lblSourcePK">Source primary key</label>
+              <select id="s-pk" onchange="QB.pk.s=this.value;refreshRun()"><option value="">— Select primary key —</option></select>
+            </div>
+            <div class="field dest-only">
+              <label data-t="lblDestPK">Destination primary key</label>
+              <select id="d-pk" onchange="QB.pk.d=this.value;refreshRun()"><option value="">— Select primary key —</option></select>
+            </div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h4><span class="step-num">4</span> <span data-t="secRules" data-t-dual="secRules" data-t-single="secRulesSingle">Rules on Source &amp; Destination (Optional)</span></h4>
+          <p class="desc" data-t="secRulesDesc">Only rows that satisfy every rule are extracted (combined with AND logic).</p>
+          <div class="two-col">
+            <div class="pick">
+              <div class="ttl" data-t="lblRuleSource">Rule on Source</div>
+              <div id="s-rule-body"><div class="empty">No rule — all rows of the table are used.</div></div>
+              <button class="btn secondary sm" style="margin-top:10px" onclick="addRule('s')">+ <span data-t="btnAddRule">Add rule</span></button>
+            </div>
+            <div class="pick dest-only">
+              <div class="ttl" data-t="lblRuleDest">Rule on Destination</div>
+              <div id="d-rule-body"><div class="empty">No rule — all rows of the table are used.</div></div>
+              <button class="btn secondary sm" style="margin-top:10px" onclick="addRule('d')">+ <span data-t="btnAddRule">Add rule</span></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Query Preview & Execute -->
+        <div class="section">
+          <div class="row" style="justify-content:space-between">
+            <div id="query-preview" class="query-box">Select attributes for both source and destination.</div>
+            <button class="btn" id="run-btn" onclick="runExtract()" disabled>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              <span data-t="btnRunQuery">Run Query</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Results Section Tab 1 -->
+        <div class="section" id="ext-section" style="display:none">
+          <div class="row" style="justify-content:space-between;margin-bottom:12px">
+            <h4><span data-t="lblQueryResults">Query Results</span> <span id="ext-count" class="badge"></span></h4>
+            <div class="row" style="gap:8px">
+              <button class="btn sm" onclick="download('xlsx','x')">⬇ Excel</button>
+              <button class="btn secondary sm" onclick="download('csv','x')">⬇ CSV</button>
+              <button class="btn secondary sm" onclick="download('json','x')">⬇ JSON</button>
+              <button class="btn secondary sm" onclick="download('xml','x')">⬇ XML</button>
+              <button class="btn secondary sm" onclick="qbTab(2)"><span data-t="btnGoReport">Report Analysis →</span></button>
+            </div>
+          </div>
+          <p class="desc" id="ext-note" style="margin-bottom:10px"></p>
+          <div class="results-scroll" id="ext-body"></div>
+          <div id="ext-pager"></div>
+        </div>
+      </div>
+
+      <!-- TAB 2: REPORT ANALYSIS (TWO-PANE LAYOUT: CENTER REPORT RESULTS, RIGHT COLLAPSIBLE FILTER/FUZZY PANEL) -->
+      <div id="qb2" style="display:none">
+        <div class="section" id="qb2-empty">
+          <div class="empty" data-t="msgNoExtractYet">No extracted records yet. Run a query on the Extract Records page first.</div>
+          <button class="btn" style="margin-top:14px" onclick="qbTab(1)">← <span data-t="btnBackExtract">Go to Extract Records</span></button>
+        </div>
+
+        <div id="qb2-main" style="display:none">
+          <div class="report-workspace">
+            
+            <!-- CENTRAL: REPORT RESULTS TABLE & TOOLBAR -->
+            <div class="report-results-pane">
+              <div class="section" style="margin-bottom:0">
+                <div class="row" style="justify-content:space-between;margin-bottom:12px;gap:12px">
+                  <div class="row" style="gap:10px;align-items:center">
+                    <h4><span data-t="lblReportResults">Report Results</span> <span id="view-count" class="badge"></span></h4>
+                    <button class="btn secondary sm" id="controls-toggle-btn" onclick="toggleRightPanel()" title="Toggle settings & filters panel">
+                      <span>⚙️</span>
+                      <span data-t="btnToggleControls">Filters &amp; Settings</span>
+                      <span id="ctrl-panel-state-arrow">❯</span>
+                    </button>
+                  </div>
+                  <div id="col-ms" style="width:260px"></div>
+                </div>
+
+                <p class="desc" id="view-preview" style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted);margin-bottom:14px"></p>
+                
+                <div class="row" style="gap:8px;margin-bottom:12px">
+                  <button class="btn sm" onclick="download('xlsx','v')">⬇ Excel</button>
+                  <button class="btn secondary sm" onclick="download('csv','v')">⬇ CSV</button>
+                  <button class="btn secondary sm" onclick="download('json','v')">⬇ JSON</button>
+                  <button class="btn secondary sm" onclick="download('xml','v')">⬇ XML</button>
+                  <button class="btn secondary sm" onclick="showPage('p3',document.querySelectorAll('.nav button')[2])">
+                    <span data-t="btnViewDashboard">View in Dashboard →</span>
+                  </button>
+                </div>
+
+                <div class="results-scroll" id="view-body"></div>
+                <div id="view-pager"></div>
+              </div>
+            </div>
+
+            <!-- RIGHT DEDICATED PANEL: FILTER, FUZZY MATCHING -->
+            <aside class="report-controls-panel" id="report-controls-panel">
+              <div class="report-panel-inner">
+                <div class="report-panel-header">
+                  <h3>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M12 4v2M6 20v-4M6 4v8M18 20v-2M18 4v10M2 16h8M8 8h8M14 14h8"></path></svg>
+                    <span data-t="panelControlsTitle">Analysis Settings</span>
+                  </h3>
+                  <button class="panel-toggle-btn" onclick="toggleRightPanel()" title="Close panel">
+                    ›
+                  </button>
+                </div>
+
+                <!-- 5. FILTER -->
+                <div class="ctrl-card">
+                  <h5><span class="step-num" style="width:18px;height:18px;font-size:10px">5</span> <span data-t="secFilter">Filter (Optional)</span></h5>
+                  <div class="ctrl-sub" data-t="secFilterDesc">Pick an attribute and select values to keep.</div>
+                  <div id="vf-body"></div>
+                  <button class="btn secondary sm" style="margin-top:10px;width:100%" onclick="addVF()">+ <span data-t="btnAddFilter">Add filter</span></button>
+                </div>
+
+                <!-- 6. FUZZY MATCHING -->
+                <div class="ctrl-card">
+                  <h5><span class="step-num" style="width:18px;height:18px;font-size:10px">6</span> <span data-t="secFuzzy">Fuzzy Matching (Optional)</span></h5>
+                  <div class="ctrl-sub" data-t="secFuzzyDesc" data-t-dual="secFuzzyDesc" data-t-single="secFuzzyDescSingle">Compare source and destination text columns with Levenshtein similarity algorithm.</div>
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    <div class="field">
+                      <label data-t="lblSourceAttr">Source attribute</label>
+                      <select id="fz-a" onchange="fzSet('a',this.value)"></select>
+                    </div>
+                    <div class="field dest-only">
+                      <label data-t="lblDestAttr">Destination attribute</label>
+                      <select id="fz-b" onchange="fzSet('b',this.value)"></select>
+                    </div>
+                    <div class="field single-only">
+                      <label data-t="lblFuzzyText">Text to match</label>
+                      <input type="text" id="fz-t" oninput="fzSet('txt',this.value)" autocomplete="off">
+                    </div>
+                    <div class="field">
+                      <label data-t="lblFuzzyRatio">Fuzzy ratio (0–100%)</label>
+                      <div class="stepper-wrap">
+                        <button type="button" onclick="stepFz(-5)" title="-5%">▼</button>
+                        <input type="text" id="fz-r" value="80%" readonly tabindex="-1">
+                        <button type="button" onclick="stepFz(5)" title="+5%">▲</button>
+                      </div>
+                    </div>
+                    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px">
+                      <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+                        <input type="checkbox" id="fz-cs" onchange="fzSet('cs',this.checked)">
+                        <span data-t="lblCaseSensitive">Case sensitive</span>
+                      </label>
+                      <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
+                        <input type="checkbox" id="fz-sp" checked onchange="fzSet('sp',this.checked)">
+                        <span data-t="lblWithSpace">With spaces</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 7. GROUP BY -->
+                <div class="ctrl-card">
+                  <h5><span class="step-num" style="width:18px;height:18px;font-size:10px">7</span> <span data-t="secGroupBy">Group By (Optional)</span></h5>
+                  <div class="ctrl-sub" data-t="secGroupByDesc">Group rows by one or more attributes, then summarise other attributes with aggregate functions.</div>
+                  <div class="field" style="margin-bottom:10px">
+                    <label data-t="lblGroupByCols">Group by attribute(s)</label>
+                    <div id="gb-cols-ms"></div>
+                  </div>
+                  <div id="gb-body"></div>
+                  <button class="btn secondary sm" style="margin-top:10px;width:100%" id="gb-add-btn" onclick="addAgg()">+ <span data-t="btnAddAgg">Add aggregator</span></button>
+                </div>
+
+              </div>
+            </aside>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 3: DASHBOARD -->
+    <div class="page" id="p3">
+      <div class="top-action-bar">
+        <div class="page-header">
+          <h2 data-t="p3Title">Result Dashboard</h2>
+          <p class="sub" data-t="p3Sub">Visual intelligence and metric analysis of the latest query run.</p>
+        </div>
+      </div>
+      <div id="dash-body"></div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+/* ---------------- MULTI-LANGUAGE DICTIONARY (EN & HI) ---------------- */
+let currentLang = 'en';
+const I18N = {
+  en: {
+    appTitle: "Analytics Advisor",
+    appSub: "No-code Query Platform",
+    navOverview: "Database Overview",
+    navQueryBuilder: "Query Builder",
+    navDashboard: "Result Dashboard",
+    lblTheme: "Appearance",
+    themeLight: "Light",
+    themeDark: "Dark",
+    lblLanguage: "Language",
+    p1Title: "Database Overview",
+    p1Sub: "Drill down: Source System → Layer → Table Group → Table → Attributes & Data Types",
+    p2Title: "No-Code Query Builder",
+    p2Sub: "Extract records from a source table and analyse them in a report — no SQL needed.",
+    tabExtract: "1. Extract Records",
+    tabReport: "2. Report Analysis",
+    lblMode: "Analysis mode",
+    modeDual: "Source & Destination",
+    modeSingle: "Single Source",
+    secChooseTablesSingle: "Choose Source Table",
+    secSelectAttrsSingle: "Select Source Attributes",
+    secPrimaryKeysSingle: "Select Source Primary Key",
+    secPrimaryKeysDescSingle: "Only attributes selected above appear here. The key identifies each record.",
+    secRulesSingle: "Rules on Source (Optional)",
+    secFuzzyDescSingle: "Compare the source text column against a reference text with Levenshtein similarity algorithm.",
+    lblFuzzyText: "Text to match",
+    secChooseTables: "Choose Source & Destination Table",
+    secChooseTablesDesc: "Pick any table from any Source System / Layer / Table Group.",
+    lblSourceTable: "Source Table",
+    lblDestTable: "Destination Table",
+    secSelectAttrs: "Select Source & Destination Attributes",
+    secSelectAttrsDesc: "Open each drop-down and tick one or more columns to extract.",
+    secPrimaryKeys: "Select Source & Destination Primary Key",
+    secPrimaryKeysDesc: "Only attributes selected above appear here. Rows match where keys are equal.",
+    lblSourcePK: "Source primary key",
+    lblDestPK: "Destination primary key",
+    secRules: "Rules on Source & Destination (Optional)",
+    secRulesDesc: "Only rows that satisfy every rule are extracted (combined with AND logic).",
+    lblRuleSource: "Rule on Source",
+    lblRuleDest: "Rule on Destination",
+    btnAddRule: "Add rule",
+    btnRunQuery: "Run Query",
+    lblQueryResults: "Query Results",
+    btnGoReport: "Report Analysis →",
+    msgNoExtractYet: "No extracted records yet. Run a query on the Extract Records page first.",
+    btnBackExtract: "Go to Extract Records",
+    secFilter: "Filter (Optional)",
+    secFilterDesc: "Pick an attribute and select values to keep.",
+    btnAddFilter: "Add filter",
+    secFuzzy: "Fuzzy Matching (Optional)",
+    secFuzzyDesc: "Compare source and destination text columns with Levenshtein similarity algorithm.",
+    lblSourceAttr: "Source attribute",
+    lblDestAttr: "Destination attribute",
+    lblFuzzyRatio: "Fuzzy ratio (0–100%)",
+    lblCaseSensitive: "Case sensitive (A ≠ a)",
+    lblWithSpace: "With spaces",
+    lblReportResults: "Report Results",
+    btnViewDashboard: "View in Dashboard →",
+    p3Title: "Result Dashboard",
+    p3Sub: "Visual intelligence and metric analysis of the latest query run.",
+    dbRoot: "Database",
+    tagSourceSystem: "SOURCE SYSTEM",
+    tagLayer: "LAYER",
+    tagTableGroup: "TABLE GROUP",
+    tagTable: "TABLE",
+    lblRowsPerPage: "Rows per page",
+    lblShowing: "Showing",
+    lblOf: "of",
+    lblTotalRows: "total rows",
+    btnPrev: "< Prev",
+    btnNext: "Next >",
+    lblPage: "Page",
+    btnRemove: "Remove",
+    msgNoRule: "No rule — all rows of the table are used.",
+    msgNoFilter: "No filters added — all extracted rows are shown.",
+    msgNoMatchRows: "No matching rows.",
+    msgDashEmpty: "Run a query in the Query Builder to see analysis here.",
+    statResultRows: "Result Rows",
+    statColsSelected: "Columns Selected",
+    statNumericCols: "Numeric Columns",
+    secGroupCount: "Distribution Chart",
+    selPKPlaceholder: "— Select primary key —",
+    selNone: "— None —",
+    panelControlsTitle: "Analysis Settings",
+    btnToggleControls: "Filters & Settings",
+    secGroupBy: "Group By (Optional)",
+    secGroupByDesc: "Group rows by one or more attributes, then summarise other attributes with aggregate functions.",
+    lblGroupByCols: "Group by attribute(s)",
+    btnAddAgg: "Add aggregator"
+  },
+  hi: {
+    appTitle: "एनालिटिक्स एडवाइजर",
+    appSub: "नो-कोड क्वेरी और मेटाडेटा टूल",
+    navOverview: "डेटाबेस अवलोकन",
+    navQueryBuilder: "क्वेरी बिल्डर",
+    navDashboard: "परिणाम डैशबोर्ड",
+    lblTheme: "थीम मोड",
+    themeLight: "लाइट मोड",
+    themeDark: "डार्क मोड",
+    lblLanguage: "भाषा बदलें",
+    p1Title: "डेटाबेस अवलोकन",
+    p1Sub: "ड्रिल-डाउन: स्रोत सिस्टम → लेयर → टेबल समूह → टेबल → विशेषताएँ और डेटा प्रकार",
+    p2Title: "नो-कोड क्वेरी बिल्डर",
+    p2Sub: "स्रोत तालिका से रिकॉर्ड निकालें और बिना SQL के रिपोर्ट का विश्लेषण करें।",
+    tabExtract: "1. रिकॉर्ड निकालें",
+    tabReport: "2. रिपोर्ट विश्लेषण",
+    lblMode: "विश्लेषण मोड",
+    modeDual: "स्रोत और गंतव्य",
+    modeSingle: "एकल स्रोत",
+    secChooseTablesSingle: "स्रोत तालिका चुनें",
+    secSelectAttrsSingle: "स्रोत विशेषताएँ चुनें",
+    secPrimaryKeysSingle: "स्रोत प्राथमिक कुंजी (Primary Key) चुनें",
+    secPrimaryKeysDescSingle: "केवल ऊपर चुनी गई विशेषताएँ यहाँ दिखाई देंगी। कुंजी प्रत्येक रिकॉर्ड की पहचान करती है।",
+    secRulesSingle: "स्रोत पर शर्तें व फ़िल्टर नियम (वैकल्पिक)",
+    secFuzzyDescSingle: "लेवेनशेटिन एल्गोरिदम के साथ स्रोत टेक्स्ट कॉलम की तुलना एक संदर्भ टेक्स्ट से करें।",
+    lblFuzzyText: "मिलान के लिए टेक्स्ट",
+    secChooseTables: "स्रोत और गंतव्य तालिका चुनें",
+    secChooseTablesDesc: "किसी भी स्रोत सिस्टम / लेयर / टेबल समूह से टेबल चुनें।",
+    lblSourceTable: "स्रोत तालिका (Source)",
+    lblDestTable: "गंतव्य तालिका (Destination)",
+    secSelectAttrs: "स्रोत और गंतव्य विशेषताएँ चुनें",
+    secSelectAttrsDesc: "ड्रॉपडाउन खोलें और निकालने के लिए एक या अधिक कॉलम चुनें।",
+    secPrimaryKeys: "प्राथमिक कुंजी (Primary Key) चुनें",
+    secPrimaryKeysDesc: "केवल ऊपर चुनी गई विशेषताएँ यहाँ दिखाई देंगी। पंक्तियाँ समान कुंजियों पर मिलान होंगी।",
+    lblSourcePK: "स्रोत प्राथमिक कुंजी",
+    lblDestPK: "गंतव्य प्राथमिक कुंजी",
+    secRules: "शर्तें व फ़िल्टर नियम (वैकल्पिक)",
+    secRulesDesc: "केवल वही पंक्तियाँ निकाली जाएंगी जो सभी नियमों को संतुष्ट करती हैं (AND तर्क)।",
+    lblRuleSource: "स्रोत पर नियम",
+    lblRuleDest: "गंतव्य पर नियम",
+    btnAddRule: "नियम जोड़ें",
+    btnRunQuery: "क्वेरी चलाएँ",
+    lblQueryResults: "क्वेरी परिणाम",
+    btnGoReport: "रिपोर्ट विश्लेषण →",
+    msgNoExtractYet: "अभी तक कोई रिकॉर्ड नहीं निकाला गया है। पहले रिकॉर्ड निकालें पृष्ठ पर क्वेरी चलाएँ।",
+    btnBackExtract: "रिकॉर्ड निकालें पर जाएँ",
+    secFilter: "फ़िल्टर (वैकल्पिक)",
+    secFilterDesc: "एक विशेषता चुनें और प्रदर्शित करने हेतु मान चुनें।",
+    btnAddFilter: "फ़िल्टर जोड़ें",
+    secFuzzy: "फ़ज़ी मैचिंग (समानता मिलान)",
+    secFuzzyDesc: "लेवेनशेटिन एल्गोरिदम के साथ स्रोत और गंतव्य टेक्स्ट कॉलम की तुलना करें।",
+    lblSourceAttr: "स्रोत विशेषता",
+    lblDestAttr: "गंतव्य विशेषता",
+    lblFuzzyRatio: "समानता अनुपात (0–100%)",
+    lblCaseSensitive: "केस संवेदी (A ≠ a)",
+    lblWithSpace: "रिक्त स्थान सहित (Spaces)",
+    lblReportResults: "रिपोर्ट परिणाम",
+    btnViewDashboard: "डैशबोर्ड में देखें →",
+    p3Title: "परिणाम डैशबोर्ड",
+    p3Sub: "नवीनतम क्वेरी रन का दृश्य विश्लेषण और सांख्यिकी।",
+    dbRoot: "डेटाबेस",
+    tagSourceSystem: "स्रोत सिस्टम",
+    tagLayer: "लेयर",
+    tagTableGroup: "टेबल समूह",
+    tagTable: "तालिका (टेबल)",
+    lblRowsPerPage: "प्रति पृष्ठ पंक्तियाँ",
+    lblShowing: "दिखाया जा रहा है",
+    lblOf: "में से",
+    lblTotalRows: "कुल पंक्तियाँ",
+    btnPrev: "< पिछला",
+    btnNext: "अगला >",
+    lblPage: "पृष्ठ",
+    btnRemove: "हटाएँ",
+    msgNoRule: "कोई नियम नहीं — तालिका की सभी पंक्तियाँ उपयोग की जाएँगी।",
+    msgNoFilter: "कोई फ़िल्टर नहीं — सभी निकाली गई पंक्तियाँ प्रदर्शित हैं।",
+    msgNoMatchRows: "कोई मिलान पंक्ति नहीं मिली।",
+    msgDashEmpty: "यहाँ विश्लेषण देखने के लिए क्वेरी बिल्डर में क्वेरी चलाएँ।",
+    statResultRows: "परिणाम पंक्तियाँ",
+    statColsSelected: "चुने गए कॉलम",
+    statNumericCols: "संख्यात्मक कॉलम",
+    secGroupCount: "वितरण चार्ट",
+    selPKPlaceholder: "— प्राथमिक कुंजी चुनें —",
+    selNone: "— कोई नहीं —",
+    panelControlsTitle: "विश्लेषण सेटिंग्स",
+    btnToggleControls: "फ़िल्टर और सेटिंग्स",
+    secGroupBy: "समूहीकरण (Group By) (वैकल्पिक)",
+    secGroupByDesc: "एक या अधिक विशेषताओं के आधार पर पंक्तियों को समूहित करें, फिर अन्य विशेषताओं को एग्रीगेट फ़ंक्शन से सारांशित करें।",
+    lblGroupByCols: "समूह द्वारा विशेषता(एँ)",
+    btnAddAgg: "एग्रीगेटर जोड़ें"
+  }
+};
+
+function t(k) { return (I18N[currentLang] && I18N[currentLang][k]) || I18N['en'][k] || k; }
+
+function applyTranslations() {
+  document.querySelectorAll('[data-t]').forEach(el => {
+    const key = el.getAttribute('data-t');
+    if (I18N[currentLang][key]) el.textContent = I18N[currentLang][key];
+  });
+  document.documentElement.setAttribute('data-lang', currentLang);
+  document.getElementById('lang-label').textContent = currentLang === 'en' ? 'हिन्दी (HI)' : 'English (EN)';
+  renderP1();
+  refreshRun();
+  if (QB.extract) {
+    showExtract();
+    renderP2b();
+  }
+  if (document.getElementById('p3').classList.contains('active')) renderDashboard();
+}
+
+function toggleLanguage() {
+  currentLang = currentLang === 'en' ? 'hi' : 'en';
+  applyTranslations();
+}
+
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  const newTheme = isDark ? 'light' : 'dark';
+  html.setAttribute('data-theme', newTheme);
+  document.getElementById('theme-icon').textContent = newTheme === 'dark' ? '☀️' : '🌙';
+  document.getElementById('theme-label').textContent = newTheme === 'dark' ? t('themeLight') : t('themeDark');
+  if (document.getElementById('p3').classList.contains('active')) renderDashboard();
+}
+
+/* ---------------- SIDEBAR & RIGHT PANEL COLLAPSE ---------------- */
+function toggleSidebar() {
+  const sidebar = document.getElementById('app-sidebar');
+  sidebar.classList.toggle('collapsed');
+}
+
+function toggleRightPanel() {
+  const panel = document.getElementById('report-controls-panel');
+  if (panel) {
+    panel.classList.toggle('collapsed');
+    const isClosed = panel.classList.contains('collapsed');
+    const arrow = document.getElementById('ctrl-panel-state-arrow');
+    if (arrow) arrow.textContent = isClosed ? '❮' : '❯';
+  }
+}
+
+/* ---------------- DATA MODEL ---------------- */
+const DB = {
+  name: "Enterprise Data Warehouse",
+  systems: [
+    {
+      id: 'crm', name: 'CRM System', desc: 'Customer relationship management platform',
+      layers: [
+        {
+          id: 'crm_raw', name: 'Raw Layer', desc: 'Unmodified source extracts',
+          groups: [
+            {
+              id: 'crm_raw_cust', name: 'Customer Data', desc: 'Raw customer records',
+              tables: [
+                {
+                  id: 'customers_raw', name: 'customers_raw', desc: 'Raw customer extract from CRM',
+                  columns: ['customer_id', 'full_name', 'email', 'city'],
+                  types: ['BIGINT', 'VARCHAR(100)', 'VARCHAR(150)', 'VARCHAR(80)'],
+                  rows: [
+                    [1, 'John Smith', 'john.smith@mail.com', 'New York'],
+                    [2, 'Maria Garcia', 'maria.g@mail.com', 'Los Angeles'],
+                    [3, 'Wei Chen', 'wei.chen@mail.com', 'San Francisco'],
+                    [4, 'Amit Sharma', 'amit.s@mail.com', 'Chicago'],
+                    [5, 'Sara Lee', 'sara.lee@mail.com', 'Boston'],
+                    [6, 'Tom Brown', 'tom.brown@mail.com', 'Seattle']
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          id: 'crm_curated', name: 'Curated Layer', desc: 'Cleansed, business-ready data',
+          groups: [
+            {
+              id: 'crm_cur_cust', name: 'Customer Master', desc: 'Golden record customer master',
+              tables: [
+                {
+                  id: 'customers_curated', name: 'customers_curated', desc: 'Cleansed master customer records',
+                  columns: ['cust_id', 'name', 'email', 'region'],
+                  types: ['BIGINT', 'VARCHAR(100)', 'VARCHAR(150)', 'VARCHAR(50)'],
+                  rows: [
+                    [1, 'Jon Smith', 'john.smith@mail.com', 'East'],
+                    [2, 'Maria Garcia', 'maria.g@mail.com', 'West'],
+                    [3, 'Wei Chen', 'wei.chen@mail.com', 'West'],
+                    [4, 'Amith Sharma', 'amit.s@mail.com', 'Central'],
+                    [5, 'Sara Lee', 'sara.lee@mail.com', 'East'],
+                    [6, 'Thomas Brown', 'tom.brown@mail.com', 'West']
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      id: 'erp', name: 'ERP System', desc: 'Enterprise resource planning platform',
+      layers: [
+        {
+          id: 'erp_raw', name: 'Raw Layer', desc: 'Unmodified source extracts',
+          groups: [
+            {
+              id: 'erp_raw_sales', name: 'Sales Data', desc: 'Raw order transactions',
+              tables: [
+                {
+                  id: 'orders_raw', name: 'orders_raw', desc: 'Raw sales orders extract',
+                  columns: ['order_id', 'customer_id', 'product', 'amount', 'order_date'],
+                  types: ['BIGINT', 'BIGINT', 'VARCHAR(100)', 'DECIMAL(12,2)', 'DATE'],
+                  rows: [
+                    [101, 1, 'Laptop', 1200, '2026-01-05'],
+                    [102, 2, 'Phone', 800, '2026-01-07'],
+                    [103, 3, 'Monitor', 300, '2026-01-10'],
+                    [104, 1, 'Mouse', 25, '2026-01-12'],
+                    [105, 4, 'Keyboard', 45, '2026-01-15'],
+                    [106, 5, 'Laptop', 1300, '2026-01-18'],
+                    [107, 6, 'Tablet', 500, '2026-01-20'],
+                    [108, 2, 'Headphones', 150, '2026-01-22']
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          id: 'erp_curated', name: 'Curated Layer', desc: 'Cleansed, business-ready data',
+          groups: [
+            {
+              id: 'erp_cur_sales', name: 'Sales Summary', desc: 'Order data enriched with names',
+              tables: [
+                {
+                  id: 'orders_curated', name: 'orders_curated', desc: 'Enriched sales summary with customer names',
+                  columns: ['order_id', 'cust_name', 'product', 'amount'],
+                  types: ['BIGINT', 'VARCHAR(100)', 'VARCHAR(100)', 'DECIMAL(12,2)'],
+                  rows: [
+                    [101, 'Jon Smith', 'Laptop', 1200],
+                    [102, 'Maria Garcia', 'Phone', 800],
+                    [103, 'Wei Chen', 'Monitor', 300],
+                    [104, 'Jon Smith', 'Mouse', 25],
+                    [105, 'Amith Sharma', 'Keyboard', 45],
+                    [106, 'Sara Lee', 'Laptop', 1300],
+                    [107, 'Thomas Brown', 'Tablet', 500],
+                    [108, 'Maria Garcia', 'Headphones', 150]
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+};
+
+function allTables() {
+  const out = [];
+  DB.systems.forEach(sys => sys.layers.forEach(lay => lay.groups.forEach(grp => grp.tables.forEach(tb => {
+    out.push({ ...tb, sys: sys.name, sysId: sys.id, layer: lay.name, layerId: lay.id, group: grp.name, groupId: grp.id });
+  }))));
+  return out;
+}
+function findTable(id) { return allTables().find(t => t.id === id); }
+
+function isStringColumn(tbl, colName) {
+  if (!tbl) return false;
+  const idx = tbl.columns.indexOf(colName);
+  if (idx === -1) return false;
+  const type = tbl.types[idx].toUpperCase();
+  return type.includes('VARCHAR') || type.includes('TEXT') || type.includes('CHAR') || type.includes('STRING');
+}
+
+/* ---------------- NAVIGATION ---------------- */
+function showPage(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (id === 'p3') renderDashboard();
+}
+
+/* ---------------- PAGE 1: OVERVIEW DRILLDOWN ---------------- */
+let crumbState = [];
+function crumbLabel(state) {
+  const labels = [t('dbRoot')];
+  let sys, lay, grp;
+  state.forEach(s => {
+    if (s.level === 'sys') { sys = DB.systems.find(x => x.id === s.id); labels.push(sys.name); }
+    if (s.level === 'layer') { lay = sys.layers.find(x => x.id === s.id); labels.push(lay.name); }
+    if (s.level === 'group') { grp = lay.groups.find(x => x.id === s.id); labels.push(grp.name); }
+    if (s.level === 'table') { labels.push(s.id); }
+  });
+  return labels;
+}
+function renderCrumbs() {
+  const el = document.getElementById('p1-crumbs');
+  const labels = crumbLabel(crumbState);
+  el.innerHTML = '';
+  labels.forEach((lab, i) => {
+    const span = document.createElement('span');
+    if (i === labels.length - 1) {
+      span.innerHTML = '<b>' + lab + '</b>';
+      span.className = 'crumb-sep';
+    } else {
+      span.textContent = lab;
+      span.onclick = () => { crumbState = crumbState.slice(0, i); renderP1(); };
+    }
+    el.appendChild(span);
+    if (i < labels.length - 1) {
+      const sep = document.createElement('span');
+      sep.textContent = '›';
+      sep.className = 'crumb-sep';
+      el.appendChild(sep);
+    }
+  });
+}
+function renderP1() {
+  renderCrumbs();
+  const body = document.getElementById('p1-body');
+  const depth = crumbState.length;
+  if (depth === 0) {
+    body.innerHTML = '<div class="card-grid">' + DB.systems.map(s =>
+      '<div class="card" onclick="drill(\'sys\',\'' + s.id + '\')"><div class="tag">' + t('tagSourceSystem') + '</div><h3>' + s.name + '</h3><p>' + s.desc + ' · ' + s.layers.length + ' layer(s)</p></div>').join('') + '</div>';
+    return;
+  }
+  const sys = DB.systems.find(s => s.id === crumbState[0].id);
+  if (depth === 1) {
+    body.innerHTML = '<div class="card-grid">' + sys.layers.map(l =>
+      '<div class="card" onclick="drill(\'layer\',\'' + l.id + '\')"><div class="tag">' + t('tagLayer') + '</div><h3>' + l.name + '</h3><p>' + l.desc + ' · ' + l.groups.length + ' table group(s)</p></div>').join('') + '</div>';
+    return;
+  }
+  const lay = sys.layers.find(l => l.id === crumbState[1].id);
+  if (depth === 2) {
+    body.innerHTML = '<div class="card-grid">' + lay.groups.map(g =>
+      '<div class="card" onclick="drill(\'group\',\'' + g.id + '\')"><div class="tag">' + t('tagTableGroup') + '</div><h3>' + g.name + '</h3><p>' + g.desc + ' · ' + g.tables.length + ' table(s)</p></div>').join('') + '</div>';
+    return;
+  }
+  const grp = lay.groups.find(g => g.id === crumbState[2].id);
+  if (depth === 3) {
+    body.innerHTML = '<div class="card-grid">' + grp.tables.map(tb =>
+      '<div class="card" onclick="drill(\'table\',\'' + tb.id + '\')"><div class="tag">' + t('tagTable') + '</div><h3>' + tb.name + '</h3><p>' + tb.desc + ' · ' + tb.columns.length + ' columns · ' + tb.rows.length + ' rows</p></div>').join('') + '</div>';
+    return;
+  }
+  const tbl = grp.tables.find(tb => tb.id === crumbState[3].id);
+  body.innerHTML = '<div class="section"><p class="desc">' + tbl.desc + ' · ' + tbl.columns.length + ' attributes</p>' +
+    '<div class="results-scroll"><table><thead><tr><th style="width:60px">#</th><th>' + (currentLang==='hi'?'विशेषता':'Attribute Name') + '</th><th>' + (currentLang==='hi'?'डेटा प्रकार':'Data Type') + '</th></tr></thead><tbody>' +
+    tbl.columns.map((c, i) => '<tr><td>' + (i + 1) + '</td><td>' + c + '</td><td style="font-family:var(--font-mono);color:var(--accent)">' + tbl.types[i] + '</td></tr>').join('') + '</tbody></table></div></div>';
+}
+function drill(level, id) { crumbState.push({ level, id }); renderP1(); }
+
+/* ---------------- PAGE 2: QUERY BUILDER LOGIC ---------------- */
+const QB = {
+  tb: { s: null, d: null },
+  attrs: { s: [], d: [] },
+  pk: { s: '', d: '' },
+  rules: { s: [], d: [] },
+  extract: null,
+  vf: [],
+  mode: 'dual',
+  fz: { a: '', b: '', txt: '', ratio: 80, cs: false, sp: true },
+  cols: [],
+  gb: { cols: [], aggs: [] },
+  sort: { col: '', dir: 'asc' },
+  pg: { x: { n: 1, size: 50 }, v: { n: 1, size: 50 } }
+};
+let lastResult = null;
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const LV = [
+  ['sys', () => currentLang==='hi' ? 'स्रोत सिस्टम' : 'Source System'],
+  ['layer', () => currentLang==='hi' ? 'लेयर' : 'Layer'],
+  ['group', () => currentLang==='hi' ? 'टेबल समूह' : 'Table Group'],
+  ['table', () => currentLang==='hi' ? 'तालिका' : 'Table']
+];
+
+function populateSelect(sel, items, labelFn, valFn) {
+  sel.innerHTML = items.map(it => '<option value="' + valFn(it) + '">' + labelFn(it) + '</option>').join('');
+}
+function cascade(p, level) {
+  const g = k => document.getElementById(p + '-' + k);
+  const up = level === 'init' ? ['sys', 'layer', 'group'] : [level];
+  if (level === 'init') populateSelect(g('sys'), DB.systems, s => s.name, s => s.id);
+  const sys = DB.systems.find(s => s.id === g('sys').value) || DB.systems[0];
+  if (up.includes('sys') || level === 'init') populateSelect(g('layer'), sys.layers, l => l.name, l => l.id);
+  const lay = sys.layers.find(l => l.id === g('layer').value) || sys.layers[0];
+  if (level === 'init' || level === 'sys' || level === 'layer') populateSelect(g('group'), lay.groups, x => x.name, x => x.id);
+  const grp = lay.groups.find(x => x.id === g('group').value) || lay.groups[0];
+  populateSelect(g('table'), grp.tables, tb => tb.name, tb => tb.id);
+  pickChanged(p);
+}
+
+const MS = {};
+function msLabel(id) {
+  const m = MS[id], n = m.sel.length;
+  const allText = currentLang === 'hi' ? 'सभी' : 'All';
+  const selText = currentLang === 'hi' ? 'चयनित' : 'selected';
+  return (m.pre || '') + (n && n === m.opts.length ? allText + ' (' + n + ')' : n ? n + ' ' + (currentLang==='hi'?'में से':'of') + ' ' + m.opts.length + ' ' + selText : m.ph);
+}
+function msInit(id, opts, sel, cb, o) {
+  MS[id] = Object.assign({ opts, sel: sel.slice(), cb }, o || {});
+  return msHTML(id);
+}
+function msHTML(id) {
+  const m = MS[id];
+  const selectAll = currentLang === 'hi' ? 'सभी चुनें' : 'Select all';
+  const clearAll = currentLang === 'hi' ? 'हटाएँ' : 'Clear';
+  return '<div class="ms' + (m.right ? ' right' : '') + '" id="ms-' + id + '"><button type="button" onclick="msToggle(\'' + id + '\',event)"><span>' + esc(msLabel(id)) + '</span><span>▾</span></button>' +
+    '<div class="ms-panel" onclick="event.stopPropagation()"><div class="ms-act"><a onclick="msAll(\'' + id + '\',true)">' + selectAll + '</a><a onclick="msAll(\'' + id + '\',false)">' + clearAll + '</a></div>' +
+    m.opts.map((o, i) => '<label><input type="checkbox" ' + (m.sel.includes(o.v) ? 'checked' : '') + ' onchange="msPick(\'' + id + '\',' + i + ',this.checked)"> ' + esc(o.l) + '</label>').join('') + '</div></div>';
+}
+function msToggle(id, e) {
+  e.stopPropagation();
+  const el = document.getElementById('ms-' + id), was = el.classList.contains('open');
+  document.querySelectorAll('.ms.open').forEach(x => x.classList.remove('open'));
+  if (!was) el.classList.add('open');
+}
+function msPick(id, i, on) {
+  const m = MS[id], v = m.opts[i].v;
+  m.sel = m.opts.map(o => o.v).filter(x => x === v ? on : m.sel.includes(x));
+  document.querySelector('#ms-' + id + ' button span').textContent = msLabel(id);
+  m.cb(m.sel);
+}
+function msAll(id, on) {
+  const m = MS[id];
+  m.sel = on ? m.opts.map(o => o.v) : [];
+  document.getElementById('ms-' + id).outerHTML = msHTML(id);
+  document.getElementById('ms-' + id).classList.add('open');
+  m.cb(m.sel);
+}
+document.addEventListener('click', () => document.querySelectorAll('.ms.open').forEach(x => x.classList.remove('open')));
+
+const keyOf = v => v === null || v === undefined ? '' : String(v);
+const OPERATORS = [
+  { v: 'contains', labelEn: 'contains (text)', labelHi: 'समावेश है (text)' },
+  { v: '=', labelEn: 'is equal to (=)', labelHi: 'बराबर है (=)' },
+  { v: '!=', labelEn: 'is not equal to (≠)', labelHi: 'बराबर नहीं है (≠)' },
+  { v: '>', labelEn: 'is greater than (>)', labelHi: 'बड़ा है (>)' },
+  { v: '<', labelEn: 'is less than (<)', labelHi: 'छोटा है (<)' },
+  { v: '>=', labelEn: 'is greater or equal (≥)', labelHi: 'बड़ा या बराबर (≥)' },
+  { v: '<=', labelEn: 'is less or equal (≤)', labelHi: 'छोटा या बराबर (≤)' },
+  { v: 'empty', labelEn: 'is empty', labelHi: 'रिक्त है (empty)' },
+  { v: 'notempty', labelEn: 'is not empty', labelHi: 'रिक्त नहीं है' }
+];
+
+const AGG_FUNCS = [
+  { v: 'count', labelEn: 'COUNT', labelHi: 'COUNT (गणना)' },
+  { v: 'sum', labelEn: 'SUM', labelHi: 'SUM (योग)' },
+  { v: 'avg', labelEn: 'AVG', labelHi: 'AVG (औसत)' },
+  { v: 'min', labelEn: 'MIN', labelHi: 'MIN (न्यूनतम)' },
+  { v: 'max', labelEn: 'MAX', labelHi: 'MAX (अधिकतम)' }
+];
+
+function updateRule(p, i, key, val) {
+  if (QB.rules[p] && QB.rules[p][i]) {
+    QB.rules[p][i][key] = val;
+    refreshRun();
+  }
+}
+
+function pickChanged(p) {
+  const tbl = findTable(document.getElementById(p + '-table').value);
+  if (!QB.tb[p] || QB.tb[p].id !== tbl.id) {
+    QB.attrs[p] = [];
+    QB.pk[p] = '';
+    QB.rules[p] = [];
+  }
+  QB.tb[p] = tbl;
+  renderAttrs(p);
+  renderRules(p);
+  refreshRun();
+}
+function renderAttrs(p) {
+  const tbl = QB.tb[p];
+  const pName = p === 's' ? (currentLang === 'hi' ? 'स्रोत' : 'SOURCE') : (currentLang === 'hi' ? 'गंतव्य' : 'DESTINATION');
+  const phText = currentLang === 'hi' ? 'विशेषताएँ चुनें (एकाधिक)' : 'Select attributes (multiple)';
+  document.getElementById(p + '-attr-body').innerHTML = '<div class="ttl">' + pName + ' · ' + esc(tbl.name) + '</div>' +
+    msInit(p + '-attrs', tbl.columns.map(c => ({ v: c, l: c })), QB.attrs[p], sel => {
+      QB.attrs[p] = sel;
+      renderPK(p);
+      refreshRun();
+    }, { ph: phText });
+  renderPK(p);
+}
+function renderPK(p) {
+  if (!QB.attrs[p].includes(QB.pk[p])) QB.pk[p] = '';
+  document.getElementById(p + '-pk').innerHTML = '<option value="">' + t('selPKPlaceholder') + '</option>' +
+    QB.attrs[p].map(c => '<option ' + (c === QB.pk[p] ? 'selected' : '') + '>' + esc(c) + '</option>').join('');
+}
+function renderRules(p) {
+  const tbl = QB.tb[p], q = "'" + p + "'";
+  document.getElementById(p + '-rule-body').innerHTML = QB.rules[p].map((w, i) =>
+    '<div class="where-row">' +
+    '<div class="field"><label>' + (currentLang==='hi'?'कॉलम':'Column') + '</label><select onchange="updateRule(' + q + ',' + i + ',\'attr\',this.value)">' +
+    tbl.columns.map(c => '<option ' + (c === w.attr ? 'selected' : '') + '>' + esc(c) + '</option>').join('') + '</select></div>' +
+    '<div class="field"><label>' + (currentLang==='hi'?'शर्त':'Condition') + '</label><select onchange="updateRule(' + q + ',' + i + ',\'op\',this.value)">' +
+    OPERATORS.map(o => '<option value="' + o.v + '" ' + (w.op === o.v ? 'selected' : '') + '>' + (currentLang==='hi'?o.labelHi:o.labelEn) + '</option>').join('') + '</select></div>' +
+    '<div class="field"><label>' + (currentLang==='hi'?'मान':'Value') + '</label><input type="text" value="' + esc(w.value || '') + '" oninput="updateRule(' + q + ',' + i + ',\'value\',this.value)"></div>' +
+    '<button class="btn danger sm" onclick="removeRule(' + q + ',' + i + ')">' + t('btnRemove') + '</button></div>'
+  ).join('') || '<div class="empty">' + t('msgNoRule') + '</div>';
+}
+function addRule(p) {
+  QB.rules[p].push({ attr: QB.tb[p].columns[0], op: 'contains', value: '' });
+  renderRules(p);
+  refreshRun();
+}
+function removeRule(p, i) {
+  QB.rules[p].splice(i, 1);
+  renderRules(p);
+  refreshRun();
+}
+function setMode(m) {
+  if (QB.mode === m) return;
+  QB.mode = m;
+  document.getElementById('p2').setAttribute('data-mode', m);
+  document.querySelectorAll('#mode-switch button').forEach(b => b.classList.toggle('active', b.dataset.mode === m));
+  document.querySelectorAll('[data-t-dual]').forEach(el =>
+    el.setAttribute('data-t', el.getAttribute(m === 'single' ? 'data-t-single' : 'data-t-dual')));
+  /* results from the previous mode no longer apply */
+  QB.extract = null;
+  lastResult = null;
+  QB.vf = [];
+  QB.fz = { a: '', b: '', txt: '', ratio: 80, cs: false, sp: true };
+  QB.gb = { cols: [], aggs: [] };
+  QB.sort = { col: '', dir: 'asc' };
+  QB.cols = [];
+  document.getElementById('ext-section').style.display = 'none';
+  applyTranslations();
+  renderP2b();
+}
+function refreshRun() {
+  const single = QB.mode === 'single';
+  const { s, d } = QB.tb;
+  const same = !single && s && d && s.id === d.id;
+  const ok = s && (single || (d && !same)) && (single ? ['s'] : ['s', 'd']).every(p => QB.attrs[p].length && QB.pk[p]);
+  document.getElementById('run-btn').disabled = !ok;
+  const qn = (tbl, cs) => cs.map(c => tbl.name + '.' + c).join(', ');
+  const previewEl = document.getElementById('query-preview');
+  if (ok) {
+    let whereClauses = [];
+    if (QB.rules.s.length) {
+      whereClauses.push(QB.rules.s.map(r => s.name + '.' + r.attr + ' ' + r.op + ' \'' + (r.value || '') + '\'').join(' AND '));
+    }
+    if (!single && QB.rules.d.length) {
+      whereClauses.push(QB.rules.d.map(r => d.name + '.' + r.attr + ' ' + r.op + ' \'' + (r.value || '') + '\'').join(' AND '));
+    }
+    const whereSql = whereClauses.length ? '\nWHERE ' + whereClauses.join(' AND ') : '';
+    previewEl.textContent = single
+      ? 'SELECT ' + qn(s, QB.attrs.s) + '\nFROM ' + s.name + whereSql
+      : 'SELECT ' + qn(s, QB.attrs.s) + ', ' + qn(d, QB.attrs.d) + '\nFROM ' + s.name + ' FULL JOIN ' + d.name + ' ON ' + s.name + '.' + QB.pk.s + ' = ' + d.name + '.' + QB.pk.d + whereSql;
+  } else if (same) {
+    previewEl.textContent = currentLang === 'hi' ? 'त्रुटि: स्रोत और गंतव्य अलग तालिकाएँ होनी चाहिए।' : 'Error: Source and destination must be different tables.';
+  } else if (single) {
+    previewEl.textContent = !QB.attrs.s.length
+      ? (currentLang === 'hi' ? 'कृपया स्रोत के लिए विशेषताएँ चुनें।' : 'Select attributes for the source.')
+      : (currentLang === 'hi' ? 'क्वेरी चलाने के लिए स्रोत कुंजी (Primary Key) का चयन करें।' : 'Select the source primary key to enable Run Query.');
+  } else if (!QB.attrs.s.length || !QB.attrs.d.length) {
+    previewEl.textContent = currentLang === 'hi' ? 'कृपया स्रोत और गंतव्य दोनों के लिए विशेषताएँ चुनें।' : 'Select attributes for both source and destination.';
+  } else {
+    previewEl.textContent = currentLang === 'hi' ? 'क्वेरी चलाने के लिए दोनों कुंजियों (Primary Keys) का चयन करें।' : 'Select primary key for both source and destination to enable Run Query.';
+  }
+}
+
+function tableHTML(cols, rows, pks, sortable) {
+  const s = QB.sort;
+  return '<table><thead><tr>' + cols.map(c => {
+    const isPK = pks.includes(c);
+    const sortInd = sortable && s.col === c ? (s.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    return '<th class="' + (isPK ? 'pk' : '') + '"' + (sortable ? ' data-c="' + esc(c) + '" title="Click to sort" onclick="sortBy(this.dataset.c)"' : '') + '>' +
+      (isPK ? '🔑 ' : '') + esc(c) + sortInd + '</th>';
+  }).join('') +
+  '</tr></thead><tbody>' + rows.map(r => '<tr>' + cols.map(c => {
+    let val = r[c];
+    if (c === 'match_status') {
+      let cls = 'status-pill ';
+      if (val === 'Matched') cls += 'status-matched';
+      else if (val === 'Only in source') cls += 'status-source';
+      else cls += 'status-dest';
+      const label = currentLang === 'hi' ? (val === 'Matched' ? 'मिलान हुआ' : val === 'Only in source' ? 'केवल स्रोत में' : 'केवल गंतव्य में') : val;
+      return '<td><span class="' + cls + '">' + label + '</span></td>';
+    }
+    if (c === 'fuzzy_score' && val !== null && val !== undefined) {
+      return '<td><span style="font-weight:700;color:var(--primary)">' + val + '%</span></td>';
+    }
+    return '<td>' + (val === null || val === undefined ? '<span style="color:var(--text-dim)">—</span>' : esc(val)) + '</td>';
+  }).join('') + '</tr>').join('') + '</tbody></table>';
+}
+
+function pagerHTML(w, total) {
+  const g = QB.pg[w];
+  const pages = Math.max(1, Math.ceil(total / g.size));
+  if (g.n > pages) g.n = pages;
+  const a = total ? (g.n - 1) * g.size + 1 : 0;
+  const b = Math.min(total, g.n * g.size);
+  
+  const rangeText = a + '–' + b;
+  const showingText = currentLang === 'hi'
+    ? (t('lblShowing') + ' <strong>' + rangeText + '</strong> ' + t('lblOf') + ' <strong>' + total + '</strong> ' + t('lblTotalRows'))
+    : ('Showing <strong>' + rangeText + '</strong> of <strong>' + total + '</strong> total rows');
+
+  return '<div class="custom-pagination-bar">' +
+    '<div class="pg-left">' +
+      '<span>' + t('lblRowsPerPage') + '</span>' +
+      '<div class="pg-select-wrap">' +
+        '<select class="pg-select" onchange="setSize(\'' + w + '\',this.value)">' +
+          '<option value="50"' + (g.size === 50 ? ' selected' : '') + '>1 to 50</option>' +
+          '<option value="100"' + (g.size === 100 ? ' selected' : '') + '>1 to 100</option>' +
+          '<option value="200"' + (g.size === 200 ? ' selected' : '') + '>1 to 200</option>' +
+        '</select>' +
+      '</div>' +
+    '</div>' +
+    '<div class="pg-center">' +
+      showingText +
+    '</div>' +
+    '<div class="pg-right">' +
+      '<button class="pg-btn" ' + (g.n <= 1 ? 'disabled' : '') + ' onclick="gotoPage(\'' + w + '\',' + (g.n - 1) + ')">' + t('btnPrev') + '</button>' +
+      '<span class="pg-page-info">' + t('lblPage') + ' <strong>' + g.n + '</strong> ' + t('lblOf') + ' ' + pages + '</span>' +
+      '<button class="pg-btn" ' + (g.n >= pages ? 'disabled' : '') + ' onclick="gotoPage(\'' + w + '\',' + (g.n + 1) + ')">' + t('btnNext') + '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+const redraw = w => w === 'x' ? showExtract() : applyView();
+function setSize(w, v) { QB.pg[w].size = +v; QB.pg[w].n = 1; redraw(w); }
+function gotoPage(w, n) { QB.pg[w].n = n; redraw(w); }
+const pageSlice = (w, rows) => rows.slice((QB.pg[w].n - 1) * QB.pg[w].size, QB.pg[w].n * QB.pg[w].size);
+
+function runExtract() {
+  const single = QB.mode === 'single';
+  const { s, d } = QB.tb;
+  const sc = [QB.pk.s].concat(QB.attrs.s.filter(c => c !== QB.pk.s));
+  const dc = single ? [] : [QB.pk.d].concat(QB.attrs.d.filter(c => c !== QB.pk.d));
+  const sN = c => s.name + '.' + c, dN = c => d.name + '.' + c;
+  const cols = single ? sc.map(sN) : sc.map(sN).concat(dc.map(dN), ['match_status']);
+
+  const use = p => {
+    const tbl = QB.tb[p];
+    return tbl.rows.filter(r => QB.rules[p].every(f => matches(r[tbl.columns.indexOf(f.attr)], f)));
+  };
+  const toObj = (tbl, rs, cs, n) => rs.map(r => {
+    const o = {};
+    cs.forEach(c => o[n(c)] = r[tbl.columns.indexOf(c)]);
+    return o;
+  });
+
+  const sRows = use('s');
+  const S = toObj(s, sRows, sc, sN);
+  const sk = sN(QB.pk.s);
+
+  if (single) {
+    QB.extract = {
+      cols, rows: S, pks: [sk], src: s.name, dst: '', sCols: sc.map(sN), dCols: [],
+      note: esc(s.name) + ' · ' +
+        (currentLang === 'hi' ? 'लागू नियम: स्रोत ' : 'Rules applied: source ') + sRows.length + '/' + s.rows.length + ' · ' +
+        (currentLang === 'hi' ? 'स्रोत कुंजी: ' : 'Source key: ') + '<b>' + esc(QB.pk.s) + '</b> · ' +
+        S.length + ' ' + (currentLang === 'hi' ? 'रिकॉर्ड' : 'records')
+    };
+  } else {
+    const dRows = use('d');
+    const D = toObj(d, dRows, dc, dN);
+    const key = v => v === null || v === undefined || v === '' ? null : String(v).trim();
+    const dk = dN(QB.pk.d);
+
+    const dMap = new Map();
+    D.forEach((o, i) => {
+      const k = key(o[dk]);
+      if (k !== null) {
+        if (!dMap.has(k)) dMap.set(k, []);
+        dMap.get(k).push(i);
+      }
+    });
+
+    const nullS = {}, nullD = {};
+    sc.forEach(c => nullS[sN(c)] = null);
+    dc.forEach(c => nullD[dN(c)] = null);
+
+    const used = new Set(), rows = [];
+    S.forEach(o => {
+      const m = dMap.get(key(o[sk]));
+      if (m && m.length > 0) {
+        m.forEach(i => {
+          used.add(i);
+          rows.push({ ...o, ...D[i], match_status: 'Matched' });
+        });
+      } else {
+        rows.push({ ...o, ...nullD, match_status: 'Only in source' });
+      }
+    });
+    D.forEach((o, i) => {
+      if (!used.has(i)) rows.push({ ...nullS, ...o, match_status: 'Only in destination' });
+    });
+
+    const cnt = type => rows.filter(r => r.match_status === type).length;
+
+    QB.extract = {
+      cols, rows, pks: [sk, dk], src: s.name, dst: d.name, sCols: sc.map(sN), dCols: dc.map(dN),
+      note: esc(s.name) + ' → ' + esc(d.name) + ' · ' +
+        (currentLang === 'hi' ? 'लागू नियम: स्रोत ' : 'Rules applied: source ') + sRows.length + '/' + s.rows.length + ', ' +
+        (currentLang === 'hi' ? 'गंतव्य ' : 'destination ') + dRows.length + '/' + d.rows.length + ' · ' +
+        (currentLang === 'hi' ? 'स्रोत कुंजी: ' : 'Source key: ') + '<b>' + esc(QB.pk.s) + '</b> · ' +
+        (currentLang === 'hi' ? 'गंतव्य कुंजी: ' : 'Dest key: ') + '<b>' + esc(QB.pk.d) + '</b> · ' +
+        cnt('Matched') + ' ' + (currentLang==='hi'?'मिलान':'matched') + ', ' +
+        cnt('Only in source') + ' ' + (currentLang==='hi'?'केवल स्रोत':'source-only') + ', ' +
+        cnt('Only in destination') + ' ' + (currentLang==='hi'?'केवल गंतव्य':'dest-only')
+    };
+  }
+
+  QB.vf = [];
+  QB.fz = { a: '', b: '', txt: '', ratio: 80, cs: false, sp: true };
+  QB.gb = { cols: [], aggs: [] };
+  QB.sort = { col: '', dir: 'asc' };
+  QB.cols = cols.slice();
+  QB.pg.x.n = 1;
+  QB.pg.v.n = 1;
+
+  document.getElementById('ext-section').style.display = 'block';
+  showExtract();
+  renderP2b();
+}
+function showExtract() {
+  const x = QB.extract;
+  document.getElementById('ext-count').textContent = x.rows.length + ' ' + t('lblTotalRows');
+  document.getElementById('ext-note').innerHTML = x.note;
+  document.getElementById('ext-body').innerHTML = tableHTML(x.cols, pageSlice('x', x.rows), x.pks, false);
+  document.getElementById('ext-pager').innerHTML = pagerHTML('x', x.rows.length);
+}
+
+/* ---------------- REPORT ANALYSIS TAB ---------------- */
+function qbTab(n) {
+  [1, 2].forEach(i => {
+    document.getElementById('qb' + i).style.display = i === n ? 'block' : 'none';
+    document.getElementById('tab-' + i).classList.toggle('active', i === n);
+  });
+}
+function renderP2b() {
+  const x = QB.extract;
+  document.getElementById('qb2-empty').style.display = x ? 'none' : 'block';
+  document.getElementById('qb2-main').style.display = x ? 'block' : 'none';
+  if (!x) return;
+  const z = QB.fz;
+
+  const stringColsSrc = x.sCols.filter(colQualified => {
+    const rawCol = colQualified.replace(QB.tb.s.name + '.', '');
+    return isStringColumn(QB.tb.s, rawCol);
+  });
+  const stringColsDst = x.dCols.filter(colQualified => {
+    const rawCol = colQualified.replace(QB.tb.d.name + '.', '');
+    return isStringColumn(QB.tb.d, rawCol);
+  });
+
+  if (z.a && !stringColsSrc.includes(z.a)) z.a = '';
+  if (z.b && !stringColsDst.includes(z.b)) z.b = '';
+
+  const optString = (arr, cur) => '<option value="">' + t('selNone') + '</option>' + arr.map(c => 
+    '<option value="' + esc(c) + '" ' + (c === cur ? 'selected' : '') + '>' + esc(c) + '</option>'
+  ).join('');
+
+  document.getElementById('fz-a').innerHTML = optString(stringColsSrc, z.a);
+  document.getElementById('fz-b').innerHTML = optString(stringColsDst, z.b);
+  const fzT = document.getElementById('fz-t');
+  if (fzT.value !== (z.txt || '')) fzT.value = z.txt || '';
+  document.getElementById('fz-r').value = z.ratio + '%';
+  document.getElementById('fz-cs').checked = z.cs;
+  document.getElementById('fz-sp').checked = z.sp;
+  
+  const availCols = x.cols.slice();
+  if (!availCols.includes('fuzzy_score')) {
+    availCols.push('fuzzy_score');
+  }
+
+
+  const colPh = currentLang === 'hi' ? 'कॉलम: कोई नहीं' : 'Columns: none';
+  const colPre = currentLang === 'hi' ? 'कॉलम: ' : 'Columns: ';
+  document.getElementById('col-ms').innerHTML = msInit('cols', availCols.map(c => ({ 
+    v: c, 
+    l: c === 'fuzzy_score' ? (currentLang === 'hi' ? 'fuzzy_score (फ़ज़ी समानता)' : 'fuzzy_score (Fuzzy Matching)') : c 
+  })), QB.cols, sel => {
+    QB.cols = sel;
+    QB.pg.v.n = 1;
+    applyView();
+  }, { ph: colPh, pre: colPre, right: true });
+
+  renderVF();
+  renderGB();
+  applyView();
+}
+
+function stepFz(delta) {
+  let val = (parseInt(QB.fz.ratio, 10) || 80) + delta;
+  if (val > 100) val = 100;
+  if (val < 0) val = 0;
+  fzSet('ratio', val);
+}
+
+function distinct(col) {
+  const m = new Map();
+  QB.extract.rows.forEach(r => {
+    const k = keyOf(r[col]);
+    m.set(k, (m.get(k) || 0) + 1);
+  });
+  return [...m];
+}
+function addVF() { QB.vf.push({ col: QB.extract.cols[0], sel: [] }); renderVF(); applyView(); }
+function removeVF(i) { QB.vf.splice(i, 1); renderVF(); QB.pg.v.n = 1; applyView(); }
+function vfCol(i, col) { QB.vf[i] = { col, sel: [] }; renderVF(); QB.pg.v.n = 1; applyView(); }
+function renderVF() {
+  document.getElementById('vf-body').innerHTML = QB.vf.length ? QB.vf.map((f, i) => {
+    const d = distinct(f.col);
+    const attrLabel = currentLang === 'hi' ? 'विशेषता' : 'Attribute';
+    const valLabel = currentLang === 'hi' ? 'मान चुनें' : 'Select value(s)';
+    const allValPh = currentLang === 'hi' ? 'सभी मान' : 'All values';
+    return '<div class="where-row" style="grid-template-columns:1fr;gap:6px;margin-bottom:12px;padding-bottom:10px">' +
+      '<div class="field"><label>' + attrLabel + '</label><select onchange="vfCol(' + i + ',this.value)">' +
+      QB.extract.cols.map(c => '<option value="' + esc(c) + '" ' + (c === f.col ? 'selected' : '') + '>' + esc(c) + '</option>').join('') +
+      '</select></div>' +
+      '<div class="field"><label>' + valLabel + '</label>' +
+      msInit('vf-' + i, d.map(([k]) => ({ v: k, l: (k === '' ? '(blank)' : k) })), f.sel, sel => {
+        f.sel = sel;
+        QB.pg.v.n = 1;
+        applyView();
+      }, { ph: allValPh }) + '</div>' +
+      '<button class="btn danger sm" style="align-self:flex-start" onclick="removeVF(' + i + ')">' + t('btnRemove') + '</button></div>';
+  }).join('') : '<div class="empty">' + t('msgNoFilter') + '</div>';
+}
+/* ---------------- GROUP BY CLAUSE ---------------- */
+function gbCols(sel) {
+  QB.gb.cols = sel;
+  /* any aggregator pointing at a newly-grouped column is no longer valid */
+  QB.gb.aggs.forEach(a => { if (QB.gb.cols.includes(a.col)) a.col = ''; });
+  renderGB();
+  QB.pg.v.n = 1;
+  applyView();
+}
+function addAgg() {
+  const avail = QB.extract.cols.filter(c => !QB.gb.cols.includes(c));
+  if (!avail.length) return;
+  QB.gb.aggs.push({ fn: 'count', col: avail[0] });
+  renderGB();
+  applyView();
+}
+function removeAgg(i) {
+  QB.gb.aggs.splice(i, 1);
+  renderGB();
+  QB.pg.v.n = 1;
+  applyView();
+}
+function aggFn(i, fn) {
+  QB.gb.aggs[i].fn = fn;
+  QB.pg.v.n = 1;
+  applyView();
+}
+function aggCol(i, col) {
+  QB.gb.aggs[i].col = col;
+  QB.pg.v.n = 1;
+  applyView();
+}
+function renderGB() {
+  if (!QB.extract) return;
+  const gbPh = currentLang === 'hi' ? 'समूह द्वारा: कोई नहीं' : 'Group by: none';
+  const gbPre = currentLang === 'hi' ? 'समूह द्वारा: ' : 'Group by: ';
+  document.getElementById('gb-cols-ms').innerHTML = msInit('gb-cols', QB.extract.cols.map(c => ({ v: c, l: c })), QB.gb.cols, gbCols, { ph: gbPh, pre: gbPre });
+
+  const avail = QB.extract.cols.filter(c => !QB.gb.cols.includes(c));
+  const fnLabel = currentLang === 'hi' ? 'फ़ंक्शन' : 'Function';
+  const attrLabel = currentLang === 'hi' ? 'विशेषता' : 'Attribute';
+  const msgNoAgg = currentLang === 'hi'
+    ? 'कोई एग्रीगेटर नहीं जोड़ा गया — पहले ऊपर समूह द्वारा विशेषता(एँ) चुनें, फिर एक या अधिक एग्रीगेटर जोड़ें।'
+    : 'No aggregators added yet — pick group-by attribute(s) above, then add one or more aggregators.';
+
+  document.getElementById('gb-body').innerHTML = QB.gb.aggs.length ? QB.gb.aggs.map((a, i) => {
+    const colOk = a.col && avail.includes(a.col);
+    const colOpts = avail.map(c => '<option value="' + esc(c) + '" ' + (c === a.col ? 'selected' : '') + '>' + esc(c) + '</option>').join('');
+    return '<div class="where-row" style="grid-template-columns:1fr;gap:6px;margin-bottom:12px;padding-bottom:10px">' +
+      '<div class="field"><label>' + fnLabel + '</label><select onchange="aggFn(' + i + ',this.value)">' +
+      AGG_FUNCS.map(f => '<option value="' + f.v + '" ' + (f.v === a.fn ? 'selected' : '') + '>' + esc(currentLang === 'hi' ? f.labelHi : f.labelEn) + '</option>').join('') +
+      '</select></div>' +
+      '<div class="field"><label>' + attrLabel + '</label><select onchange="aggCol(' + i + ',this.value)">' +
+      (colOk ? '' : '<option value="">' + t('selNone') + '</option>') + colOpts +
+      '</select></div>' +
+      '<button class="btn danger sm" style="align-self:flex-start" onclick="removeAgg(' + i + ')">' + t('btnRemove') + '</button></div>';
+  }).join('') : '<div class="empty">' + msgNoAgg + '</div>';
+
+  document.getElementById('gb-add-btn').style.display = avail.length ? '' : 'none';
+}
+function aggLabel(fn, col) { return fn.toUpperCase() + '(' + col + ')'; }
+function round2(n) { return Math.round(n * 100) / 100; }
+function computeGrouped(rows) {
+  const gbc = QB.gb.cols.filter(c => QB.extract.cols.includes(c));
+  const aggs = QB.gb.aggs.filter(a => a.col && !gbc.includes(a.col));
+  if (!gbc.length || !aggs.length) return null;
+
+  const groups = new Map();
+  rows.forEach(r => {
+    const key = gbc.map(c => keyOf(r[c])).join('\u241F');
+    if (!groups.has(key)) {
+      const keyRow = {};
+      gbc.forEach(c => keyRow[c] = r[c]);
+      groups.set(key, { keyRow, rows: [] });
+    }
+    groups.get(key).rows.push(r);
+  });
+
+  const outCols = gbc.concat(aggs.map(a => aggLabel(a.fn, a.col)));
+  const outRows = [...groups.values()].map(g => {
+    const o = Object.assign({}, g.keyRow);
+    aggs.forEach(a => {
+      const label = aggLabel(a.fn, a.col);
+      const vals = g.rows.map(r => r[a.col]).filter(v => v !== null && v !== undefined && String(v).trim() !== '');
+      const nums = vals.map(v => parseFloat(v)).filter(n => !isNaN(n));
+      if (a.fn === 'count') o[label] = vals.length;
+      else if (a.fn === 'sum') o[label] = nums.length ? round2(nums.reduce((s, n) => s + n, 0)) : 0;
+      else if (a.fn === 'avg') o[label] = nums.length ? round2(nums.reduce((s, n) => s + n, 0) / nums.length) : null;
+      else if (a.fn === 'min') o[label] = nums.length ? round2(Math.min(...nums)) : null;
+      else if (a.fn === 'max') o[label] = nums.length ? round2(Math.max(...nums)) : null;
+    });
+    return o;
+  });
+  return { cols: outCols, rows: outRows };
+}
+function fzSet(k, v) {
+  if (k === 'ratio') {
+    v = Math.min(100, Math.max(0, parseInt(v, 10) || 0));
+    document.getElementById('fz-r').value = v + '%';
+  }
+  QB.fz[k] = v;
+  const fzReady = QB.mode === 'single' ? (QB.fz.a && QB.fz.txt) : (QB.fz.a && QB.fz.b);
+  if ((k === 'a' || k === 'b' || k === 'txt') && fzReady && !QB.cols.includes('fuzzy_score')) {
+    QB.cols.push('fuzzy_score');
+  }
+  QB.pg.v.n = 1;
+  renderP2b();
+}
+function lev(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let p = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const c = [i];
+    for (let j = 1; j <= n; j++) c[j] = Math.min(p[j] + 1, c[j - 1] + 1, p[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    p = c;
+  }
+  return p[n];
+}
+function simScore(a, b, z) {
+  if (a === null || a === undefined || b === null || b === undefined || a === '' || b === '') return 0;
+  let x = String(a), y = String(b);
+  if (!z.sp) { x = x.replace(/\s+/g, ''); y = y.replace(/\s+/g, ''); }
+  if (!z.cs) { x = x.toLowerCase(); y = y.toLowerCase(); }
+  const L = Math.max(x.length, y.length);
+  return L ? Math.round((1 - lev(x, y) / L) * 1000) / 10 : 100;
+}
+function sortBy(col) {
+  if (QB.sort.col === col) QB.sort.dir = QB.sort.dir === 'asc' ? 'desc' : 'asc';
+  else { QB.sort.col = col; QB.sort.dir = 'asc'; }
+  applyView();
+}
+function matches(v, f) {
+  const e = v === null || v === undefined || String(v).trim() === '';
+  if (f.op === 'empty') return e;
+  if (f.op === 'notempty') return !e;
+  const targetVal = f.value !== undefined && f.value !== null ? String(f.value).trim() : '';
+  if (targetVal === '') return true;
+  if (e) return false;
+
+  const strV = String(v).trim();
+  if (f.op === 'contains') {
+    return strV.toLowerCase().includes(targetVal.toLowerCase());
+  }
+
+  const numA = parseFloat(strV), numB = parseFloat(targetVal);
+  const bothNum = !isNaN(numA) && !isNaN(numB) && !isNaN(Number(strV)) && !isNaN(Number(targetVal));
+
+  switch (f.op) {
+    case '=': return bothNum ? numA === numB : strV.toLowerCase() === targetVal.toLowerCase();
+    case '!=': return bothNum ? numA !== numB : strV.toLowerCase() !== targetVal.toLowerCase();
+    case '>': return bothNum ? numA > numB : strV.localeCompare(targetVal) > 0;
+    case '<': return bothNum ? numA < numB : strV.localeCompare(targetVal) < 0;
+    case '>=': return bothNum ? numA >= numB : strV.localeCompare(targetVal) >= 0;
+    case '<=': return bothNum ? numA <= numB : strV.localeCompare(targetVal) <= 0;
+  }
+  return true;
+}
+function compareVals(a, b, dir) {
+  const m = dir === 'asc' ? 1 : -1;
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  const x = parseFloat(a), y = parseFloat(b);
+  if (!isNaN(x) && !isNaN(y) && String(x) === String(a).trim() && String(y) === String(b).trim()) return (x - y) * m;
+  return String(a).localeCompare(String(b)) * m;
+}
+
+function viewSet() {
+  const x = QB.extract, z = QB.fz, single = QB.mode === 'single', fz = single ? (z.a && z.txt) : (z.a && z.b);
+  let rows = x.rows;
+  QB.vf.forEach(f => {
+    if (f.sel.length) {
+      const S = new Set(f.sel);
+      rows = rows.filter(r => S.has(keyOf(r[f.col])));
+    }
+  });
+  if (fz) {
+    rows = rows.map(r => ({ ...r, fuzzy_score: simScore(r[z.a], single ? z.txt : r[z.b], z) })).filter(r => r.fuzzy_score >= z.ratio);
+  }
+  
+  let cols;
+  const grouped = computeGrouped(rows);
+  if (grouped) {
+    cols = grouped.cols;
+    rows = grouped.rows;
+  } else {
+    const allSelectable = x.cols.concat(['fuzzy_score']);
+    cols = QB.cols.filter(c => allSelectable.includes(c));
+    if (!cols.length) cols = x.cols.slice();
+  }
+
+  if (QB.sort.col && cols.includes(QB.sort.col)) {
+    rows = rows.slice().sort((a, b) => compareVals(a[QB.sort.col], b[QB.sort.col], QB.sort.dir));
+  }
+  return { cols, rows };
+}
+
+function applyView() {
+  const x = QB.extract, v = viewSet(), z = QB.fz;
+  lastResult = { columns: v.cols, rows: v.rows };
+  document.getElementById('view-count').textContent = v.rows.length + ' ' + t('lblTotalRows');
+  const fActive = QB.vf.filter(f => f.sel.length).length;
+  const fuzzyReady = QB.mode === 'single' ? (z.a && z.txt) : (z.a && z.b);
+  const fuzzyStatus = fuzzyReady ? z.a + ' ≈ ' + (QB.mode === 'single' ? '"' + z.txt + '"' : z.b) + ' ≥ ' + z.ratio + '% (' + (z.cs ? 'case-sensitive' : 'ignore-case') + ')' : (currentLang==='hi'?'बंद':'off');
+  const gbActiveAggs = QB.gb.aggs.filter(a => a.col && !QB.gb.cols.includes(a.col));
+  const gbOn = QB.gb.cols.length && gbActiveAggs.length;
+  const gbStatus = gbOn
+    ? QB.gb.cols.join(', ') + ' → ' + gbActiveAggs.map(a => aggLabel(a.fn, a.col)).join(', ')
+    : (currentLang === 'hi' ? 'बंद' : 'off');
+  document.getElementById('view-preview').textContent = (currentLang === 'hi' ? 'सक्रिय फ़िल्टर: ' : 'Active filters: ') + fActive + ' · ' + (currentLang==='hi'?'फ़ज़ी मैच: ':'Fuzzy: ') + fuzzyStatus + ' · ' + (currentLang === 'hi' ? 'समूह द्वारा: ' : 'Group by: ') + gbStatus;
+  const colMsEl = document.getElementById('col-ms');
+  if (colMsEl) colMsEl.style.opacity = gbOn ? '0.4' : '1';
+  document.getElementById('view-body').innerHTML = v.rows.length ? tableHTML(v.cols, pageSlice('v', v.rows), x.pks, !!v.cols.length) : '<div class="empty">' + t('msgNoMatchRows') + '</div>';
+  document.getElementById('view-pager').innerHTML = pagerHTML('v', v.rows.length);
+}
+
+/* ---------------- EXPORTS: Excel, CSV, JSON, XML ---------------- */
+function saveBlob(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+function download(kind, w) {
+  const x = QB.extract; if (!x) return;
+  const set = w === 'x' ? { cols: x.cols, rows: x.rows } : viewSet();
+  const cols = set.cols, rows = set.rows;
+  const base = x.src + (x.dst ? '_to_' + x.dst : '') + (w === 'v' ? '_report' : '');
+  if (kind === 'csv') {
+    const q = v => { v = v === null || v === undefined ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    saveBlob(new Blob(['\ufeff' + [cols.map(q).join(',')].concat(rows.map(r => cols.map(c => q(r[c])).join(','))).join('\r\n')], { type: 'text/csv;charset=utf-8' }), base + '.csv');
+  } else if (kind === 'json') {
+    saveBlob(new Blob([JSON.stringify(rows.map(r => { const o = {}; cols.forEach(c => o[c] = r[c] === undefined ? null : r[c]); return o; }), null, 2)], { type: 'application/json' }), base + '.json');
+  } else if (kind === 'xml') {
+    const ex = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    saveBlob(new Blob(['<?xml version="1.0" encoding="UTF-8"?>\n<records count="' + rows.length + '">\n' + rows.map(r => '  <record>\n' + cols.map(c => '    <' + ex(c.replace(/[^a-zA-Z0-9_]/g, '_')) + '>' + (r[c] === null || r[c] === undefined ? '' : ex(r[c])) + '</' + ex(c.replace(/[^a-zA-Z0-9_]/g, '_')) + '>').join('\n') + '\n  </record>').join('\n') + '\n</records>'], { type: 'application/xml' }), base + '.xml');
+  } else {
+    /* Excel fallback via clean CSV/HTML table stream */
+    const q = v => { v = v === null || v === undefined ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    saveBlob(new Blob(['\ufeff' + [cols.map(q).join(',')].concat(rows.map(r => cols.map(c => q(r[c])).join(','))).join('\r\n')], { type: 'application/vnd.ms-excel;charset=utf-8' }), base + '.xls');
+  }
+}
+
+/* ---------------- PAGE 3: DASHBOARD ---------------- */
+function renderDashboard() {
+  const el = document.getElementById('dash-body');
+  if (!lastResult || !lastResult.rows.length) {
+    el.innerHTML = '<div class="empty">' + t('msgDashEmpty') + '</div>';
+    return;
+  }
+  const { columns, rows } = lastResult;
+  const numericCols = columns.filter(c => rows.every(r => r[c] !== null && !isNaN(parseFloat(r[c]))));
+  const groupCol = columns[0];
+  el.innerHTML = '<div class="stat-grid">' +
+    '<div class="stat"><div class="num">' + rows.length + '</div><div class="lbl">' + t('statResultRows') + '</div></div>' +
+    '<div class="stat"><div class="num">' + columns.length + '</div><div class="lbl">' + t('statColsSelected') + '</div></div>' +
+    '<div class="stat"><div class="num">' + numericCols.length + '</div><div class="lbl">' + t('statNumericCols') + '</div></div>' +
+    '</div>' +
+    '<div class="section"><h4>' + t('secGroupCount') + '</h4><p class="desc">' + (currentLang==='hi'?'कॉलम अनुसार पंक्तियों की संख्या: ':'Distribution of rows by ') + '<b>' + groupCol + '</b></p><div id="chart"></div></div>';
+  renderChart(rows, groupCol);
+}
+function renderChart(rows, groupCol) {
+  const counts = {};
+  rows.forEach(r => { const k = String(r[groupCol] ?? '—'); counts[k] = (counts[k] || 0) + 1; });
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  const max = Math.max(...entries.map(e => e[1]), 1);
+  const barW = 560, rowH = 26;
+  let svg = '<svg width="100%" height="' + (entries.length * rowH + 10) + '" viewBox="0 0 700 ' + (entries.length * rowH + 10) + '" xmlns="http://www.w3.org/2000/svg" font-family="monospace">';
+  entries.forEach(([label, count], i) => {
+    const y = i * rowH + 4;
+    const w = (count / max) * barW;
+    svg += '<text x="0" y="' + (y + 14) + '" font-size="11" fill="var(--text-muted)">' + label.slice(0, 22) + '</text>';
+    svg += '<rect x="170" y="' + y + '" width="' + w + '" height="16" fill="var(--primary)" rx="2"></rect>';
+    svg += '<text x="' + (170 + w + 8) + '" y="' + (y + 13) + '" font-size="11" fill="var(--text-main)">' + count + '</text>';
+  });
+  svg += '</svg>';
+  document.getElementById('chart').innerHTML = svg;
+}
+
+/* Initialize pickers */
+cascade('s', 'init');
+cascade('d', 'init');
+(function() {
+  const l = document.getElementById('d-layer');
+  if (l && l.options.length > 1) { l.selectedIndex = 1; cascade('d', 'layer'); }
+})();
+</script>
+</body>
+</html>
