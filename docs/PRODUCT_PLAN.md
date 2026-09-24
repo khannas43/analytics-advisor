@@ -282,11 +282,11 @@ data if left unanswered.**
 
 | # | Question | Why it matters |
 |---|---|---|
-| A1 | How deep is the hierarchy, and is it fixed (State / District / Taluka / Village) or configurable per deployment? | Fixed is much simpler; configurable means the scope predicate is built dynamically. |
-| A2 | Can one user hold several scopes at the same level — three districts, say? | Decides whether the predicate is `= ?` or `IN (?, ?, …)`, and how the UI reads. |
-| A3 | Does a higher officer automatically see everything beneath them? | Presumably yes, but it decides whether scope is stored as a node or as an expanded set of leaves. |
+| A1 | **DECIDED: configurable per deployment.** Levels are data, not code. | The scope predicate is built dynamically from whatever levels a deployment defines, and scope bindings reference level ids rather than hardcoded column names. |
+| A2 | **DECIDED: an officer can hold multiple assignments** — district, taluka, department and so on. | Larger than first asked. "Department" is not a geographic level, which implies **two or more orthogonal dimensions** rather than one tree. See open question A16 — this is the last modelling question. |
+| A3 | **DECIDED: yes — a scope is a subtree.** District → Taluka → Village/City: a district officer sees the district and everything under it; a village officer sees only that village. | Scope is stored as a node and expanded to descendants at query time, so the assignment survives reorganisation of levels beneath it. Use a materialised path so "descendants of X" is a prefix match rather than a recursive walk. |
 | A4 | **DECIDED: deny by default.** A registered table with no scope binding is invisible to a scoped user unless an admin explicitly flags it as shared reference data. | Closes the silent-leak path: a table can only escape scoping by a deliberate admin act, never by omission. The flag must be per table and visible in the admin UI, so "why can everyone see this?" always has an answer. |
-| A5 | Joining a scoped table to an unscoped one — allowed, and if so does the scope of one side constrain the result? | Otherwise a user joins their district table to an unscoped one and reads everything. |
+| A5 | **DECIDED (my judgement): allowed, with every scoped side still filtered.** A4 already denies unbound tables outright, so the dangerous case cannot be built. Joining a scoped table to a **shared reference** table is permitted and the scoped side keeps its predicate; joining two scoped tables applies both. | The filter is never relaxed by the presence of another table — a join can narrow the result, never widen it. |
 
 ### B. Audit
 
@@ -297,6 +297,18 @@ data if left unanswered.**
 | A8 | Retention, archival and volume expectations. | Every query by every officer, indefinitely, is a large table. |
 | A9 | Is tamper-evidence required (append-only, checksummed), or is a normal table acceptable? | Government audit rules often require the former; it is much harder. |
 | A10 | **DECIDED: yes, the audit log is scoped.** A district officer with log access sees entries for users within their own subtree, not other districts'. | Without this the log leaks exactly what the scoping prevents. Open sub-question: an entry written by a *state-level* user who queried one district's data — does it appear to that district's log viewer? Simplest rule is to scope by the acting user's node, not by the data they touched. |
+
+### D. Follow-on from A2
+
+| # | Question | Why it matters |
+|---|---|---|
+| A16 | **Is "department" a second, orthogonal dimension rather than a level in the geographic tree?** A user might be "Health Department, Jaipur District". | If orthogonal, a deployment defines N dimensions (geography, department, …), each its own tree, and the predicate is AND across dimensions, OR within one. If it is a level in the same tree, every department would have to sit under a district, which does not reflect how departments work. I have assumed **orthogonal dimensions** and designed for it; confirm before 7.1.1 is built. |
+
+### E. Consequence worth designing around
+
+| # | Note |
+|---|---|
+| A17 | **Bind each table at the highest level it actually carries.** A district officer querying a table that has a `district_code` column gets `district_code = ?` — one value, cheap. The same officer querying a table that only has `village_code` needs every village in that district, which is an `IN` list running into thousands and a slow query. Where a table carries several levels, the binding should prefer the coarsest column that covers the user's scope. Worth a cap and a clear refusal when expansion would be unreasonable. |
 
 ### C. Identity and accounts
 
