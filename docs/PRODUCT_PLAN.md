@@ -211,7 +211,9 @@ fails visibly; this one fails silently and looks like working software.
 | 7.3.3 | Append-only / tamper-evident storage if audit rules require it | N | ? |
 | 7.3.4 | Log viewer with filters, granted to officers as an RBAC permission | N | 5 |
 | 7.3.5 | Export the log, and audit that export too | N | 2 |
-| 7.3.6 | Decide what is stored of the query itself — see open question A6 | N | 1 |
+| 7.3.6 | Store the full SQL and its bound parameter values (A6) | N | 1 |
+| 7.3.7 | **Protect the log to the same standard as the data it describes** (A6): encryption at rest, restricted access, retention limit, and the log excluded from ordinary query surfaces | N | 5 |
+| 7.3.8 | Scope the log viewer to the requesting officer's subtree (A10) | N | 3 |
 
 ---
 
@@ -289,11 +291,11 @@ data if left unanswered.**
 
 | # | Question | Why it matters |
 |---|---|---|
-| A6 | Do we store the SQL and its parameter values? | Parameters can contain personal data — an Aadhaar number typed as a filter would land in the audit log, which then needs the same protection as the data itself. Storing the shape without the values is safer. |
+| A6 | **DECIDED: store the SQL and its parameter values.** | Gives full reproducibility of what an officer actually ran. Consequence, accepted deliberately: the audit log now holds personal data — an Aadhaar number or name typed as a filter is stored verbatim — so it must be protected to the same standard as the lakehouse data itself. See 7.3.7. |
 | A7 | What counts as "accessed"? Every query, every export, every table listing, every login attempt? | Decides log volume by an order of magnitude. |
 | A8 | Retention, archival and volume expectations. | Every query by every officer, indefinitely, is a large table. |
 | A9 | Is tamper-evidence required (append-only, checksummed), or is a normal table acceptable? | Government audit rules often require the former; it is much harder. |
-| A10 | Is the audit log itself scoped? Can a district officer with log access see other districts' entries? | Otherwise the log leaks what the scoping prevents. |
+| A10 | **DECIDED: yes, the audit log is scoped.** A district officer with log access sees entries for users within their own subtree, not other districts'. | Without this the log leaks exactly what the scoping prevents. Open sub-question: an entry written by a *state-level* user who queried one district's data — does it appear to that district's log viewer? Simplest rule is to scope by the acting user's node, not by the data they touched. |
 
 ### C. Identity and accounts
 
