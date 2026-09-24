@@ -17,7 +17,6 @@ import {
   runMultiTargetMatchStream,
   runRecordMatchStream,
   suggestJoinKeys,
-  type AgeUnit,
   type JoinKeySuggestion,
   type ColumnMetadata,
   type GroupMode,
@@ -666,11 +665,6 @@ export default function AnalysisPage() {
     (multiMatchMode ? sourceRows[0] : targetRows[0])?.columns ?? [],
   );
 
-  const [ageFilterEnabled, setAgeFilterEnabled] = useState(false);
-  const [minAge, setMinAge] = useState(0);
-  const [maxAge, setMaxAge] = useState(100);
-  const [ageUnit, setAgeUnit] = useState<AgeUnit>("YEARS");
-
   const [matchStatus, setMatchStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [matchError, setMatchError] = useState<string | null>(null);
   const [matchColumns, setMatchColumns] = useState<string[]>([]);
@@ -914,7 +908,6 @@ export default function AnalysisPage() {
         withDedup && dedupColumn && dedupRef && isCascadeComplete(dedupRef)
           ? { ...dedupRef, column: dedupColumn }
           : null,
-      ageFilter: ageFilterEnabled ? { minAge, maxAge, unit: ageUnit } : null,
     };
     if (filledSourceDisplay.length > 0) {
       req.sourceDisplayColumns = filledSourceDisplay.map((r) => ({ ...r.ref, column: r.column }));
@@ -953,7 +946,6 @@ export default function AnalysisPage() {
         withDedup && dedupColumn && hubRef && isCascadeComplete(hubRef)
           ? { ...hubRef, column: dedupColumn }
           : null,
-      ageFilter: ageFilterEnabled ? { minAge, maxAge, unit: ageUnit } : null,
       registeredFuzzyFor,
       isFuzzyMatchable,
       maxTargetSets,
@@ -1641,11 +1633,6 @@ export default function AnalysisPage() {
                     &quot;which hub rows miss in {block.label.trim() || "this target"}?&quot;).
                   </p>
                 )}
-                {block.joinType === "FULL" && ageFilterEnabled && (
-                  <p className="srse-text-danger" style={{ fontSize: "0.75rem", margin: "0.35rem 0 0" }}>
-                    Age filter cannot run with FULL on this target — pick another join type or turn the age filter off.
-                  </p>
-                )}
               </div>
               <CriterionBox
                 title={`Target ${blockIndex + 1} — match on (paired with hub rows)`}
@@ -1876,72 +1863,6 @@ export default function AnalysisPage() {
           />
         </section>
       )}
-
-      <section className="srse-card" style={{ width: "100%", marginTop: "1rem" }}>
-        <h2 className="srse-card-title">Optional filters</h2>
-        <div style={{ display: "flex", gap: "1.5rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
-          <div style={{ flex: "2 1 420px" }}>
-            <label className="srse-checkbox-label" htmlFor="age-filter-enabled" style={{ display: "inline-flex" }}>
-              <input
-                id="age-filter-enabled"
-                type="checkbox"
-                checked={ageFilterEnabled}
-                onChange={(e) => setAgeFilterEnabled(e.target.checked)}
-              />
-              {" "}
-              Age range filter
-            </label>
-            {ageFilterEnabled && (
-              <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginTop: "0.6rem", alignItems: "flex-end" }}>
-                <div style={{ flex: "0 1 140px" }}>
-                  <label htmlFor="min-age" className="srse-text-muted" style={fieldLabelStyle}>
-                    Minimum Age
-                  </label>
-                  <input
-                    id="min-age"
-                    type="number"
-                    className="srse-input"
-                    style={{ width: "100%" }}
-                    min={0}
-                    value={minAge}
-                    onChange={(e) => setMinAge(Number(e.target.value))}
-                  />
-                </div>
-                <div style={{ flex: "0 1 140px" }}>
-                  <label htmlFor="max-age" className="srse-text-muted" style={fieldLabelStyle}>
-                    Maximum Age
-                  </label>
-                  <input
-                    id="max-age"
-                    type="number"
-                    className="srse-input"
-                    style={{ width: "100%" }}
-                    min={0}
-                    value={maxAge}
-                    onChange={(e) => setMaxAge(Number(e.target.value))}
-                  />
-                </div>
-                <div style={{ flex: "0 1 140px" }}>
-                  <label htmlFor="age-unit" className="srse-text-muted" style={fieldLabelStyle}>
-                    Unit
-                  </label>
-                  <select
-                    id="age-unit"
-                    className="srse-select"
-                    style={{ width: "100%" }}
-                    value={ageUnit}
-                    onChange={(e) => setAgeUnit(e.target.value as AgeUnit)}
-                  >
-                    <option value="DAYS">Days</option>
-                    <option value="MONTHS">Month</option>
-                    <option value="YEARS">Year</option>
-                  </select>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </section>
 
       {!multiMatchMode && (
         <section className="srse-card" style={{ marginTop: "1rem" }}>

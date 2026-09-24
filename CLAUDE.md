@@ -403,11 +403,13 @@ mismatch.
 
 ## Known broken and unfinished
 
-- **The age filter is a live UI control that always fails.** The Analysis page
-  still offers an age-range checkbox. It resolved `age_years` through SRSE's
-  field catalogue, which is gone; `StubFieldResolver` now throws for every key,
-  so ticking it returns `400 Unknown or unmapped field key: age_years`. Either
-  drop the control or back it with a real field concept (`PRODUCT_PLAN.md` 1.3).
+- **`RuleCompiler` still resolves abstract field keys through `FieldResolver`.**
+  This product has no field keys — officers pick `catalog.schema.table.column`
+  through the registry cascade. `RuleCompiler` cannot run as it stands;
+  `StubFieldResolver` throws for every key. Activity 4.5 (per-column rules on
+  source and destination) must replace that seam with registry-validated
+  qualified columns via `LakehouseRegistryService.validateColumn`, the same
+  gate the match engine uses.
 - **Admin config backup is removed, not trimmed.** It bundled field mappings and
   schemes alongside registrations and column metadata, and a half-edited import
   path silently lost admin config on restore. Reinstate carrying only

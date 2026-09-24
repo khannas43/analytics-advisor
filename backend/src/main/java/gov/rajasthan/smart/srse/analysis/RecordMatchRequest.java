@@ -1,5 +1,7 @@
 package gov.rajasthan.smart.srse.analysis;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.List;
 
 /**
@@ -14,8 +16,8 @@ import java.util.List;
  *
  * <p>{@code sourceDisplayColumns} / {@code targetDisplayColumns} are optional
  * projections from the same side's table only — included in SELECT, not in ON,
- * match score, dedup partition, or age filter. Null or empty lists preserve
- * legacy behaviour (every compared column is also projected).
+ * match score, or dedup partition. Null or empty lists preserve legacy
+ * behaviour (every compared column is also projected).
  *
  * <p>{@code joinGroups}, when present, REPLACES the positional pairing: each
  * group compares 1..N source columns against 1..M target columns, so the two
@@ -26,8 +28,9 @@ import java.util.List;
  * <p>{@code comparisonGroups} are post-join value comparisons — projected in
  * SELECT only, never in ON (see {@link ComparisonGroup}).
  *
- * <p>{@code dedup} and {@code ageFilter} are optional.
+ * <p>{@code dedup} is optional. Unknown JSON properties on the wire are ignored.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record RecordMatchRequest(
         List<MatchCriterion> sourceCriteria,
         List<MatchCriterion> targetCriteria,
@@ -36,7 +39,6 @@ public record RecordMatchRequest(
         List<MatchGroup> joinGroups,
         boolean highlightDuplicates,
         DedupSpec dedup,
-        AgeFilterSpec ageFilter,
         JoinType joinType,
         List<ComparisonGroup> comparisonGroups,
         boolean mismatchOnly) {
@@ -44,7 +46,7 @@ public record RecordMatchRequest(
     public RecordMatchRequest {
         sourceDisplayColumns = sourceDisplayColumns == null ? List.of() : sourceDisplayColumns;
         targetDisplayColumns = targetDisplayColumns == null ? List.of() : targetDisplayColumns;
-        joinGroups = joinGroups == null ? List.of() : List.copyOf(joinGroups);
+        joinGroups = joinGroups == null ? List.of() : joinGroups;
         comparisonGroups = comparisonGroups == null ? List.of() : List.copyOf(comparisonGroups);
     }
 
@@ -57,10 +59,9 @@ public record RecordMatchRequest(
                               List<DisplayColumn> sourceDisplayColumns,
                               List<DisplayColumn> targetDisplayColumns,
                               boolean highlightDuplicates,
-                              DedupSpec dedup,
-                              AgeFilterSpec ageFilter) {
+                              DedupSpec dedup) {
         this(sourceCriteria, targetCriteria, sourceDisplayColumns, targetDisplayColumns,
-                List.of(), highlightDuplicates, dedup, ageFilter, null, List.of(), false);
+                List.of(), highlightDuplicates, dedup, null, List.of(), false);
     }
 
     /** Pre–per-target join types: multi-target sub-matches omitted {@code joinType} (INNER). */
@@ -70,10 +71,9 @@ public record RecordMatchRequest(
                               List<DisplayColumn> targetDisplayColumns,
                               List<MatchGroup> joinGroups,
                               boolean highlightDuplicates,
-                              DedupSpec dedup,
-                              AgeFilterSpec ageFilter) {
+                              DedupSpec dedup) {
         this(sourceCriteria, targetCriteria, sourceDisplayColumns, targetDisplayColumns,
-                joinGroups, highlightDuplicates, dedup, ageFilter, null, List.of(), false);
+                joinGroups, highlightDuplicates, dedup, null, List.of(), false);
     }
 
     public RecordMatchRequest(List<MatchCriterion> sourceCriteria,
@@ -83,9 +83,8 @@ public record RecordMatchRequest(
                               List<MatchGroup> joinGroups,
                               boolean highlightDuplicates,
                               DedupSpec dedup,
-                              AgeFilterSpec ageFilter,
                               JoinType joinType) {
         this(sourceCriteria, targetCriteria, sourceDisplayColumns, targetDisplayColumns,
-                joinGroups, highlightDuplicates, dedup, ageFilter, joinType, List.of(), false);
+                joinGroups, highlightDuplicates, dedup, joinType, List.of(), false);
     }
 }

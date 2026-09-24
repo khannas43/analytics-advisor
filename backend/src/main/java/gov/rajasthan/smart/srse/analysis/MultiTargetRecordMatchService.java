@@ -234,9 +234,6 @@ public class MultiTargetRecordMatchService {
             throw new IllegalArgumentException(
                     "dedup must reference the hub table in multi-target mode, not a target table");
         }
-        if (req.ageFilter() != null) {
-            RecordMatchService.validateAgeFilter(req.ageFilter());
-        }
         for (int i = 0; i < req.targets().size(); i++) {
             TargetMatchSpec target = req.targets().get(i);
             JoinType joinType = JoinType.effective(target.joinType());
@@ -245,11 +242,6 @@ public class MultiTargetRecordMatchService {
                         "Dedup cannot be used with target \"" + target.label() + "\" on a " + joinType
                                 + " join: unmatched rows have NULL hub-side partition keys and would "
                                 + "collapse into one row. Use INNER or LEFT for that target, or turn dedup off.");
-            }
-            if (req.ageFilter() != null && joinType == JoinType.FULL) {
-                throw new IllegalArgumentException(
-                        "Age filter cannot be used with a FULL join on target \"" + target.label()
-                                + "\". Use INNER, LEFT, or RIGHT for that target, or turn the age filter off.");
             }
         }
         return hubTable;
@@ -311,7 +303,6 @@ public class MultiTargetRecordMatchService {
                 target.joinGroups(),
                 req.highlightDuplicates(),
                 req.dedup(),
-                req.ageFilter(),
                 target.joinType(),
                 target.comparisonGroups(),
                 req.mismatchOnly());

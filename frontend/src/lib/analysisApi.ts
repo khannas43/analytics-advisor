@@ -65,17 +65,6 @@ export type MatchCriterion = TableRef & {
 
 export type DedupSpec = TableRef & { column: string };
 
-export type AgeUnit = "DAYS" | "MONTHS" | "YEARS";
-
-// No table/column here — this filter is resolved server-side against the
-// field catalogue's registered "age_years" field (the same admin-mapped
-// column the Rule Engine uses), applied to both Source and Target rows.
-export type AgeFilterSpec = {
-  minAge: number;
-  maxAge: number;
-  unit: AgeUnit;
-};
-
 export type GroupMode = "COMBINE" | "ANY_OF";
 
 /**
@@ -136,7 +125,6 @@ export type RecordMatchRequest = {
   mismatchOnly?: boolean;
   highlightDuplicates: boolean;
   dedup: DedupSpec | null;
-  ageFilter: AgeFilterSpec | null;
 };
 
 export type HubSide = "SOURCE" | "TARGET";
@@ -167,7 +155,6 @@ export type MultiTargetRecordMatchRequest = {
   targets: TargetMatchSpec[];
   highlightDuplicates: boolean;
   dedup: DedupSpec | null;
-  ageFilter: AgeFilterSpec | null;
   mismatchOnly?: boolean;
 };
 

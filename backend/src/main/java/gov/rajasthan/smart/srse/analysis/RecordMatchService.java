@@ -1,10 +1,8 @@
 package gov.rajasthan.smart.srse.analysis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import gov.rajasthan.smart.srse.compiler.AliasRebase;
 import gov.rajasthan.smart.srse.compiler.ColumnGroupSql;
 import gov.rajasthan.smart.srse.compiler.CompareAs;
-import gov.rajasthan.smart.srse.compiler.FieldResolver;
 import gov.rajasthan.smart.srse.compiler.FuzzyMatchSql;
 import gov.rajasthan.smart.srse.compiler.SqlTypeFamily;
 import gov.rajasthan.smart.srse.compiler.TypeCoercion;
@@ -52,10 +50,7 @@ import java.util.stream.Stream;
  *    LIVE lakehouse and not be hidden. Neither gate alone suffices: the
  *    registry is a snapshot of intent and can name a since-dropped table,
  *    while live introspection alone would let an officer reach any table on
- *    the cluster. Only VALUES (thresholds, age bounds) are bound parameters. The one deliberate
- *    exception within an exception: the age filter DOES resolve through the
- *    catalogue's {@link FieldResolver} (the {@code age_years} field, same as
- *    the Rule Engine) — there's no ad hoc "age column" for arbitrary tables.
+ *    the cluster. Only VALUES (thresholds, fuzzy percentages) are bound parameters.
  *  - Fuzzy-vs-exact per criterion pair is decided by {@link AnalysisColumnMetadataRepository}
  *    (admin-registered override) first, falling back to a name-substring
  *    guess when neither side is registered — see {@link #isFuzzyMatchable}.
@@ -106,12 +101,10 @@ public class RecordMatchService {
     private static final Logger log = LoggerFactory.getLogger(RecordMatchService.class);
 
     private static final int MAX_CRITERIA_PER_SIDE = 8;
-    private static final Set<String> AGE_UNITS = Set.of("DAYS", "MONTHS", "YEARS");
 
     private final JdbcTemplate jdbc;
     private final LakehouseRegistryService registry;
     private final GuardrailProperties guardrails;
-    private final FieldResolver fields;
     private final AnalysisColumnMetadataRepository columnMetadata;
     private final AnalysisProperties analysisProperties;
     private final ObjectMapper objectMapper;
@@ -119,14 +112,12 @@ public class RecordMatchService {
     public RecordMatchService(@Qualifier("prestoJdbcTemplate") JdbcTemplate jdbc,
                               LakehouseRegistryService registry,
                               GuardrailProperties guardrails,
-                              FieldResolver fields,
                               AnalysisColumnMetadataRepository columnMetadata,
                               AnalysisProperties analysisProperties,
                               ObjectMapper objectMapper) {
         this.jdbc = jdbc;
         this.registry = registry;
         this.guardrails = guardrails;
-        this.fields = fields;
         this.columnMetadata = columnMetadata;
         this.analysisProperties = analysisProperties;
         this.objectMapper = objectMapper;
@@ -570,17 +561,14 @@ public class RecordMatchService {
             validateSideMembership(req.dedup().qualifiedTable(), sourceTable, targetTable, "dedup.table");
             registry.validateColumn(req.dedup().qualifiedColumn());
         }
-        if (req.ageFilter() != null) {
-            validateAgeFilter(req.ageFilter());
-        }
         validateOuterJoinRules(req, sides);
         validateComparisonGroups(req.comparisonGroups(), sides);
         return sides;
     }
 
     /**
-     * Outer-join-specific constraints (dedup, age filter) — kept out of
-     * {@link #validateRequest}'s generic checks so messages stay actionable.
+     * Outer-join-specific constraints (dedup) — kept out of {@link #validateRequest}'s
+     * generic checks so messages stay actionable.
      */
     private void validateOuterJoinRules(RecordMatchRequest req, Sides sides) {
         JoinType joinType = JoinType.effective(req.joinType());
@@ -589,54 +577,6 @@ public class RecordMatchService {
                     "Dedup cannot be used with a " + joinType + " join: unmatched rows have NULL "
                             + "source-side partition keys and would collapse into one row. "
                             + "Use INNER or LEFT, or turn dedup off.");
-        }
-        if (req.ageFilter() != null && joinType == JoinType.FULL) {
-            throw new IllegalArgumentException(
-                    "Age filter cannot be used with a FULL join — neither side is preserved. "
-                            + "Use INNER, LEFT, or RIGHT, or turn the age filter off.");
-        }
-        if (req.ageFilter() != null && joinType == JoinType.LEFT) {
-            validateAgeFilterOnPreservedSide(sides, "src", sides.sourceTable(),
-                    sides.targetTable(), "LEFT");
-        }
-        if (req.ageFilter() != null && joinType == JoinType.RIGHT) {
-            validateAgeFilterOnPreservedSide(sides, "tgt", sides.targetTable(),
-                    sides.sourceTable(), "RIGHT");
-        }
-    }
-
-    private void validateAgeFilterOnPreservedSide(Sides sides, String preservedAlias,
-                                                    QualifiedTable preservedTable,
-                                                    QualifiedTable nullableTable, String joinLabel) {
-        String ageExpression = fields.resolveColumn("age_years");
-        Set<String> ageColumns = AliasRebase.referencedColumns(ageExpression);
-        if (registry.hasColumns(preservedTable, ageColumns)) {
-            return;
-        }
-        if (registry.hasColumns(nullableTable, ageColumns)) {
-            throw new IllegalArgumentException(
-                    "Age filter cannot use the " + (preservedAlias.equals("src") ? "target" : "source")
-                            + " table's date-of-birth column with a " + joinLabel + " join — unmatched "
-                            + preservedAlias + " rows have no row on the other side to filter. "
-                            + "Use INNER, or match against a table that carries the age column on the "
-                            + "preserved side (" + preservedTable.qualifiedName() + ").");
-        }
-        throw new IllegalArgumentException(
-                "The age filter cannot be applied: neither " + sides.sourceTable().qualifiedName()
-                        + " nor " + sides.targetTable().qualifiedName() + " has "
-                        + String.join(", ", ageColumns));
-    }
-
-    /**
-     * Package-private so {@link MultiTargetRecordMatchService} validates the age
-     * filter through this one definition rather than a copy that could drift.
-     */
-    static void validateAgeFilter(AgeFilterSpec ageFilter) {
-        if (!AGE_UNITS.contains(ageFilter.unit())) {
-            throw new IllegalArgumentException("ageFilter.unit must be one of " + AGE_UNITS);
-        }
-        if (ageFilter.minAge() > ageFilter.maxAge()) {
-            throw new IllegalArgumentException("ageFilter minAge must be <= maxAge");
         }
     }
 
@@ -676,7 +616,6 @@ public class RecordMatchService {
         String dedupAlias = appendDedupSelect(select, outerColumns, req, join);
         appendMatchScoreSelect(select, outerColumns, req, groups);
         appendJoinConditions(onClause, where, params, groups, joinType);
-        appendAgeFilter(where, params, req, sides, joinType);
         appendMismatchOnlyFilter(where, req, comparisonPlans, params, noCounterpartWhen);
 
         if (where.length() == 0) {
@@ -981,86 +920,12 @@ public class RecordMatchService {
         outerColumns.add("match_score_pct");
     }
 
-    /**
-     * Applies the age filter to each side that can actually carry it.
-     *
-     * <p>It used to go onto BOTH aliases unconditionally, which assumed every
-     * table in the lakehouse has the catalogue's date-of-birth column. The two
-     * sides of a match are arbitrary registered tables, and typically only one
-     * is a person table: matching a member-id mapping table against the golden
-     * citizen table emitted
-     * {@code date_diff('year', CAST(src.date_of_birth AS DATE), current_date)}
-     * against a table with no such column, and Presto rejected the whole query
-     * — so an age filter made the match impossible to run rather than
-     * narrower.
-     *
-     * <p>A side that does not carry the column is skipped, not silently
-     * dropped from the result: the join already ties the two sides to the same
-     * person, so filtering the side that HAS the date of birth constrains both.
-     * If neither side carries it the filter is meaningless and this fails
-     * loudly — silently returning an unfiltered cohort to an officer who asked
-     * for 75-100 would be the worst outcome available.
-     */
-    private void appendAgeFilter(StringBuilder where, List<Object> params, RecordMatchRequest req,
-                                 Sides sides, JoinType joinType) {
-        if (req.ageFilter() == null) {
-            return;
-        }
-        // The catalogue's age expression is table-qualified for the Rule
-        // Engine's own table, so it has to be rebased onto each join alias —
-        // see AliasRebase for why taking "everything after the last dot" was
-        // wrong for a Tier-2 (DOB-derived) age expression.
-        String ageExpression = fields.resolveColumn("age_years");
-        Set<String> ageColumns = AliasRebase.referencedColumns(ageExpression);
-        double divisor = ageDivisor(req.ageFilter().unit());
-        double minYears = req.ageFilter().minAge() / divisor;
-        double maxYears = req.ageFilter().maxAge() / divisor;
-
-        List<Map.Entry<String, QualifiedTable>> sidesToFilter = switch (joinType) {
-            case INNER -> List.of(
-                    Map.entry("src", sides.sourceTable()),
-                    Map.entry("tgt", sides.targetTable()));
-            case LEFT -> List.of(Map.entry("src", sides.sourceTable()));
-            case RIGHT -> List.of(Map.entry("tgt", sides.targetTable()));
-            case FULL -> List.of();
-        };
-
-        boolean applied = false;
-        for (Map.Entry<String, QualifiedTable> side : sidesToFilter) {
-            if (!registry.hasColumns(side.getValue(), ageColumns)) {
-                continue;
-            }
-            appendWhereClause(where,
-                    AliasRebase.ontoAlias(ageExpression, side.getKey()) + " BETWEEN ? AND ?");
-            params.add(minYears);
-            params.add(maxYears);
-            applied = true;
-        }
-
-        if (!applied) {
-            throw new IllegalArgumentException(
-                    "The age filter cannot be applied: neither " + sides.sourceTable().qualifiedName()
-                            + " nor " + sides.targetTable().qualifiedName() + " has "
-                            + String.join(", ", ageColumns)
-                            + ". Match against a table that carries it, or remap the 'age_years' field "
-                            + "on the Admin page to a column these tables have.");
-        }
-    }
-
     /** Appends one AND-ed clause, adding the connector only when something precedes it. */
     private static void appendWhereClause(StringBuilder where, String clause) {
         if (where.length() > 0) {
             where.append(" AND ");
         }
         where.append(clause);
-    }
-
-    private static double ageDivisor(String unit) {
-        return switch (unit) {
-            case "DAYS" -> 365.0;
-            case "MONTHS" -> 12.0;
-            default -> 1.0;
-        };
     }
 
     private static String wrapWithDedup(String baseSql, RecordMatchRequest req, JoinPlan join,

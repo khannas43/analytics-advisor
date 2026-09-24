@@ -72,7 +72,6 @@ describe("multi-target request serialization", () => {
     const extras = {
       highlightDuplicates: true,
       dedup: null,
-      ageFilter: null,
       registeredFuzzyFor: noopFuzzy,
       isFuzzyMatchable: noopFuzzy,
     };
@@ -110,7 +109,6 @@ describe("multi-target request serialization", () => {
     const extras = {
       highlightDuplicates: false,
       dedup: null,
-      ageFilter: null,
       registeredFuzzyFor: noopFuzzy,
       isFuzzyMatchable: noopFuzzy,
     };
@@ -168,7 +166,6 @@ describe("multi-target request serialization", () => {
       })),
       highlightDuplicates: false,
       dedup: null,
-      ageFilter: null,
       registeredFuzzyFor: noopFuzzy,
       isFuzzyMatchable: noopFuzzy,
     })!;
@@ -186,7 +183,6 @@ describe("multi-target request serialization", () => {
       hubSide: "SOURCE" as const,
       highlightDuplicates: false,
       dedup: null,
-      ageFilter: null,
       registeredFuzzyFor: noopFuzzy,
       isFuzzyMatchable: noopFuzzy,
       mismatchOnly: true,
@@ -229,7 +225,6 @@ describe("multi-target request serialization", () => {
     const extras = {
       highlightDuplicates: false,
       dedup: null,
-      ageFilter: null,
       registeredFuzzyFor: noopFuzzy,
       isFuzzyMatchable: noopFuzzy,
     };
@@ -281,7 +276,6 @@ describe("multi-target request serialization", () => {
       targets,
       highlightDuplicates: false,
       dedup: null,
-      ageFilter: null,
       registeredFuzzyFor: noopFuzzy,
       isFuzzyMatchable: noopFuzzy,
     });

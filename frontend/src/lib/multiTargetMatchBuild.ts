@@ -1,5 +1,4 @@
 import type {
-  AgeFilterSpec,
   DedupSpec,
   DisplayColumn,
   HubSide,
@@ -50,7 +49,6 @@ export type BuildMultiTargetParams = {
   targets: TargetBlockModel[];
   highlightDuplicates: boolean;
   dedup: DedupSpec | null;
-  ageFilter: AgeFilterSpec | null;
   registeredFuzzyFor: (ref: TableRef, column: string) => boolean | null;
   isFuzzyMatchable: (ref: TableRef, column: string) => boolean;
   maxTargetSets?: number;
@@ -133,7 +131,6 @@ export function buildMultiTargetRecordMatchRequest(
     targets,
     highlightDuplicates: params.highlightDuplicates,
     dedup: params.dedup,
-    ageFilter: params.ageFilter,
   };
   if (filledHubDisplay.length > 0) {
     req.hubDisplayColumns = filledHubDisplay.map((r) => ({ ...r.ref, column: r.column }));
@@ -158,7 +155,6 @@ export function singleTargetMatchRequestFromMulti(
     targetCriteria: target.joinCriteria,
     highlightDuplicates: req.highlightDuplicates,
     dedup: req.dedup,
-    ageFilter: req.ageFilter,
   };
   if (req.hubDisplayColumns && req.hubDisplayColumns.length > 0) {
     out.sourceDisplayColumns = req.hubDisplayColumns;

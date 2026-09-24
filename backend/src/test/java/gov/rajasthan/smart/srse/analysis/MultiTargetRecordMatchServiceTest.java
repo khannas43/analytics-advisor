@@ -87,7 +87,7 @@ class MultiTargetRecordMatchServiceTest {
                 List.of(
                         target("Bank", "bank_txn", List.of(tgt("bank_txn", "ja_id"))),
                         target("Ration", "ration", List.of(tgt("ration", "aadhaar_no")))),
-                false, null, null);
+                false, null);
     }
 
     private RecordMatchService.MatchQuery queryWithSql(String sql) {
@@ -197,7 +197,7 @@ class MultiTargetRecordMatchServiceTest {
                 List.of(),
                 HubSide.TARGET,
                 List.of(target("Bank", "bank_txn", List.of(tgt("bank_txn", "ja_id")))),
-                false, null, null));
+                false, null));
 
         assertTrue(out.contains("\"target_jan_aadhaar\""), out);
         assertTrue(out.contains("\"Bank_source_ja_id\""), out);
@@ -262,7 +262,7 @@ class MultiTargetRecordMatchServiceTest {
                 List.of(
                         target("Bank", "bank_txn", List.of(tgt("bank_txn", "name"))),
                         target("Ration", "ration", List.of(tgt("ration", "name")))),
-                false, null, null);
+                false, null);
         String out = streamOutput(req);
 
         assertTrue(out.contains("Bank_target_name"), out);
@@ -291,7 +291,7 @@ class MultiTargetRecordMatchServiceTest {
                 HubSide.SOURCE,
                 List.of(new TargetMatchSpec("Bank", CATALOG, SCHEMA, "bank_txn",
                         List.of(), List.of(), List.of(group))),
-                false, null, null));
+                false, null));
 
         assertTrue(out.contains("\"Bank_target_g0_matched_on\""), out);
         assertTrue(out.contains("\"Bank_target_ja_id\""), out);
@@ -315,7 +315,7 @@ class MultiTargetRecordMatchServiceTest {
                 HubSide.SOURCE,
                 List.of(new TargetMatchSpec("Bank", CATALOG, SCHEMA, "bank_txn",
                         List.of(), List.of(), List.of(group))),
-                false, null, null));
+                false, null));
 
         assertTrue(out.contains("\"source_member_name\""), out);
         assertEquals(1, out.lines().filter(l -> l.contains("\"type\":\"meta\"")).count(), out);
@@ -331,8 +331,7 @@ class MultiTargetRecordMatchServiceTest {
                 HubSide.SOURCE,
                 List.of(target("Bank", "bank_txn", List.of(tgt("bank_txn", "ja_id")))),
                 false,
-                new DedupSpec(CATALOG, SCHEMA, "bank_txn", "updated_at"),
-                null);
+                new DedupSpec(CATALOG, SCHEMA, "bank_txn", "updated_at"));
 
         assertThrows(IllegalArgumentException.class, () -> service.matchMulti(req));
     }
@@ -342,20 +341,20 @@ class MultiTargetRecordMatchServiceTest {
         stubHubValidation();
 
         assertThrows(IllegalArgumentException.class, () -> service.matchMulti(new MultiTargetRecordMatchRequest(
-                List.of(hub("golden", "id")), List.of(), HubSide.SOURCE, List.of(), false, null, null)));
+                List.of(hub("golden", "id")), List.of(), HubSide.SOURCE, List.of(), false, null)));
 
         List<TargetMatchSpec> six = java.util.stream.IntStream.range(0, 6)
                 .mapToObj(i -> target("T" + i, "t" + i, List.of(tgt("t" + i, "c"))))
                 .toList();
         assertThrows(IllegalArgumentException.class, () -> service.matchMulti(new MultiTargetRecordMatchRequest(
-                List.of(hub("golden", "id")), List.of(), HubSide.SOURCE, six, false, null, null)));
+                List.of(hub("golden", "id")), List.of(), HubSide.SOURCE, six, false, null)));
 
         assertThrows(IllegalArgumentException.class, () -> service.matchMulti(new MultiTargetRecordMatchRequest(
                 List.of(hub("golden", "id")),
                 List.of(),
                 HubSide.SOURCE,
                 List.of(target("  ", "a", List.of(tgt("a", "c")))),
-                false, null, null)));
+                false, null)));
 
         assertThrows(IllegalArgumentException.class, () -> service.matchMulti(new MultiTargetRecordMatchRequest(
                 List.of(hub("golden", "id")),
@@ -364,7 +363,7 @@ class MultiTargetRecordMatchServiceTest {
                 List.of(
                         target("Same", "a", List.of(tgt("a", "c"))),
                         target("Same", "b", List.of(tgt("b", "c")))),
-                false, null, null)));
+                false, null)));
     }
 
     @Test
@@ -388,7 +387,7 @@ class MultiTargetRecordMatchServiceTest {
                 List.of(),
                 HubSide.SOURCE,
                 List.of(target("Bank", "bank_txn", List.of(tgt("bank_txn", "ja_id")), JoinType.LEFT)),
-                false, null, null);
+                false, null);
         when(recordMatchService.planMatch(any())).thenReturn(queryWithSql("LEFT JOIN"));
         stubJdbcRow(Map.of("source_jan_aadhaar", "x", "target_ja_id", "y"));
         streamOutput(req);
@@ -428,7 +427,7 @@ class MultiTargetRecordMatchServiceTest {
                 List.of(exact, fuzzy));
         MultiTargetRecordMatchRequest req = new MultiTargetRecordMatchRequest(
                 List.of(hub("golden", "jan_aadhaar")), List.of(), HubSide.SOURCE,
-                List.of(spec), false, null, null, false);
+                List.of(spec), false, null, false);
         when(recordMatchService.isComparisonGroupFuzzy(exact)).thenReturn(false);
         when(recordMatchService.isComparisonGroupFuzzy(fuzzy)).thenReturn(true);
         when(recordMatchService.planMatch(any())).thenReturn(queryWithSql("JOIN"));
@@ -448,23 +447,10 @@ class MultiTargetRecordMatchServiceTest {
                 List.of(),
                 HubSide.SOURCE,
                 List.of(target("Bank", "bank_txn", List.of(tgt("bank_txn", "ja_id")), JoinType.RIGHT)),
-                false, dedup, null);
+                false, dedup);
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.matchMulti(req));
         assertTrue(ex.getMessage().contains("Dedup"), ex.getMessage());
         assertTrue(ex.getMessage().contains("Bank"), ex.getMessage());
     }
 
-    @Test
-    void ageFilterWithFullJoinTargetRejectedBeforeStream() {
-        stubHubValidation();
-        MultiTargetRecordMatchRequest req = new MultiTargetRecordMatchRequest(
-                List.of(hub("golden", "jan_aadhaar")),
-                List.of(),
-                HubSide.SOURCE,
-                List.of(target("Bank", "bank_txn", List.of(tgt("bank_txn", "ja_id")), JoinType.FULL)),
-                false, null, new AgeFilterSpec(18, 60, "YEARS"));
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.matchMulti(req));
-        assertTrue(ex.getMessage().contains("Age filter"), ex.getMessage());
-        assertTrue(ex.getMessage().contains("FULL"), ex.getMessage());
-    }
 }

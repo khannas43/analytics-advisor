@@ -54,7 +54,7 @@ class RecordMatchControllerTest {
             {"sourceCriteria":[{"table":"beneficiary","column":"district","fuzzyThresholdPercent":null}],
              "targetCriteria":[{"table":"beneficiary","column":"district","fuzzyThresholdPercent":null}],
              "highlightDuplicates":false,
-             "dedup":null,"ageFilter":null}
+             "dedup":null}
             """;
 
     @Test
@@ -92,7 +92,7 @@ class RecordMatchControllerTest {
                 {"sourceCriteria":[{"table":"beneficiary","column":"district","fuzzyThresholdPercent":null}],
                  "targetCriteria":[],
                  "highlightDuplicates":false,
-                 "dedup":null,"ageFilter":null}
+                 "dedup":null}
                 """;
 
         mockMvc.perform(post("/api/analysis/match")
@@ -150,7 +150,7 @@ class RecordMatchControllerTest {
                  "sourceDisplayColumns":[{"catalog":"c","schema":"s","table":"beneficiary","column":"ifsc"}],
                  "targetDisplayColumns":[{"catalog":"c","schema":"s","table":"beneficiary","column":"branch"}],
                  "highlightDuplicates":false,
-                 "dedup":null,"ageFilter":null}
+                 "dedup":null}
                 """;
 
         MvcResult mvcResult = mockMvc.perform(post("/api/analysis/match")
@@ -187,7 +187,7 @@ class RecordMatchControllerTest {
                  "hubDisplayColumns":[],
                  "hubSide":"SOURCE",
                  "targets":[{"label":"Bank","catalog":"c","schema":"s","table":"bank","joinCriteria":[{"catalog":"c","schema":"s","table":"bank","column":"id","fuzzyThresholdPercent":null}],"displayColumns":[]}],
-                 "highlightDuplicates":false,"dedup":null,"ageFilter":null}
+                 "highlightDuplicates":false,"dedup":null}
                 """;
 
         MvcResult mvcResult = mockMvc.perform(post("/api/analysis/match-multi")

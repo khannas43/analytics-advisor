@@ -1,7 +1,6 @@
 package gov.rajasthan.smart.srse.analysis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import gov.rajasthan.smart.srse.compiler.FieldResolver;
 import gov.rajasthan.smart.srse.execution.GuardrailProperties;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
@@ -88,14 +87,8 @@ class AnalysisEmittedSqlPrestoValidateIT {
             return described;
         });
 
-        FieldResolver fields = fieldKey -> {
-            if ("age_years".equals(fieldKey)) {
-                return CATALOG + "." + SCHEMA + "." + TABLE + ".age_years";
-            }
-            throw new FieldResolver.UnknownFieldException(fieldKey);
-        };
         service = new RecordMatchService(
-                presto, registry, new GuardrailProperties(1000, 120, 50), fields, columnMetadata,
+                presto, registry, new GuardrailProperties(1000, 120, 50), columnMetadata,
                 new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10), new ObjectMapper());
     }
 
@@ -154,7 +147,7 @@ class AnalysisEmittedSqlPrestoValidateIT {
         explainValidate(new RecordMatchRequest(
                 List.of(), List.of(), null, null,
                 List.of(group(List.of(col("id")), List.of(col("id")), GroupMode.COMBINE, null)),
-                false, null, null, JoinType.LEFT,
+                false, null, JoinType.LEFT,
                 List.of(ComparisonGroup.of(col("district"), col("district"))),
                 true));
     }
@@ -166,20 +159,20 @@ class AnalysisEmittedSqlPrestoValidateIT {
         cases.add(new RecordMatchRequest(
                 List.of(), List.of(), null, null,
                 List.of(group(List.of(col("id")), List.of(col("id")), GroupMode.COMBINE, null)),
-                false, null, null, null));
+                false, null, null));
         cases.add(new RecordMatchRequest(
                 List.of(), List.of(), null, null,
                 List.of(group(List.of(col("father_name")),
                         List.of(col("mother_name"), col("father_name")),
                         GroupMode.COMBINE, 85.0)),
-                false, null, null, null));
+                false, null, null));
         // Cross-family ANY_OF: bigint id + varchar district → CAST(... AS VARCHAR) in the array.
         cases.add(new RecordMatchRequest(
                 List.of(), List.of(), null, null,
                 List.of(group(List.of(col("id")),
                         List.of(col("id"), col("district")),
                         GroupMode.ANY_OF, null)),
-                false, null, null, null));
+                false, null, null));
         ComparisonGroup fuzzyCompare = new ComparisonGroup(
                 List.of(col("father_name")),
                 List.of(col("father_name")),
@@ -187,20 +180,20 @@ class AnalysisEmittedSqlPrestoValidateIT {
         cases.add(new RecordMatchRequest(
                 List.of(), List.of(), null, null,
                 List.of(group(List.of(col("id")), List.of(col("id")), GroupMode.COMBINE, null)),
-                false, null, null, JoinType.LEFT,
+                false, null, JoinType.LEFT,
                 List.of(ComparisonGroup.of(col("district"), col("district"))),
                 true));
         cases.add(new RecordMatchRequest(
                 List.of(), List.of(), null, null,
                 List.of(group(List.of(col("id")), List.of(col("id")), GroupMode.COMBINE, null)),
-                false, null, null, JoinType.LEFT,
+                false, null, JoinType.LEFT,
                 List.of(fuzzyCompare),
                 true));
         // Post-join comparison across type families (bigint id vs varchar district).
         cases.add(new RecordMatchRequest(
                 List.of(), List.of(), null, null,
                 List.of(group(List.of(col("id")), List.of(col("id")), GroupMode.COMBINE, null)),
-                false, null, null, null,
+                false, null, null,
                 List.of(ComparisonGroup.of(col("id"), col("district"))),
                 false));
         for (RecordMatchRequest req : cases) {

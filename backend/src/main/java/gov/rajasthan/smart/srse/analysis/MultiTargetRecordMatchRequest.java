@@ -1,5 +1,7 @@
 package gov.rajasthan.smart.srse.analysis;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.List;
 
 /**
@@ -9,6 +11,7 @@ import java.util.List;
  * {@code src}, target always {@code tgt}) — never an N-way join. See
  * {@link MultiTargetRecordMatchService}.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public record MultiTargetRecordMatchRequest(
         List<MatchCriterion> hubCriteria,
         List<DisplayColumn> hubDisplayColumns,
@@ -16,7 +19,6 @@ public record MultiTargetRecordMatchRequest(
         List<TargetMatchSpec> targets,
         boolean highlightDuplicates,
         DedupSpec dedup,
-        AgeFilterSpec ageFilter,
         boolean mismatchOnly) {
 
     public MultiTargetRecordMatchRequest {
@@ -31,8 +33,7 @@ public record MultiTargetRecordMatchRequest(
             HubSide hubSide,
             List<TargetMatchSpec> targets,
             boolean highlightDuplicates,
-            DedupSpec dedup,
-            AgeFilterSpec ageFilter) {
-        this(hubCriteria, hubDisplayColumns, hubSide, targets, highlightDuplicates, dedup, ageFilter, false);
+            DedupSpec dedup) {
+        this(hubCriteria, hubDisplayColumns, hubSide, targets, highlightDuplicates, dedup, false);
     }
 }

@@ -48,12 +48,9 @@ srse-pre-fork:<path>`) and still live in SRSE.
    slices restored; the fork had dropped the global `@RestControllerAdvice` —
    `ApiExceptionHandler` in `config/` replaces the deleted
    `DecisionExceptionHandler`.
-3. **Decide the age filter.** The Analysis page still offers an age-range
-   checkbox, and it always fails: it resolved `age_years` through the field
-   catalogue, so `StubFieldResolver` now throws and ticking it returns
-   `400 Unknown or unmapped field key: age_years` (verified against the running
-   app). Either drop the control or back it with a real field concept. This is
-   user-facing, not tidy-up.
+3. ~~**Decide the age filter.**~~ Done (AA-03): age-range UI and backend
+   plumbing removed; generic per-column filters arrive with PRODUCT_PLAN 4.5 /
+   5.1.
 4. ~~**Rewrite `CLAUDE.md`.**~~ Done: rewritten for this product. Keeps the
    load-bearing engine decisions (lakehouse addressing, injection safety,
    cross-type comparison, column groups, guardrails), drops the flat catalogue,

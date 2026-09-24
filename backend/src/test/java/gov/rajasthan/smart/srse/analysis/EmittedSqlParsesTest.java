@@ -5,7 +5,6 @@ import com.facebook.presto.sql.parser.ParsingOptions;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import gov.rajasthan.smart.srse.compiler.ColumnGroupSql;
-import gov.rajasthan.smart.srse.compiler.FieldResolver;
 import gov.rajasthan.smart.srse.execution.GuardrailProperties;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
@@ -97,14 +96,8 @@ class EmittedSqlParsesTest {
 
     @BeforeEach
     void setUp() {
-        FieldResolver fields = fieldKey -> {
-            if ("age_years".equals(fieldKey)) {
-                return CATALOG + "." + SCHEMA + ".golden.age_years";
-            }
-            throw new FieldResolver.UnknownFieldException(fieldKey);
-        };
         service = new RecordMatchService(
-                jdbc, registry, new GuardrailProperties(1000, 30, 50), fields, columnMetadata,
+                jdbc, registry, new GuardrailProperties(1000, 30, 50), columnMetadata,
                 new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10), new ObjectMapper());
         lenient().when(columnMetadata.findByCatalogNameAndSchemaNameAndTableNameAndColumnName(
                 any(), any(), any(), any())).thenReturn(Optional.empty());
@@ -130,20 +123,19 @@ class EmittedSqlParsesTest {
         return new MatchGroup(source, target, mode, threshold, null);
     }
 
-    private String sqlFor(List<MatchGroup> groups, boolean highlight, DedupSpec dedup, AgeFilterSpec age) {
-        return sqlFor(groups, highlight, dedup, age, null);
+    private String sqlFor(List<MatchGroup> groups, boolean highlight, DedupSpec dedup) {
+        return sqlFor(groups, highlight, dedup, null);
     }
 
-    private String sqlFor(List<MatchGroup> groups, boolean highlight, DedupSpec dedup, AgeFilterSpec age,
-                          JoinType joinType) {
+    private String sqlFor(List<MatchGroup> groups, boolean highlight, DedupSpec dedup, JoinType joinType) {
         return service.planMatch(new RecordMatchRequest(
-                List.of(), List.of(), null, null, groups, highlight, dedup, age, joinType)).sql();
+                List.of(), List.of(), null, null, groups, highlight, dedup, joinType)).sql();
     }
 
     private RecordMatchRequest requestWithComparisons(List<MatchGroup> groups, List<ComparisonGroup> comparisons,
                                                       boolean mismatchOnly, JoinType joinType) {
         return new RecordMatchRequest(
-                List.of(), List.of(), null, null, groups, false, null, null, joinType,
+                List.of(), List.of(), null, null, groups, false, null, joinType,
                 comparisons, mismatchOnly);
     }
 
@@ -174,9 +166,9 @@ class EmittedSqlParsesTest {
     }
 
     private RecordMatchRequest requestFor(List<MatchGroup> groups, boolean highlight, DedupSpec dedup,
-                                          AgeFilterSpec age, JoinType joinType) {
+                                          JoinType joinType) {
         return new RecordMatchRequest(
-                List.of(), List.of(), null, null, groups, highlight, dedup, age, joinType);
+                List.of(), List.of(), null, null, groups, highlight, dedup, joinType);
     }
 
     /** The plain pair, unchanged since before groups existed. */
@@ -184,7 +176,7 @@ class EmittedSqlParsesTest {
     void singleColumnPairParses() {
         assertParses(sqlFor(List.of(
                 group(List.of(col("txn", "district")), List.of(col("golden", "district")),
-                        GroupMode.COMBINE, null)), false, null, null));
+                        GroupMode.COMBINE, null)), false, null));
     }
 
     @Test
@@ -192,7 +184,7 @@ class EmittedSqlParsesTest {
         assertParses(sqlFor(List.of(
                 group(List.of(col("txn", "addr_full")),
                         List.of(col("golden", "line1"), col("golden", "line2"), col("golden", "line3")),
-                        GroupMode.COMBINE, null)), false, null, null));
+                        GroupMode.COMBINE, null)), false, null));
     }
 
     /**
@@ -204,7 +196,7 @@ class EmittedSqlParsesTest {
         assertParses(sqlFor(List.of(
                 group(List.of(col("txn", "account_no")),
                         List.of(col("golden", "ja_id"), col("golden", "legacy_id")),
-                        GroupMode.ANY_OF, null)), false, null, null));
+                        GroupMode.ANY_OF, null)), false, null));
     }
 
     @Test
@@ -212,7 +204,7 @@ class EmittedSqlParsesTest {
         assertParses(sqlFor(List.of(
                 group(List.of(col("txn", "a1"), col("txn", "a2")),
                         List.of(col("golden", "b1"), col("golden", "b2")),
-                        GroupMode.ANY_OF, null)), false, null, null));
+                        GroupMode.ANY_OF, null)), false, null));
     }
 
     /** Two UNNESTs on one side — the shape the ANY_OF cap allows at most. */
@@ -222,7 +214,7 @@ class EmittedSqlParsesTest {
                 group(List.of(col("txn", "a")), List.of(col("golden", "x1"), col("golden", "x2")),
                         GroupMode.ANY_OF, null),
                 group(List.of(col("txn", "b")), List.of(col("golden", "y1"), col("golden", "y2")),
-                        GroupMode.ANY_OF, null)), false, null, null));
+                        GroupMode.ANY_OF, null)), false, null));
     }
 
     @Test
@@ -230,7 +222,7 @@ class EmittedSqlParsesTest {
         assertParses(sqlFor(List.of(
                 group(List.of(col("txn", "full_name")),
                         List.of(col("golden", "first_name"), col("golden", "last_name")),
-                        GroupMode.COMBINE, 85.0)), false, null, null));
+                        GroupMode.COMBINE, 85.0)), false, null));
     }
 
     /** Fuzzy ANY_OF: blocking key and Levenshtein over an unnested key. */
@@ -239,10 +231,10 @@ class EmittedSqlParsesTest {
         assertParses(sqlFor(List.of(
                 group(List.of(col("txn", "full_name")),
                         List.of(col("golden", "name_a"), col("golden", "name_b")),
-                        GroupMode.ANY_OF, 80.0)), false, null, null));
+                        GroupMode.ANY_OF, 80.0)), false, null));
     }
 
-    /** Everything at once: mixed modes, the score expression, dedup's window, the age filter. */
+    /** Everything at once: mixed modes, the score expression, and dedup's window. */
     @Test
     void theWholeThingTogetherParses() {
         assertParses(sqlFor(
@@ -256,8 +248,7 @@ class EmittedSqlParsesTest {
                         group(List.of(col("txn", "district")), List.of(col("golden", "district")),
                                 GroupMode.COMBINE, null)),
                 true,
-                new DedupSpec(CATALOG, SCHEMA, "golden", "updated_at"),
-                new AgeFilterSpec(18, 60, "YEARS")));
+                new DedupSpec(CATALOG, SCHEMA, "golden", "updated_at")));
     }
 
     /** The emitters in isolation, so a break is attributable without a whole query around it. */
@@ -287,7 +278,6 @@ class EmittedSqlParsesTest {
     void eachJoinTypeParsesWithFuzzyCombineAndAnyOf(JoinType joinType) {
         DedupSpec dedup = joinType == JoinType.RIGHT || joinType == JoinType.FULL ? null
                 : new DedupSpec(CATALOG, SCHEMA, "golden", "updated_at");
-        AgeFilterSpec age = joinType == JoinType.FULL ? null : new AgeFilterSpec(18, 60, "YEARS");
         assertParses(sqlFor(
                 List.of(
                         group(List.of(col("txn", "full_name")),
@@ -298,14 +288,14 @@ class EmittedSqlParsesTest {
                                 GroupMode.ANY_OF, null),
                         group(List.of(col("txn", "district")), List.of(col("golden", "district")),
                                 GroupMode.COMBINE, null)),
-                true, dedup, age, joinType));
+                true, dedup, joinType));
     }
 
     @Test
     void innerJoinSqlUsesBareJoinKeywordForRegression() {
         String sql = sqlFor(List.of(
                 group(List.of(col("txn", "district")), List.of(col("golden", "district")),
-                        GroupMode.COMBINE, null)), false, null, null, JoinType.INNER);
+                        GroupMode.COMBINE, null)), false, null, JoinType.INNER);
         assertTrue(sql.contains(CATALOG + "." + SCHEMA + ".txn src JOIN "
                 + CATALOG + "." + SCHEMA + ".golden tgt"), sql);
         assertFalse(sql.contains("INNER JOIN"), sql);
@@ -406,26 +396,25 @@ class EmittedSqlParsesTest {
                 List.of(col("golden", "holder_name")),
                 GroupMode.COMBINE, 85.0, null);
         List<RecordMatchRequest> cases = new ArrayList<>();
-        cases.add(requestFor(districtPair, false, null, null, null));
+        cases.add(requestFor(districtPair, false, null, null));
         cases.add(requestFor(List.of(group(List.of(col("txn", "addr_full")),
                         List.of(col("golden", "line1"), col("golden", "line2")),
-                        GroupMode.COMBINE, null)), false, null, null, null));
+                        GroupMode.COMBINE, null)), false, null, null));
         cases.add(requestFor(List.of(group(List.of(col("txn", "account_no")),
                         List.of(col("golden", "ja_id"), col("golden", "legacy_id")),
-                        GroupMode.ANY_OF, null)), false, null, null, null));
+                        GroupMode.ANY_OF, null)), false, null, null));
         cases.add(requestFor(List.of(group(List.of(col("txn", "a1"), col("txn", "a2")),
                         List.of(col("golden", "b1"), col("golden", "b2")),
-                        GroupMode.ANY_OF, null)), false, null, null, null));
+                        GroupMode.ANY_OF, null)), false, null, null));
         cases.add(requestFor(List.of(group(List.of(col("txn", "full_name")),
                         List.of(col("golden", "first_name"), col("golden", "last_name")),
-                        GroupMode.COMBINE, 85.0)), false, null, null, null));
+                        GroupMode.COMBINE, 85.0)), false, null, null));
         cases.add(requestFor(List.of(group(List.of(col("txn", "full_name")),
                         List.of(col("golden", "name_a"), col("golden", "name_b")),
-                        GroupMode.ANY_OF, 80.0)), false, null, null, null));
+                        GroupMode.ANY_OF, 80.0)), false, null, null));
         cases.add(requestFor(mixedHeavy, true,
-                new DedupSpec(CATALOG, SCHEMA, "golden", "updated_at"),
-                new AgeFilterSpec(18, 60, "YEARS"), null));
-        cases.add(requestFor(mixedHeavy, true, null, new AgeFilterSpec(18, 60, "YEARS"), JoinType.LEFT));
+                new DedupSpec(CATALOG, SCHEMA, "golden", "updated_at"), null));
+        cases.add(requestFor(mixedHeavy, true, null, JoinType.LEFT));
         cases.add(requestWithComparisons(
                 List.of(group(List.of(col("txn", "m_id")), List.of(col("golden", "m_id")),
                         GroupMode.COMBINE, null)),
@@ -462,8 +451,7 @@ class EmittedSqlParsesTest {
         for (JoinType joinType : JoinType.values()) {
             DedupSpec dedup = joinType == JoinType.RIGHT || joinType == JoinType.FULL ? null
                     : new DedupSpec(CATALOG, SCHEMA, "golden", "updated_at");
-            AgeFilterSpec age = joinType == JoinType.FULL ? null : new AgeFilterSpec(18, 60, "YEARS");
-            cases.add(requestFor(mixedHeavy, true, dedup, age, joinType));
+            cases.add(requestFor(mixedHeavy, true, dedup, joinType));
             cases.add(requestWithComparisons(
                     List.of(group(List.of(col("txn", "m_id")), List.of(col("golden", "m_id")),
                             GroupMode.COMBINE, null)),
