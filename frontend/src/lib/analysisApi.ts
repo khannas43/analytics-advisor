@@ -1,8 +1,7 @@
 // Typed client for the Analysis tab's cross-table fuzzy record-match seam
-// (/api/analysis/**). Deliberately separate from decisionApi.ts's Rule
-// Engine calls — this tab picks tables/columns ad hoc rather than from the
-// pre-registered field catalogue (see CLAUDE.md's flat-catalogue rule and the
-// analysis backend package's javadoc for why).
+// (/api/analysis/**). Deliberately separate from adminApi.ts, which speaks to
+// the admin surface (/api/admin/**) — this tab picks tables and columns ad hoc
+// from the registry, and reaches nothing an officer may not see.
 //
 // Every table/column reference here is FULLY QUALIFIED —
 // catalog › schema › table › column. SRSE maps several catalogs and schemas

@@ -3,8 +3,8 @@ import "./globals.css";
 import { AppHeader } from "@/components/AppHeader";
 
 export const metadata = {
-  title: "SRSE",
-  description: "Scheme Rule Simulation Engine",
+  title: "Analytics Advisor",
+  description: "Lakehouse record matching and analysis",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

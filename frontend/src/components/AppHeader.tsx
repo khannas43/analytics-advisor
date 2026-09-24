@@ -3,10 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const TABS = [
-  { href: "/rules", label: "Rule Engine" },
-  { href: "/analysis", label: "Analysis" },
-];
+const TABS = [{ href: "/analysis", label: "Analysis" }];
 
 export function AppHeader() {
   const pathname = usePathname();
@@ -14,9 +11,9 @@ export function AppHeader() {
   return (
     <header className="srse-header">
       <div className="srse-header-inner">
-        <Link href="/rules" className="srse-brand">
-          <span className="srse-brand-mark">SRSE</span>
-          <span className="srse-brand-sub">Scheme Rule Simulation Engine</span>
+        <Link href="/analysis" className="srse-brand">
+          <span className="srse-brand-mark">Analytics Advisor</span>
+          <span className="srse-brand-sub">Lakehouse record matching</span>
         </Link>
         <nav className="srse-nav">
           {TABS.map((tab) => {

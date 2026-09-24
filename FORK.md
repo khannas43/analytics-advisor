@@ -59,8 +59,9 @@ srse-pre-fork:<path>`) and still live in SRSE.
 5. **Rename the package root** (`gov.rajasthan.smart.srse`) once the two repos
    stop sharing fixes. Deferred deliberately — renaming now makes it harder to
    copy fixes across while both are moving.
-6. **Frontend still carries SRSE screens** — the Rule Engine page, scheme
-   panels and the field-mapping editor call endpoints that no longer exist.
+6. ~~**Frontend still carries SRSE screens**~~ Done (AA-02): Rule Engine,
+   scheme panels, field-mapping editor and `decisionApi.ts` removed; live
+   admin calls live in `adminApi.ts`.
 
 ## Target
 

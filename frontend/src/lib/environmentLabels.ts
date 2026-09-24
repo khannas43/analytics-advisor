@@ -1,23 +1,12 @@
-import type { DataMode } from "@/lib/decisionApi";
-
 /**
- * Display labels for SRSE environments. Wire values stay {@code SYNTHETIC} /
- * {@code LIVE} ({@code DATA_MODE} / {@code field_column_mapping.data_mode}).
- *
- * Two distinct uses — do not conflate in the Admin UI:
- * - **Running environment** — what deployment this instance is ({@link runningEnvironmentLabel}).
- * - **Binding set** — which mapping rows the editor loads ({@link bindingSetLabel}).
+ * Display labels for deployment environments. Wire values stay {@code SYNTHETIC} /
+ * {@code LIVE} ({@code DATA_MODE}).
  */
 
-export const BINDING_SET_LABELS: Record<DataMode, string> = {
+const ENVIRONMENT_LABELS = {
   SYNTHETIC: "Development",
   LIVE: "Production (Live)",
-};
-
-/** Label for the mapping editor radios (which {@code field_column_mapping} set). */
-export function bindingSetLabel(dataMode: DataMode): string {
-  return BINDING_SET_LABELS[dataMode];
-}
+} as const;
 
 /** Label for the connections panel (this running deployment). */
 export function runningEnvironmentLabel(
@@ -30,10 +19,10 @@ export function runningEnvironmentLabel(
   }
   const mode = dataMode.trim().toUpperCase();
   if (mode === "LIVE") {
-    return BINDING_SET_LABELS.LIVE;
+    return ENVIRONMENT_LABELS.LIVE;
   }
   if (mode === "SYNTHETIC") {
-    return BINDING_SET_LABELS.SYNTHETIC;
+    return ENVIRONMENT_LABELS.SYNTHETIC;
   }
   return dataMode;
 }
