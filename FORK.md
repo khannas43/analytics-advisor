@@ -48,14 +48,17 @@ srse-pre-fork:<path>`) and still live in SRSE.
    slices restored; the fork had dropped the global `@RestControllerAdvice` —
    `ApiExceptionHandler` in `config/` replaces the deleted
    `DecisionExceptionHandler`.
-3. **Decide the age filter.** The Analysis match still has SRSE's age filter,
-   which resolved `age_years` through the field catalogue. `StubFieldResolver`
-   now fails every key loudly so the app starts. Either drop the age filter or
-   back it with whatever field concept this product adopts.
-4. **Rewrite `CLAUDE.md`.** It still describes SRSE. Its locked decisions about
-   lakehouse addressing, injection safety, fuzzy blocking and the guardrails
-   still apply; those about the flat catalogue, the DMN seam and scheme
-   templates do not.
+3. **Decide the age filter.** The Analysis page still offers an age-range
+   checkbox, and it always fails: it resolved `age_years` through the field
+   catalogue, so `StubFieldResolver` now throws and ticking it returns
+   `400 Unknown or unmapped field key: age_years` (verified against the running
+   app). Either drop the control or back it with a real field concept. This is
+   user-facing, not tidy-up.
+4. ~~**Rewrite `CLAUDE.md`.**~~ Done: rewritten for this product. Keeps the
+   load-bearing engine decisions (lakehouse addressing, injection safety,
+   cross-type comparison, column groups, guardrails), drops the flat catalogue,
+   the DMN seam and scheme templates, and marks DB2 and PrestoDB as open
+   decisions rather than locked ones.
 5. **Rename the package root** (`gov.rajasthan.smart.srse`) once the two repos
    stop sharing fixes. Deferred deliberately — renaming now makes it harder to
    copy fixes across while both are moving.
