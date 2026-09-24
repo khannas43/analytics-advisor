@@ -410,10 +410,6 @@ mismatch.
   source and destination) must replace that seam with registry-validated
   qualified columns via `LakehouseRegistryService.validateColumn`, the same
   gate the match engine uses.
-- **Admin config backup is removed, not trimmed.** It bundled field mappings and
-  schemes alongside registrations and column metadata, and a half-edited import
-  path silently lost admin config on restore. Reinstate carrying only
-  connections, registrations and column metadata (1.2).
 - **`/admin456` has no route-level guard.** Every endpoint it calls enforces
   `SRSE_ADMIN` server-side, so an officer reaching the URL sees failing panels
   rather than data — but the page itself is unguarded and unlinked. A real

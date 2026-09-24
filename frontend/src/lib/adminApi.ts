@@ -2,6 +2,7 @@ import {
   authorizedFetch as scopedAuthorizedFetch,
   type AuthScope,
 } from "@/lib/authToken";
+import type { CompareAs } from "@/lib/analysisApi";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
@@ -169,4 +170,82 @@ export async function unregisterTable(id: number): Promise<void> {
   if (!res.ok) {
     throw new Error(`Admin service error ${res.status}: ${await res.text()}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Admin: configuration backup (connections, registrations, column metadata)
+// ---------------------------------------------------------------------------
+
+export type AdminConfigConnectionPlane = {
+  jdbcUrl: string;
+  username: string;
+  password: string | null;
+  driverClassName: string;
+};
+
+export type AdminConfigBundle = {
+  schemaVersion: string;
+  exportedAt: string;
+  dataMode: string;
+  connections: {
+    operational: AdminConfigConnectionPlane;
+    analytical: AdminConfigConnectionPlane;
+  } | null;
+  registeredTables: {
+    catalog: string;
+    schema: string;
+    table: string;
+    layer: string | null;
+  }[];
+  analysisColumnMetadata: {
+    catalog: string;
+    schema: string;
+    table: string;
+    column: string;
+    businessName: string | null;
+    fuzzyMatchable: boolean;
+    visible: boolean;
+    compareAs: CompareAs;
+  }[];
+};
+
+export type AdminConfigImportResult = {
+  registeredTableCount: number;
+  columnMetadataCount: number;
+  operationalRestartRequired: boolean;
+  connectionsImported: boolean;
+  importedTables: string[];
+  importedColumns: string[];
+  skipped: { section: string; reason: string }[];
+};
+
+export async function exportAdminConfig(): Promise<AdminConfigBundle> {
+  const res = await authorizedFetch(`${API_BASE}/api/admin/config/export`, {
+    credentials: "include",
+  }, "admin");
+  if (!res.ok) {
+    throw new Error(`Admin config export failed ${res.status}: ${await res.text()}`);
+  }
+  return res.json();
+}
+
+export async function importAdminConfig(
+  bundle: AdminConfigBundle,
+  options?: { testConnections?: boolean },
+): Promise<AdminConfigImportResult> {
+  const testConnections = options?.testConnections ?? true;
+  const res = await authorizedFetch(
+    `${API_BASE}/api/admin/config/import?testConnections=${testConnections ? "true" : "false"}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(bundle),
+    },
+    "admin",
+  );
+  if (!res.ok) {
+    throw new Error(`Admin config import failed ${res.status}: ${await res.text()}`);
+  }
+  return res.json();
 }

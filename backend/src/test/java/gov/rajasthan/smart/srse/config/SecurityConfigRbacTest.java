@@ -14,6 +14,8 @@ import gov.rajasthan.smart.srse.security.Authorities;
 import gov.rajasthan.smart.srse.security.MockJwtAuthenticationFilter;
 import gov.rajasthan.smart.srse.security.MockJwtIssuer;
 import gov.rajasthan.smart.srse.security.MockJwtService;
+import gov.rajasthan.smart.srse.web.AdminConfigController;
+import gov.rajasthan.smart.srse.web.AdminConfigService;
 import gov.rajasthan.smart.srse.web.ConnectionInfoController;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -48,7 +50,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         LakehouseAdminController.class,
         LakehouseCatalogController.class,
         AnalysisColumnMetadataController.class,
-        ConnectionInfoController.class
+        ConnectionInfoController.class,
+        AdminConfigController.class
 })
 @Import({ApiExceptionHandler.class, SecurityConfig.class, MockJwtService.class, MockJwtAuthenticationFilter.class})
 @TestPropertySource(properties = {
@@ -82,6 +85,9 @@ class SecurityConfigRbacTest {
 
     @MockBean(name = "prestoJdbcTemplate")
     private JdbcTemplate presto;
+
+    @MockBean
+    private AdminConfigService adminConfigService;
 
     private String officerToken;
     private String adminToken;
@@ -210,6 +216,24 @@ class SecurityConfigRbacTest {
                         .param("table", "t")
                         .param("column", "col"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void officerForbiddenOnAdminConfigExport() throws Exception {
+        mockMvc.perform(get("/api/admin/config/export")
+                        .header("Authorization", "Bearer " + officerToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void officerForbiddenOnAdminConfigImport() throws Exception {
+        mockMvc.perform(post("/api/admin/config/import")
+                        .header("Authorization", "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"schemaVersion":"2.0","exportedAt":"2026-01-01T00:00:00Z","dataMode":"synthetic"}
+                                """))
+                .andExpect(status().isForbidden());
     }
 
     @Test

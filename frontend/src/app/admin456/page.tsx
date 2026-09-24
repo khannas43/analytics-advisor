@@ -9,11 +9,15 @@ import {
   getConnections,
   listLakehouseLayers,
   listRegistrations,
+  exportAdminConfig,
+  importAdminConfig,
   registerTable,
   unregisterTable,
   updateAnalyticalConnection,
   updateOperationalConnection,
   updateTableRegistration,
+  type AdminConfigBundle,
+  type AdminConfigImportResult,
   type ConnectionPlaneInfo,
   type ConnectionsInfo,
   type LakehouseColumnInfo,
@@ -1066,6 +1070,115 @@ function LakehouseRegistryPanel({
   );
 }
 
+function ConfigBackupPanel({ onImported }: Readonly<{ onImported: () => void }>) {
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [skipConnectionTest, setSkipConnectionTest] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onDownload() {
+    setExporting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const bundle = await exportAdminConfig();
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `analytics-advisor-config-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setMessage(
+        "Configuration downloaded. Passwords are not included — re-enter DB2 and Presto passwords once after import.",
+      );
+    } catch (err: unknown) {
+      setError(errorMessage(err));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function onUpload(file: File) {
+    setImporting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const text = await file.text();
+      const bundle = JSON.parse(text) as AdminConfigBundle;
+      const result: AdminConfigImportResult = await importAdminConfig(bundle, {
+        testConnections: !skipConnectionTest,
+      });
+      const summary = [
+        `${result.registeredTableCount} table registration(s)`,
+        `${result.columnMetadataCount} column override(s)`,
+        result.connectionsImported ? "connections updated" : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      let msg = `Import complete: ${summary}.`;
+      if (result.skipped.length > 0) {
+        const skippedLines = result.skipped.map(
+          (s) => `${s.section}: ${s.reason}`,
+        );
+        msg += ` Not imported from this file — ${skippedLines.join("; ")}.`;
+      }
+      msg += " JDBC passwords were not in the file; re-enter them on the Connections panel if needed.";
+      if (result.operationalRestartRequired) {
+        msg += " Restart the backend container for DB2 connection changes to take effect.";
+      }
+      setMessage(msg);
+      onImported();
+    } catch (err: unknown) {
+      setError(errorMessage(err));
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  return (
+    <section className="srse-card" style={{ marginBottom: "1.25rem" }}>
+      <h2 className="srse-section-title">Configuration backup</h2>
+      <p className="srse-text-muted" style={{ marginBottom: "0.85rem", maxWidth: "52rem" }}>
+        Download a JSON snapshot of connections (without passwords), lakehouse registrations, and
+        analysis column settings. After a redeploy, upload the same file to restore them without
+        re-entering everything by hand. Re-enter DB2 and Presto passwords once on the Connections
+        panel after import.
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.75rem", alignItems: "center" }}>
+        <button type="button" className="srse-btn srse-btn-primary" disabled={exporting} onClick={onDownload}>
+          {exporting ? "Exporting…" : "Download configuration JSON"}
+        </button>
+        <label className="srse-btn" style={{ cursor: importing ? "wait" : "pointer", margin: 0 }}>
+          {importing ? "Importing…" : "Upload configuration JSON"}
+          <input
+            type="file"
+            accept="application/json,.json"
+            disabled={importing}
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) void onUpload(file);
+            }}
+          />
+        </label>
+        <label className="srse-checkbox-label" style={{ fontSize: "0.85rem" }}>
+          <input
+            type="checkbox"
+            checked={skipConnectionTest}
+            onChange={(e) => setSkipConnectionTest(e.target.checked)}
+          />
+          {" "}
+          Skip connection test on import (save credentials only — use when DB2/Presto are not up yet)
+        </label>
+      </div>
+      {message && <p className="srse-text-success" style={{ marginTop: "0.75rem" }}>{message}</p>}
+      {error && <p className="srse-text-danger" style={{ marginTop: "0.75rem" }}>{error}</p>}
+    </section>
+  );
+}
 
 export default function AdminPage() {
   // Registrations and column settings are loaded once here and passed down:
@@ -1112,6 +1225,7 @@ export default function AdminPage() {
         per-column display names, fuzzy matching, and comparison settings for registered tables.
       </p>
 
+      <ConfigBackupPanel onImported={refresh} />
       <AnalysisGuardrailsPanel />
       <ConnectionsPanel />
       <LakehouseRegistryPanel

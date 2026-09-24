@@ -39,11 +39,10 @@ srse-pre-fork:<path>`) and still live in SRSE.
 
 ## Known TODOs from the fork
 
-1. **Restore the admin config backup.** `AdminConfigService`/`Controller`/`Bundle`
-   were removed rather than trimmed: they bundled field mappings and schemes
-   alongside registrations and column metadata, and a half-edited import path
-   silently loses admin config on restore. Reinstate a version carrying only
-   connections, lakehouse registrations and analysis column metadata.
+1. ~~**Restore the admin config backup.**~~ Done (AA-04): export/import at
+   `/api/admin/config` carries connections (passwords omitted on export),
+   lakehouse registrations and analysis column metadata only; schema 2.0 with
+   1.0 legacy acceptance and explicit skipped-section reporting.
 2. ~~**Restore the RBAC and controller tests.**~~ Done (AA-01): six `@WebMvcTest`
    slices restored; the fork had dropped the global `@RestControllerAdvice` —
    `ApiExceptionHandler` in `config/` replaces the deleted
