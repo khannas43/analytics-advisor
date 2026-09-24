@@ -190,7 +190,8 @@ that was removed at the fork, for a different purpose.
 | # | Activity | Type | Est |
 |---|---|---|---|
 | 7.2.1 | Scope-binding model: per registered table, which column holds each hierarchy level | N | 4 |
-| 7.2.2 | Admin UI to define scope bindings, with an explicit "no scope column" answer | N | 3 |
+| 7.2.2 | Admin UI to define scope bindings, plus the explicit shared-reference-data flag (A4) | N | 3 |
+| 7.2.2a | Deny-by-default enforcement: an unbound, unflagged table is invisible to scoped users on every path, including browse and column listing | N | 3 |
 | 7.2.3 | Inject the scope predicate into **every** emitted query | N | 8 |
 | 7.2.4 | Cover every path that touches data — match, multi-target, comparison summary, CSV and other exports, SQL preview, suggest-keys probe, fan-out guard, column value lists | N | 6 |
 | 7.2.5 | Join policy: a scoped table joined to an unscoped one | N | 3 |
@@ -211,8 +212,8 @@ fails visibly; this one fails silently and looks like working software.
 | 7.3.3 | Append-only / tamper-evident storage if audit rules require it | N | ? |
 | 7.3.4 | Log viewer with filters, granted to officers as an RBAC permission | N | 5 |
 | 7.3.5 | Export the log, and audit that export too | N | 2 |
-| 7.3.6 | Store the full SQL and its bound parameter values (A6) | N | 1 |
-| 7.3.7 | **Protect the log to the same standard as the data it describes** (A6): encryption at rest, restricted access, retention limit, and the log excluded from ordinary query surfaces | N | 5 |
+| 7.3.6 | Store the query shape with placeholders; strip bound values before writing (A6) | N | 2 |
+| 7.3.7 | Access control and retention on the log. Lighter than it would have been: with values stripped it is not a personal-data store, but it still shows who looked at what | N | 2 |
 | 7.3.8 | Scope the log viewer to the requesting officer's subtree (A10) | N | 3 |
 
 ---
@@ -284,14 +285,14 @@ data if left unanswered.**
 | A1 | How deep is the hierarchy, and is it fixed (State / District / Taluka / Village) or configurable per deployment? | Fixed is much simpler; configurable means the scope predicate is built dynamically. |
 | A2 | Can one user hold several scopes at the same level — three districts, say? | Decides whether the predicate is `= ?` or `IN (?, ?, …)`, and how the UI reads. |
 | A3 | Does a higher officer automatically see everything beneath them? | Presumably yes, but it decides whether scope is stored as a node or as an expanded set of leaves. |
-| A4 | **What happens to a registered table that has no district/taluka column at all?** Denied to scoped users, or treated as shared reference data? | This is the silent-leak question. If the default is "no scope column means no filter", every reference table becomes a hole. I would default to **deny**, with an explicit per-table "this is shared reference data" flag an admin must set. |
+| A4 | **DECIDED: deny by default.** A registered table with no scope binding is invisible to a scoped user unless an admin explicitly flags it as shared reference data. | Closes the silent-leak path: a table can only escape scoping by a deliberate admin act, never by omission. The flag must be per table and visible in the admin UI, so "why can everyone see this?" always has an answer. |
 | A5 | Joining a scoped table to an unscoped one — allowed, and if so does the scope of one side constrain the result? | Otherwise a user joins their district table to an unscoped one and reads everything. |
 
 ### B. Audit
 
 | # | Question | Why it matters |
 |---|---|---|
-| A6 | **DECIDED: store the SQL and its parameter values.** | Gives full reproducibility of what an officer actually ran. Consequence, accepted deliberately: the audit log now holds personal data — an Aadhaar number or name typed as a filter is stored verbatim — so it must be protected to the same standard as the lakehouse data itself. See 7.3.7. |
+| A6 | **DECIDED (revised): store the query SHAPE, never the bound values.** The SQL is recorded with placeholders; Aadhaar numbers, names and other typed filter values are not stored. | Keeps personal data out of the audit log entirely, so the log never becomes a second copy of the data needing the same protection. The trade, accepted: you can see *what an officer did* structurally — which tables and columns, which operators — but not the exact value they searched for. |
 | A7 | What counts as "accessed"? Every query, every export, every table listing, every login attempt? | Decides log volume by an order of magnitude. |
 | A8 | Retention, archival and volume expectations. | Every query by every officer, indefinitely, is a large table. |
 | A9 | Is tamper-evidence required (append-only, checksummed), or is a normal table acceptable? | Government audit rules often require the former; it is much harder. |
