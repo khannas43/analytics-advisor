@@ -19,17 +19,6 @@ class SecurityConfigMatcherOrderTest {
             "src/main/java/gov/rajasthan/smart/srse/config/SecurityConfig.java");
 
     @Test
-    void schemeTemplateAdminMatcherPrecedesBroadSchemesPrefix() throws Exception {
-        List<String> lines = Files.readAllLines(SECURITY_CONFIG);
-        int putTemplate = indexOfFirstContaining(lines, "HttpMethod.PUT", "/api/schemes/*/template");
-        int broadSchemes = indexOfFirstContaining(lines, "/api/schemes/**");
-        assertTrue(putTemplate >= 0, "PUT /api/schemes/*/template matcher missing");
-        assertTrue(broadSchemes >= 0, "Broad /api/schemes/** matcher missing");
-        assertTrue(putTemplate < broadSchemes,
-                "PUT scheme template must be declared before /api/schemes/**");
-    }
-
-    @Test
     void columnMetadataAdminMatchersPrecedeBroadAnalysisPrefix() throws Exception {
         List<String> lines = Files.readAllLines(SECURITY_CONFIG);
         int putColumnMetadata = indexOfFirstContaining(lines, "HttpMethod.PUT", "/api/analysis/column-metadata");

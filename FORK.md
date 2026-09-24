@@ -35,7 +35,7 @@ srse-pre-fork:<path>`) and still live in SRSE.
 
 `analysis/` · `lakehouse/` · `compiler/` · `config/` · `security/` ·
 `web/` (connections) · `metadata/AnalysisColumnMetadata*` ·
-`execution/GuardrailProperties` — roughly 7,200 lines. 322 backend tests pass.
+`execution/GuardrailProperties` — roughly 7,200 lines.
 
 ## Known TODOs from the fork
 
@@ -44,12 +44,10 @@ srse-pre-fork:<path>`) and still live in SRSE.
    alongside registrations and column metadata, and a half-edited import path
    silently loses admin config on restore. Reinstate a version carrying only
    connections, lakehouse registrations and analysis column metadata.
-2. **Restore the RBAC and controller tests.** Six `@WebMvcTest` slices were
-   removed because they wired up deleted controllers
-   (`SecurityConfigRbacTest`, `SecurityConfigTest`, `RajSewadwarAuthModeTest`,
-   `RecordMatchControllerTest`, `LakehouseAdminControllerTest`,
-   `LakehouseCatalogControllerTest`). The behaviour they covered still exists
-   and is currently untested. This is the highest-priority item.
+2. ~~**Restore the RBAC and controller tests.**~~ Done (AA-01): six `@WebMvcTest`
+   slices restored; the fork had dropped the global `@RestControllerAdvice` —
+   `ApiExceptionHandler` in `config/` replaces the deleted
+   `DecisionExceptionHandler`.
 3. **Decide the age filter.** The Analysis match still has SRSE's age filter,
    which resolved `age_years` through the field catalogue. `StubFieldResolver`
    now fails every key loudly so the app starts. Either drop the age filter or
