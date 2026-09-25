@@ -67,6 +67,10 @@ srse:
     cohort-cap: ${SRSE_COHORT_CAP:1000}
     query-timeout-seconds: ${SRSE_QUERY_TIMEOUT_SECONDS:180}
     preview-sample-size: ${SRSE_PREVIEW_SAMPLE_SIZE:50}
+  audit:
+    # Immediate peers (load balancers) allowed to supply X-Forwarded-For.
+    # Empty = never trust the header (safe default on a laptop). Set behind a load balancer.
+    trusted-proxies: []
   scope:
     max-in-values: ${SRSE_SCOPE_MAX_IN_VALUES:1000}
   analysis:

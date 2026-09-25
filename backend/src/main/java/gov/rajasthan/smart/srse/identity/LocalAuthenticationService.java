@@ -1,5 +1,8 @@
 package gov.rajasthan.smart.srse.identity;
 
+import gov.rajasthan.smart.srse.audit.AuditActionType;
+import gov.rajasthan.smart.srse.audit.AuditOutcome;
+import gov.rajasthan.smart.srse.audit.AuditService;
 import gov.rajasthan.smart.srse.otp.ContactMasking;
 import gov.rajasthan.smart.srse.otp.OtpChallengeService;
 import gov.rajasthan.smart.srse.otp.OtpDeliveryException;
@@ -35,6 +38,7 @@ public class LocalAuthenticationService {
     private final SessionTokenService sessionTokenService;
     private final IdentityProperties properties;
     private final OtpChallengeService otpChallengeService;
+    private final AuditService auditService;
 
     public LocalAuthenticationService(
             AppUserRepository userRepository,
@@ -42,13 +46,15 @@ public class LocalAuthenticationService {
             PasswordEncoder passwordEncoder,
             SessionTokenService sessionTokenService,
             IdentityProperties properties,
-            OtpChallengeService otpChallengeService) {
+            OtpChallengeService otpChallengeService,
+            AuditService auditService) {
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
         this.passwordEncoder = passwordEncoder;
         this.sessionTokenService = sessionTokenService;
         this.properties = properties;
         this.otpChallengeService = otpChallengeService;
+        this.auditService = auditService;
     }
 
     @Transactional
@@ -56,15 +62,21 @@ public class LocalAuthenticationService {
         Optional<AppUser> userOpt = userRepository.findByUsernameIgnoreCase(username);
         if (userOpt.isEmpty()) {
             passwordEncoder.matches(rawPassword, DUMMY_PASSWORD_HASH);
+            auditService.recordAuthEvent(
+                    AuditActionType.LOGIN_FAILED, AuditOutcome.FAILURE, null, null, "login");
             return LoginResult.failure(INVALID_CREDENTIALS_MESSAGE);
         }
         AppUser user = userOpt.get();
         if (!user.isActive() || isLocked(user)) {
             passwordEncoder.matches(rawPassword, DUMMY_PASSWORD_HASH);
+            auditService.recordAuthEvent(
+                    AuditActionType.LOGIN_FAILED, AuditOutcome.FAILURE, user.getId(), user.getId(), "login");
             return LoginResult.failure(INVALID_CREDENTIALS_MESSAGE);
         }
         if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
             registerFailedAttempt(user);
+            auditService.recordAuthEvent(
+                    AuditActionType.LOGIN_FAILED, AuditOutcome.FAILURE, user.getId(), user.getId(), "login");
             return LoginResult.failure(INVALID_CREDENTIALS_MESSAGE);
         }
         user.setFailedLoginCount(0);
@@ -79,6 +91,12 @@ public class LocalAuthenticationService {
             }
             try {
                 OtpChallengeService.IssuedChallenge challenge = otpChallengeService.beginLoginChallenge(user);
+                auditService.recordAuthEvent(
+                        AuditActionType.MFA_CHALLENGE_ISSUED,
+                        AuditOutcome.SUCCESS,
+                        user.getId(),
+                        user.getId(),
+                        "login");
                 return LoginResult.mfaPending(
                         challenge.publicChallengeId(),
                         ContactMasking.maskEmail(user.getEmail()),
@@ -87,16 +105,30 @@ public class LocalAuthenticationService {
                 return LoginResult.failure(ex.getMessage());
             }
         }
-        return completeSessionLogin(user);
+        LoginResult result = completeSessionLogin(user);
+        auditService.recordAuthEvent(
+                AuditActionType.LOGIN_SUCCESS, AuditOutcome.SUCCESS, user.getId(), user.getId(), "login");
+        return result;
     }
 
     @Transactional
     public LoginResult verifyLoginOtp(String challengeId, String code) {
-        AppUser user = otpChallengeService.verifyAndConsume(challengeId, code, OtpPurpose.LOGIN);
-        user.setLastLoginAt(Instant.now());
-        user.touchUpdatedAt();
-        userRepository.save(user);
-        return completeSessionLogin(user);
+        try {
+            AppUser user = otpChallengeService.verifyAndConsume(challengeId, code, OtpPurpose.LOGIN);
+            auditService.recordAuthEvent(
+                    AuditActionType.MFA_VERIFIED, AuditOutcome.SUCCESS, user.getId(), user.getId(), "login");
+            user.setLastLoginAt(Instant.now());
+            user.touchUpdatedAt();
+            userRepository.save(user);
+            LoginResult result = completeSessionLogin(user);
+            auditService.recordAuthEvent(
+                    AuditActionType.LOGIN_SUCCESS, AuditOutcome.SUCCESS, user.getId(), user.getId(), "login");
+            return result;
+        } catch (IllegalArgumentException ex) {
+            auditService.recordAuthEvent(
+                    AuditActionType.MFA_FAILED, AuditOutcome.FAILURE, null, null, "login");
+            throw ex;
+        }
     }
 
     @Transactional
@@ -160,6 +192,12 @@ public class LocalAuthenticationService {
             user.setLockedUntil(Instant.now().plus(
                     properties.lockout().lockDurationMinutes(), ChronoUnit.MINUTES));
             user.setFailedLoginCount(0);
+            auditService.recordAuthEvent(
+                    AuditActionType.ACCOUNT_LOCKED,
+                    AuditOutcome.SUCCESS,
+                    user.getId(),
+                    user.getId(),
+                    "login");
         }
         user.touchUpdatedAt();
         userRepository.save(user);

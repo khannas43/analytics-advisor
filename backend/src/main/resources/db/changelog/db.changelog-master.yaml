@@ -17,3 +17,6 @@ databaseChangeLog:
   - include:
       file: changes/006-user-otp-audit.yaml
       relativeToChangelogFile: true
+  - include:
+      file: changes/007-audit-capture-columns.yaml
+      relativeToChangelogFile: true

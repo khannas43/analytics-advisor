@@ -1,5 +1,6 @@
 package gov.rajasthan.smart.srse.config;
 
+import gov.rajasthan.smart.srse.audit.AuditWriteFailureException;
 import gov.rajasthan.smart.srse.compiler.FieldResolver;
 import gov.rajasthan.smart.srse.identity.AdminAccessDeniedException;
 import org.springframework.http.HttpStatus;
@@ -49,5 +50,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(AdminAccessDeniedException.class)
     public ResponseEntity<String> forbidden(AdminAccessDeniedException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(ex.getMessage());
+    }
+
+    /** Export audit row must commit before streaming — refusal if the write fails (§7.3 Q6). */
+    @ExceptionHandler(AuditWriteFailureException.class)
+    public ResponseEntity<String> auditWriteFailed(AuditWriteFailureException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ex.getMessage());
     }
 }

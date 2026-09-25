@@ -47,6 +47,12 @@ class LakehouseRegistryServiceTest {
     @Mock
     private TableScopeRegistrationService tableScopeRegistrationService;
 
+    @Mock
+    private gov.rajasthan.smart.srse.identity.AuthenticatedUserService authenticatedUserService;
+
+    @Mock
+    private gov.rajasthan.smart.srse.audit.AuditService auditService;
+
     private LakehouseRegistryService service;
 
     @BeforeEach
@@ -57,7 +63,9 @@ class LakehouseRegistryServiceTest {
                 browse,
                 officerScope,
                 scopeCatalog,
-                tableScopeRegistrationService);
+                tableScopeRegistrationService,
+                authenticatedUserService,
+                auditService);
         lenient().when(officerScope.currentOfficerScope())
                 .thenReturn(TableScopePolicy.OfficerScopeView.bypass());
         lenient().when(scopeCatalog.metadataForTables(org.mockito.ArgumentMatchers.anyList()))
@@ -78,6 +86,8 @@ class LakehouseRegistryServiceTest {
                     return new TableScopePolicy.TableScopeMetadata(
                             t.isSharedReference(), java.util.List.of(), java.util.Set.of());
                 });
+        lenient().when(authenticatedUserService.requireCurrentUser())
+                .thenReturn(new gov.rajasthan.smart.srse.identity.AppUser("admin", "hash"));
     }
 
     private void stubRegistered() {

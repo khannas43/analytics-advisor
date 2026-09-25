@@ -40,6 +40,12 @@ class LakehouseRegistryScopeFilteringTest {
     @Mock
     private TableScopeRegistrationService tableScopeRegistrationService;
 
+    @Mock
+    private gov.rajasthan.smart.srse.identity.AuthenticatedUserService authenticatedUserService;
+
+    @Mock
+    private gov.rajasthan.smart.srse.audit.AuditService auditService;
+
     private LakehouseRegistryService service;
 
     private RegisteredTable registered;
@@ -52,7 +58,9 @@ class LakehouseRegistryScopeFilteringTest {
                 browse,
                 officerScope,
                 scopeCatalog,
-                tableScopeRegistrationService);
+                tableScopeRegistrationService,
+                authenticatedUserService,
+                auditService);
         registered = new RegisteredTable(1L, CATALOG, SCHEMA, TABLE, "GOLD");
     }
 

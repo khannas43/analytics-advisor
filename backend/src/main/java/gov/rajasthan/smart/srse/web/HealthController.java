@@ -1,5 +1,6 @@
 package gov.rajasthan.smart.srse.web;
 
+import gov.rajasthan.smart.srse.audit.AuditDegradedState;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,11 +26,26 @@ public class HealthController {
 
     private final DataSource operational;          // DB2 / JPA (primary)
     private final JdbcTemplate presto;             // Presto (analytical)
+    private final AuditDegradedState auditDegradedState;
 
     public HealthController(DataSource operational,
-                            @Qualifier("prestoJdbcTemplate") JdbcTemplate presto) {
+                            @Qualifier("prestoJdbcTemplate") JdbcTemplate presto,
+                            AuditDegradedState auditDegradedState) {
         this.operational = operational;
         this.presto = presto;
+        this.auditDegradedState = auditDegradedState;
+    }
+
+    /**
+     * Signals whether best-effort query audit writes have failed since startup (§7.3 Q6).
+     */
+    @GetMapping("/audit")
+    public Map<String, Object> audit() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("degraded", auditDegradedState.isDegraded());
+        out.put("failureCount", auditDegradedState.failureCount());
+        out.put("lastFailureAt", auditDegradedState.lastFailureAt());
+        return out;
     }
 
     @GetMapping("/planes")

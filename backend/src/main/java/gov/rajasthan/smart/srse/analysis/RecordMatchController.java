@@ -1,6 +1,9 @@
 package gov.rajasthan.smart.srse.analysis;
 
+import gov.rajasthan.smart.srse.audit.AuditWriteFailureException;
+import gov.rajasthan.smart.srse.analysis.TargetMatchSpec;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,13 +21,16 @@ import java.util.List;
 public class RecordMatchController {
 
     private final RecordMatchService matchService;
+    private final AnalysisAuditService analysisAuditService;
     private final MultiTargetRecordMatchService multiMatchService;
     private final JoinKeySuggestService joinKeySuggestService;
 
     public RecordMatchController(RecordMatchService matchService,
+                                 AnalysisAuditService analysisAuditService,
                                  MultiTargetRecordMatchService multiMatchService,
                                  JoinKeySuggestService joinKeySuggestService) {
         this.matchService = matchService;
+        this.analysisAuditService = analysisAuditService;
         this.multiMatchService = multiMatchService;
         this.joinKeySuggestService = joinKeySuggestService;
     }
@@ -42,7 +48,8 @@ public class RecordMatchController {
      */
     @PostMapping(value = "/match", produces = "application/x-ndjson")
     public StreamingResponseBody match(@RequestBody RecordMatchRequest req) {
-        return matchService.match(req);
+        RecordMatchService.MatchQuery query = analysisAuditService.planMatchAudited(req);
+        return matchService.match(query);
     }
 
     /**
@@ -56,10 +63,16 @@ public class RecordMatchController {
      */
     @PostMapping(value = "/match.csv", produces = "text/csv")
     public ResponseEntity<StreamingResponseBody> matchCsv(@RequestBody RecordMatchRequest req) {
+        RecordMatchService.MatchQuery query = analysisAuditService.planMatchAudited(req);
+        try {
+            analysisAuditService.recordExport(req, query);
+        } catch (RuntimeException ex) {
+            throw new AuditWriteFailureException("Export audit row could not be written", ex);
+        }
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"analysis-match.csv\"")
                 .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
-                .body(matchService.matchCsv(req));
+                .body(matchService.matchCsv(query));
     }
 
     /**
@@ -68,13 +81,15 @@ public class RecordMatchController {
      */
     @PostMapping(value = "/match.sql", produces = MediaType.TEXT_PLAIN_VALUE)
     public String matchSql(@RequestBody RecordMatchRequest req) {
-        return matchService.renderQueryForDisplay(matchService.planMatch(req));
+        RecordMatchService.MatchQuery query = analysisAuditService.planPreviewAudited(req);
+        return matchService.renderQueryForDisplay(query);
     }
 
     /** Aggregate comparison match rates over the full join result (not a streamed sample). */
     @PostMapping("/match/comparison-summary")
     public ComparisonSummaryResponse comparisonSummary(@RequestBody RecordMatchRequest req) {
-        return matchService.comparisonSummary(req);
+        RecordMatchService.MatchQuery query = analysisAuditService.planMatchAudited(req);
+        return matchService.comparisonSummary(query, req);
     }
 
     /**
@@ -93,6 +108,7 @@ public class RecordMatchController {
      */
     @PostMapping(value = "/match-multi", produces = "application/x-ndjson")
     public StreamingResponseBody matchMulti(@RequestBody MultiTargetRecordMatchRequest req) {
+        analysisAuditService.planMultiMatchAudited(req);
         return multiMatchService.matchMulti(req);
     }
 
@@ -101,6 +117,23 @@ public class RecordMatchController {
      */
     @PostMapping(value = "/match-multi.csv", produces = "text/csv")
     public ResponseEntity<StreamingResponseBody> matchMultiCsv(@RequestBody MultiTargetRecordMatchRequest req) {
+        analysisAuditService.planMultiMatchAudited(req);
+        String combinedShape = combinedMultiQueryShape(req);
+        try {
+            analysisAuditService.recordMultiExport(req, combinedShape);
+        } catch (RuntimeException ex) {
+            throw new AuditWriteFailureException("Export audit row could not be written", ex);
+        }
         return multiMatchService.matchMultiCsv(req);
+    }
+
+    private String combinedMultiQueryShape(MultiTargetRecordMatchRequest req) {
+        java.util.StringJoiner shapes = new java.util.StringJoiner("\n---\n");
+        if (req.targets() != null) {
+            for (TargetMatchSpec target : req.targets()) {
+                shapes.add(matchService.planMatch(MultiTargetRecordMatchService.toSingleMatch(req, target)).sql());
+            }
+        }
+        return shapes.toString();
     }
 }

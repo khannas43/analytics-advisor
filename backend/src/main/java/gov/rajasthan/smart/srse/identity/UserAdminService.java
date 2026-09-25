@@ -1,5 +1,6 @@
 package gov.rajasthan.smart.srse.identity;
 
+import gov.rajasthan.smart.srse.audit.AuditActionType;
 import gov.rajasthan.smart.srse.audit.AuditService;
 import gov.rajasthan.smart.srse.identity.admin.UserAdminDtos;
 import gov.rajasthan.smart.srse.scope.ScopeNode;
@@ -85,7 +86,13 @@ public class UserAdminService {
         replaceRoles(user, roles);
         if (req.scopeNodeIds() != null && !req.scopeNodeIds().isEmpty()) {
             replaceScopeAssignments(caller, user, req.scopeNodeIds(), false);
+            auditService.recordAdminUserEvent(
+                    AuditActionType.SCOPE_GRANTED, caller, user, "Initial scope on create");
         }
+        auditService.recordAdminUserEvent(
+                AuditActionType.USER_CREATED, caller, user, "username=" + user.getUsername());
+        auditService.recordAdminUserEvent(
+                AuditActionType.ROLE_GRANTED, caller, user, String.join(",", roles));
         return toSummary(user);
     }
 
@@ -108,6 +115,10 @@ public class UserAdminService {
         user.touchUpdatedAt();
         userRepository.save(user);
         replaceRoles(user, roles);
+        auditService.recordAdminUserEvent(
+                AuditActionType.USER_UPDATED, caller, user, "username=" + user.getUsername());
+        auditService.recordAdminUserEvent(
+                AuditActionType.ROLE_GRANTED, caller, user, String.join(",", roles));
         return toSummary(user);
     }
 
@@ -119,6 +130,8 @@ public class UserAdminService {
         authorization.assertCanManageUser(caller, user);
         authorization.assertNotSelfRoleOrScopeEdit(caller, user);
         replaceScopeAssignments(caller, user, req.scopeNodeIds() == null ? List.of() : req.scopeNodeIds(), true);
+        auditService.recordAdminUserEvent(
+                AuditActionType.SCOPE_GRANTED, caller, user, "Scope assignments replaced");
         return toSummary(user);
     }
 
@@ -132,6 +145,8 @@ public class UserAdminService {
         user.incrementSessionVersion();
         user.touchUpdatedAt();
         userRepository.save(user);
+        auditService.recordAdminUserEvent(
+                AuditActionType.USER_DEACTIVATED, caller, user, "username=" + user.getUsername());
         return toSummary(user);
     }
 
@@ -157,6 +172,8 @@ public class UserAdminService {
         user.incrementSessionVersion();
         user.touchUpdatedAt();
         userRepository.save(user);
+        auditService.recordAdminUserEvent(
+                AuditActionType.PASSWORD_RESET, caller, user, "username=" + user.getUsername());
     }
 
     private void replaceScopeAssignments(

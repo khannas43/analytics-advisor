@@ -1,0 +1,23 @@
+databaseChangeLog:
+  - changeSet:
+      id: 007-audit-capture-columns
+      author: srse
+      changes:
+        - addColumn:
+            tableName: audit_event
+            columns:
+              - column:
+                  name: source_ip
+                  type: varchar(45)
+              - column:
+                  name: outcome
+                  type: varchar(16)
+              - column:
+                  name: target_tables
+                  type: varchar(2048)
+              - column:
+                  name: query_shape
+                  type: varchar(8192)
+              - column:
+                  name: scope_summary
+                  type: varchar(512)

@@ -37,6 +37,8 @@ class LocalAuthenticationServiceTest {
     private SessionTokenService sessionTokenService;
     @Mock
     private OtpChallengeService otpChallengeService;
+    @Mock
+    private gov.rajasthan.smart.srse.audit.AuditService auditService;
 
     private BCryptPasswordEncoder passwordEncoder;
     private LocalAuthenticationService service;
@@ -50,7 +52,7 @@ class LocalAuthenticationServiceTest {
                 new IdentityProperties.Bootstrap("superadmin"));
         service = new LocalAuthenticationService(
                 userRepository, userRoleRepository, passwordEncoder, sessionTokenService, props,
-                otpChallengeService);
+                otpChallengeService, auditService);
     }
 
     @Test

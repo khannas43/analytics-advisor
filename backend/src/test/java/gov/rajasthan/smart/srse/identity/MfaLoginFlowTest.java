@@ -36,6 +36,8 @@ class MfaLoginFlowTest {
     private OtpChallengeService otpChallengeService;
     @Mock
     private gov.rajasthan.smart.srse.security.SessionTokenService sessionTokenService;
+    @Mock
+    private gov.rajasthan.smart.srse.audit.AuditService auditService;
 
     private LocalAuthenticationService service;
     private BCryptPasswordEncoder encoder;
@@ -53,7 +55,8 @@ class MfaLoginFlowTest {
                 encoder,
                 sessionTokenService,
                 props,
-                otpChallengeService);
+                otpChallengeService,
+                auditService);
     }
 
     @Test

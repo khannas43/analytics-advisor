@@ -156,6 +156,10 @@ public class RecordMatchService {
         return streamResults(planMatch(req));
     }
 
+    public StreamingResponseBody match(RecordMatchService.MatchQuery query) {
+        return streamResults(query);
+    }
+
     /**
      * The same match, streamed straight out as CSV.
      *
@@ -173,12 +177,19 @@ public class RecordMatchService {
         return streamCsv(planMatch(req));
     }
 
+    public StreamingResponseBody matchCsv(RecordMatchService.MatchQuery query) {
+        return streamCsv(query);
+    }
+
     /**
      * Full-result aggregate match rates for {@link RecordMatchRequest#comparisonGroups()} —
      * not derivable from the NDJSON stream, which stops at 200k rows client-side.
      */
     public ComparisonSummaryResponse comparisonSummary(RecordMatchRequest req) {
-        MatchQuery query = planMatch(req);
+        return comparisonSummary(planMatch(req), req);
+    }
+
+    public ComparisonSummaryResponse comparisonSummary(MatchQuery query, RecordMatchRequest req) {
         if (req.comparisonGroups().isEmpty()) {
             return new ComparisonSummaryResponse(0, 0, 0, List.of());
         }

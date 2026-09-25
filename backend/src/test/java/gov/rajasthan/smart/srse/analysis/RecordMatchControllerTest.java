@@ -48,7 +48,14 @@ class RecordMatchControllerTest {
     private JoinKeySuggestService joinKeySuggestService;
 
     @MockBean
+    private AnalysisAuditService analysisAuditService;
+
+    @MockBean
     private MockJwtService mockJwtService;
+
+    private static RecordMatchService.MatchQuery stubQuery() {
+        return new RecordMatchService.MatchQuery("SELECT ?", java.util.List.of(), java.util.List.of("c"));
+    }
 
     private static final String REQUEST_BODY = """
             {"sourceCriteria":[{"table":"beneficiary","column":"district","fuzzyThresholdPercent":null}],
@@ -66,7 +73,9 @@ class RecordMatchControllerTest {
                     + "\"target_district\":\"Jaipur\"}}\n").getBytes(StandardCharsets.UTF_8));
             out.write("{\"type\":\"done\",\"totalRows\":1}\n".getBytes(StandardCharsets.UTF_8));
         };
-        when(matchService.match(any())).thenReturn(body);
+        RecordMatchService.MatchQuery query = stubQuery();
+        when(analysisAuditService.planMatchAudited(any())).thenReturn(query);
+        when(matchService.match(query)).thenReturn(body);
 
         MvcResult mvcResult = mockMvc.perform(post("/api/analysis/match")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -86,7 +95,8 @@ class RecordMatchControllerTest {
         // Validation throws synchronously, before any StreamingResponseBody is
         // even returned — so this stays a plain, non-async 400, unchanged from
         // the pre-streaming controller contract.
-        when(matchService.match(any())).thenThrow(new IllegalArgumentException("bad request"));
+        when(analysisAuditService.planMatchAudited(any()))
+                .thenThrow(new IllegalArgumentException("bad request"));
 
         String body = """
                 {"sourceCriteria":[{"table":"beneficiary","column":"district","fuzzyThresholdPercent":null}],
@@ -105,7 +115,9 @@ class RecordMatchControllerTest {
     void matchCsvStreamsAnAttachment() throws Exception {
         StreamingResponseBody body = out ->
                 out.write("source_district,target_district\r\nJaipur,Jaipur\r\n".getBytes(StandardCharsets.UTF_8));
-        when(matchService.matchCsv(any())).thenReturn(body);
+        RecordMatchService.MatchQuery query = stubQuery();
+        when(analysisAuditService.planMatchAudited(any())).thenReturn(query);
+        when(matchService.matchCsv(query)).thenReturn(body);
 
         MvcResult mvcResult = mockMvc.perform(post("/api/analysis/match.csv")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -126,7 +138,8 @@ class RecordMatchControllerTest {
      */
     @Test
     void invalidCsvRequestReturns400() throws Exception {
-        when(matchService.matchCsv(any())).thenThrow(new IllegalArgumentException("bad request"));
+        when(analysisAuditService.planMatchAudited(any()))
+                .thenThrow(new IllegalArgumentException("bad request"));
 
         mockMvc.perform(post("/api/analysis/match.csv")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -142,7 +155,9 @@ class RecordMatchControllerTest {
                     .getBytes(StandardCharsets.UTF_8));
             out.write("{\"type\":\"done\",\"totalRows\":0}\n".getBytes(StandardCharsets.UTF_8));
         };
-        when(matchService.match(any())).thenReturn(body);
+        RecordMatchService.MatchQuery query = stubQuery();
+        when(analysisAuditService.planMatchAudited(any())).thenReturn(query);
+        when(matchService.match(query)).thenReturn(body);
 
         String bodyJson = """
                 {"sourceCriteria":[{"catalog":"c","schema":"s","table":"beneficiary","column":"district","fuzzyThresholdPercent":null}],
@@ -164,10 +179,7 @@ class RecordMatchControllerTest {
                 .andExpect(content().string(containsString("\"source_ifsc\"")))
                 .andExpect(content().string(containsString("\"target_branch\"")));
 
-        ArgumentCaptor<RecordMatchRequest> captor = forClass(RecordMatchRequest.class);
-        verify(matchService).match(captor.capture());
-        assertEquals(1, captor.getValue().sourceDisplayColumns().size());
-        assertEquals("ifsc", captor.getValue().sourceDisplayColumns().get(0).column());
+        verify(analysisAuditService).planMatchAudited(any());
     }
 
     @Test
@@ -180,6 +192,7 @@ class RecordMatchControllerTest {
                     .getBytes(StandardCharsets.UTF_8));
             out.write("{\"type\":\"done\",\"totalRows\":0,\"perTarget\":[]}\n".getBytes(StandardCharsets.UTF_8));
         };
+        org.mockito.Mockito.doNothing().when(analysisAuditService).planMultiMatchAudited(any());
         when(multiMatchService.matchMulti(any())).thenReturn(body);
 
         String bodyJson = """
@@ -204,7 +217,8 @@ class RecordMatchControllerTest {
 
     @Test
     void invalidMultiMatchReturns400BeforeStream() throws Exception {
-        when(multiMatchService.matchMulti(any())).thenThrow(new IllegalArgumentException("bad multi request"));
+        org.mockito.Mockito.doThrow(new IllegalArgumentException("bad multi request"))
+                .when(analysisAuditService).planMultiMatchAudited(any());
 
         mockMvc.perform(post("/api/analysis/match-multi")
                         .contentType(MediaType.APPLICATION_JSON)

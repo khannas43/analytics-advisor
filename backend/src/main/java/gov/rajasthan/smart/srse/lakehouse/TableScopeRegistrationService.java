@@ -1,5 +1,6 @@
 package gov.rajasthan.smart.srse.lakehouse;
 
+import gov.rajasthan.smart.srse.audit.AuditService;
 import gov.rajasthan.smart.srse.identity.AdminAccessDeniedException;
 import gov.rajasthan.smart.srse.identity.AdminAuthorizationService;
 import gov.rajasthan.smart.srse.identity.AppUser;
@@ -26,6 +27,7 @@ public class TableScopeRegistrationService {
     private final LakehouseBrowseService browse;
     private final AuthenticatedUserService authenticatedUserService;
     private final AdminAuthorizationService adminAuthorization;
+    private final AuditService auditService;
 
     public TableScopeRegistrationService(
             RegisteredTableRepository registeredTableRepository,
@@ -35,7 +37,8 @@ public class TableScopeRegistrationService {
             ScopeDimensionRepository dimensionRepository,
             LakehouseBrowseService browse,
             AuthenticatedUserService authenticatedUserService,
-            AdminAuthorizationService adminAuthorization) {
+            AdminAuthorizationService adminAuthorization,
+            AuditService auditService) {
         this.registeredTableRepository = registeredTableRepository;
         this.bindingRepository = bindingRepository;
         this.exemptionRepository = exemptionRepository;
@@ -44,6 +47,7 @@ public class TableScopeRegistrationService {
         this.browse = browse;
         this.authenticatedUserService = authenticatedUserService;
         this.adminAuthorization = adminAuthorization;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -62,6 +66,8 @@ public class TableScopeRegistrationService {
         if (request.sharedReference() != null) {
             table.setSharedReference(request.sharedReference());
             registeredTableRepository.save(table);
+            auditService.recordSharedReferenceSet(
+                    caller, table.toQualifiedTable().qualifiedName(), request.sharedReference());
         }
         bindingRepository.deleteByRegisteredTableId(registrationId);
         exemptionRepository.deleteByRegisteredTableId(registrationId);
@@ -84,6 +90,12 @@ public class TableScopeRegistrationService {
                         .orElseThrow(() -> new IllegalArgumentException("Unknown dimension"));
                 exemptionRepository.save(new TableDimensionExemption(table, dimension));
             }
+        }
+        if (request.bindings() != null || request.exemptDimensionIds() != null) {
+            auditService.recordScopeBindingChange(
+                    caller,
+                    table.toQualifiedTable().qualifiedName(),
+                    "scope bindings/exemptions replaced");
         }
         return toView(table);
     }

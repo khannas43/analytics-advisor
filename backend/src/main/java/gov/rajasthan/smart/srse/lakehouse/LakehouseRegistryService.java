@@ -1,5 +1,8 @@
 package gov.rajasthan.smart.srse.lakehouse;
 
+import gov.rajasthan.smart.srse.audit.AuditActionType;
+import gov.rajasthan.smart.srse.audit.AuditService;
+import gov.rajasthan.smart.srse.identity.AuthenticatedUserService;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadata;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
 import org.springframework.stereotype.Service;
@@ -53,6 +56,8 @@ public class LakehouseRegistryService {
     private final OfficerRegistryScopeService officerScope;
     private final RegisteredTableScopeCatalog scopeCatalog;
     private final TableScopeRegistrationService tableScopeRegistrationService;
+    private final AuthenticatedUserService authenticatedUserService;
+    private final AuditService auditService;
 
     public LakehouseRegistryService(
             RegisteredTableRepository registrations,
@@ -60,13 +65,17 @@ public class LakehouseRegistryService {
             LakehouseBrowseService browse,
             OfficerRegistryScopeService officerScope,
             RegisteredTableScopeCatalog scopeCatalog,
-            TableScopeRegistrationService tableScopeRegistrationService) {
+            TableScopeRegistrationService tableScopeRegistrationService,
+            AuthenticatedUserService authenticatedUserService,
+            AuditService auditService) {
         this.registrations = registrations;
         this.columnMetadata = columnMetadata;
         this.browse = browse;
         this.officerScope = officerScope;
         this.scopeCatalog = scopeCatalog;
         this.tableScopeRegistrationService = tableScopeRegistrationService;
+        this.authenticatedUserService = authenticatedUserService;
+        this.auditService = auditService;
     }
 
     // ---- admin: registration ----
@@ -85,10 +94,22 @@ public class LakehouseRegistryService {
                 .orElse(null);
         if (existing != null) {
             existing.setLayer(LakehouseLayers.normalise(layer));
-            return registrations.save(existing);
+            RegisteredTable saved = registrations.save(existing);
+            auditService.recordRegistryEvent(
+                    AuditActionType.TABLE_REGISTERED,
+                    authenticatedUserService.requireCurrentUser(),
+                    saved.toQualifiedTable().qualifiedName(),
+                    "layer updated");
+            return saved;
         }
-        return registrations.save(
+        RegisteredTable saved = registrations.save(
                 new RegisteredTable(null, catalog, schema, table, LakehouseLayers.normalise(layer)));
+        auditService.recordRegistryEvent(
+                AuditActionType.TABLE_REGISTERED,
+                authenticatedUserService.requireCurrentUser(),
+                saved.toQualifiedTable().qualifiedName(),
+                "registered");
+        return saved;
     }
 
     /**
@@ -110,8 +131,16 @@ public class LakehouseRegistryService {
 
     @Transactional
     public void unregister(long id) {
+        RegisteredTable existing = registrations.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("No such registration: " + id));
+        String qualified = existing.toQualifiedTable().qualifiedName();
         tableScopeRegistrationService.deleteScopeDataForRegistration(id);
         registrations.deleteById(id);
+        auditService.recordRegistryEvent(
+                AuditActionType.TABLE_UNREGISTERED,
+                authenticatedUserService.requireCurrentUser(),
+                qualified,
+                "unregistered");
     }
 
     /**
@@ -174,6 +203,9 @@ public class LakehouseRegistryService {
     }
 
     // ---- officer-facing cascade: registered AND scope-visible (§7.2.2a) ----
+    //
+    // Do NOT audit metadata browsing here — every dropdown open would fire
+    // cascade calls and outnumber real query/export events by orders of magnitude (§7.3 A7).
 
     public List<String> listCatalogs() {
         return officerVisible(allOrdered()).stream()

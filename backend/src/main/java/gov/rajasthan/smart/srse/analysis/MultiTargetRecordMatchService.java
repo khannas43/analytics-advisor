@@ -294,7 +294,8 @@ public class MultiTargetRecordMatchService {
         return (int) Math.min(cap, Math.max(1, rem / 1000));
     }
 
-    private static RecordMatchRequest toSingleMatch(MultiTargetRecordMatchRequest req, TargetMatchSpec target) {
+    /** Used by analysis audit to plan each sub-match without executing (§7.3). */
+    public static RecordMatchRequest toSingleMatch(MultiTargetRecordMatchRequest req, TargetMatchSpec target) {
         return new RecordMatchRequest(
                 req.hubCriteria(),
                 target.joinCriteria(),
