@@ -5,3 +5,6 @@ databaseChangeLog:
   - include:
       file: changes/002-db2-legacy-column-names.yaml
       relativeToChangelogFile: true
+  - include:
+      file: changes/003-scope-and-users.yaml
+      relativeToChangelogFile: true

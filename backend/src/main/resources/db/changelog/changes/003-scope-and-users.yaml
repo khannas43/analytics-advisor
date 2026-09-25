@@ -1,0 +1,325 @@
+databaseChangeLog:
+  - changeSet:
+      id: 003-scope-dimension
+      author: analytics-advisor
+      changes:
+        - createTable:
+            tableName: scope_dimension
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_scope_dimension
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_scope_dimension_code
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: display_order
+                  type: INT
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 003-scope-level
+      author: analytics-advisor
+      changes:
+        - createTable:
+            tableName: scope_level
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_scope_level
+                    nullable: false
+              - column:
+                  name: dimension_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_scope_level_dimension
+                    references: scope_dimension(id)
+              - column:
+                  name: depth
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: scope_level
+            constraintName: uq_scope_level_dimension_depth
+            columnNames: dimension_id, depth
+
+  - changeSet:
+      id: 003-scope-node
+      author: analytics-advisor
+      changes:
+        - createTable:
+            tableName: scope_node
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_scope_node
+                    nullable: false
+              - column:
+                  name: dimension_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_scope_node_dimension
+                    references: scope_dimension(id)
+              - column:
+                  name: level_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_scope_node_level
+                    references: scope_level(id)
+              - column:
+                  name: parent_id
+                  type: BIGINT
+                  constraints:
+                    nullable: true
+                    foreignKeyName: fk_scope_node_parent
+                    references: scope_node(id)
+              - column:
+                  name: code
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: path
+                  type: VARCHAR(1024)
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: scope_node
+            constraintName: uq_scope_node_dimension_code
+            columnNames: dimension_id, code
+        - createIndex:
+            indexName: ix_scope_node_path
+            tableName: scope_node
+            columns:
+              - column:
+                  name: path
+
+  - changeSet:
+      id: 003-app-role
+      author: analytics-advisor
+      changes:
+        - createTable:
+            tableName: app_role
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_app_role
+                    nullable: false
+              - column:
+                  name: code
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_app_role_code
+              - column:
+                  name: name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 003-app-role-seed
+      author: analytics-advisor
+      changes:
+        - insert:
+            tableName: app_role
+            columns:
+              - column: { name: code, value: SUPER_ADMIN }
+              - column: { name: name, value: Super administrator }
+        - insert:
+            tableName: app_role
+            columns:
+              - column: { name: code, value: ADMIN }
+              - column: { name: name, value: Administrator }
+        - insert:
+            tableName: app_role
+            columns:
+              - column: { name: code, value: OFFICER }
+              - column: { name: name, value: Officer }
+
+  - changeSet:
+      id: 003-app-user
+      author: analytics-advisor
+      changes:
+        - createTable:
+            tableName: app_user
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_app_user
+                    nullable: false
+              - column:
+                  name: username
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_app_user_username
+              - column:
+                  name: password_hash
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: email
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: true
+              - column:
+                  name: mobile
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: true
+              - column:
+                  name: active
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: mfa_required
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: must_change_password
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: failed_login_count
+                  type: INT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: locked_until
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: true
+              - column:
+                  name: password_changed_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: true
+              - column:
+                  name: session_version
+                  type: BIGINT
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: last_login_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: true
+
+  - changeSet:
+      id: 003-user-role
+      author: analytics-advisor
+      changes:
+        - createTable:
+            tableName: user_role
+            columns:
+              - column:
+                  name: user_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_user_role_user
+                    references: app_user(id)
+              - column:
+                  name: role_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_user_role_role
+                    references: app_role(id)
+        - addPrimaryKey:
+            tableName: user_role
+            columnNames: user_id, role_id
+            constraintName: pk_user_role
+
+  - changeSet:
+      id: 003-user-scope-assignment
+      author: analytics-advisor
+      changes:
+        - createTable:
+            tableName: user_scope_assignment
+            columns:
+              - column:
+                  name: user_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_user_scope_user
+                    references: app_user(id)
+              - column:
+                  name: scope_node_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_user_scope_node
+                    references: scope_node(id)
+        - addPrimaryKey:
+            tableName: user_scope_assignment
+            columnNames: user_id, scope_node_id
+            constraintName: pk_user_scope_assignment

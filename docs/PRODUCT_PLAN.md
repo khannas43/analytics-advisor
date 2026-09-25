@@ -180,6 +180,24 @@ sessions and everything else an identity product would have given us.
 | 7.1.5 | SuperAdmin / Admin screens to create users, assign roles and scopes, deactivate | N | 6 |
 | 7.1.6 | Should an Admin be scoped themselves (a district admin managing only their own district)? | N | 3 |
 
+**Assignment semantics — settled, and the specification §7.2 builds to.**
+
+1. **AND across dimensions, OR within one.** Jaipur + Alwar (geography) and
+   Health (department) resolves to `(Jaipur OR Alwar) AND (Health)`.
+2. **An assignment covers its node and every descendant** (A3), matched by the
+   `scope_node.path` prefix rather than a recursive walk.
+3. **No assignment in a dimension means NO access in that dimension** — never
+   "all". Whole-dimension access is granted by assigning that dimension's root
+   node, so every dimension has exactly one.
+4. Levels are data; nothing hardcodes a level name or assumes a depth (A1).
+
+Rule 3 is the load-bearing one and it is a deliberate trade, confirmed
+2026-09-25. Treating an absent assignment as unrestricted would mean that the
+day a third dimension is added, every existing user silently gains the run of
+it. This way they lose access until an admin grants it: a new dimension locking
+people out is visible and fixable, one quietly widening everyone's reach is
+not. Same instinct as A4's deny-by-default.
+
 ### 7.1a Multi-factor authentication (decision A12)
 
 **Settled:** MFA is **required**, delivered as a **one-time password**, and
