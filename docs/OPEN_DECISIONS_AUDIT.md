@@ -4,7 +4,7 @@
 > keep everything. Recorded in `PRODUCT_PLAN.md` §7.3.
 >
 > **Still open: Q3 (tamper-evidence), Q4 (sessions), Q5 (archived log
-> readership).** Q3 is the one to raise with DoIT&C, and the one that must be
+> readership), Q6 (does a failed audit write fail the action).** Q3 is the one to raise with DoIT&C, and the one that must be
 > settled before 7.3.2 is built.
 
 `PRODUCT_PLAN.md` §7.3 is the last blocked section. Five questions, each with
@@ -114,6 +114,31 @@ is worth confirming rather than assuming.
 
 ---
 
+## Q6 — If the audit write fails, does the action fail? *(new, raised by AA-11)*
+
+An audit row is written on the same request as the action it records. If that
+write fails — the operational database is briefly unavailable, a constraint
+trips — there are two choices and no third.
+
+| Answer | What it commits you to |
+|---|---|
+| **Refuse the action** | The log is complete by construction: nothing happens that is not recorded. But the audit table becomes a hard dependency of the whole product, so an operational-database hiccup stops officers querying the lakehouse — which otherwise does not need that database at all. |
+| **Proceed and report the failure loudly** | The product keeps working when the log cannot be written. But there is then a window in which actions happened and were not recorded, which is exactly the window an investigation cares about. |
+
+**My recommendation: split it.** Refuse for the events whose whole point is
+accountability — admin actions, role and scope grants, password resets, exports.
+Proceed-and-alarm for query execution, where refusing converts a logging problem
+into an outage on the product's main path.
+
+That is not a fudge: an export that is not recorded is the case the log exists
+for, while a match that is not recorded is a gap in a record of intent. They are
+not equally bad and they need not be treated the same.
+
+**Worth answering before 7.3.1 lands**, because it decides whether the audit
+write sits inside the request transaction or beside it.
+
+---
+
 ## Q5 — Who may read an archived log? *(follows 7.1c)*
 
 Settled already: a deactivated user's audit entries are **archived, not
@@ -136,6 +161,7 @@ inverts A10.
 3. **Q3** — tamper-evidence. *(recommend: append-only now, hash chain only if mandated — **ask DoIT&C**)*
 4. **Q4** — sessions. *(recommend: concurrent allowed, 30 min idle, 8 h absolute, admin force-logout)*
 5. **Q5** — archived log readership. *(recommend: SuperAdmin only)*
+6. **Q6** — does a failed audit write fail the action. *(recommend: refuse for admin actions and exports, proceed-and-alarm for queries)*
 
 Q3 is the only one likely to need someone outside the team, and it is the most
 expensive to change later.
