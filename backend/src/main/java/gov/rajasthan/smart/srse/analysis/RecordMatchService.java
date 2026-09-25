@@ -573,11 +573,18 @@ public class RecordMatchService {
                 || !req.comparisonGroups().isEmpty()) {
             throw new IllegalArgumentException("singleSource mode cannot include a join");
         }
-        if (req.sourceDisplayColumns().isEmpty()) {
+        QualifiedTable table = tableForSingleSource(req);
+        if (req.grouped()) {
+            MatchGroupingSql.validateSingleSourceGrouped(
+                    req, table, registry,
+                    analysisProperties.maxGroupColumns(),
+                    analysisProperties.maxGroupColumns());
+        } else if (req.sourceDisplayColumns().isEmpty()) {
             throw new IllegalArgumentException("singleSource requires at least one display column");
         }
-        QualifiedTable table = sameTableFromDisplay(req.sourceDisplayColumns(), "sourceDisplayColumns");
-        validateDisplayColumns(req.sourceDisplayColumns(), table, "sourceDisplayColumns");
+        if (!req.sourceDisplayColumns().isEmpty()) {
+            validateDisplayColumns(req.sourceDisplayColumns(), table, "sourceDisplayColumns");
+        }
         ScopeFilteredFrom scope = applySideRules(
                 scopeFrom.planFrom(table), req.sourceRules(), table);
         // No join — fan-out guard does not apply; do not call enforceEstimatedRowCeiling with
@@ -588,9 +595,33 @@ public class RecordMatchService {
 
         Set<String> outerColumns = new LinkedHashSet<>();
         StringBuilder select = new StringBuilder();
-        appendDisplaySelects(select, outerColumns, "src", "source_", req.sourceDisplayColumns());
+        if (req.grouped()) {
+            MatchGroupingSql.appendGroupedSelect(select, outerColumns, req, table, table);
+        } else {
+            appendDisplaySelects(select, outerColumns, "src", "source_", req.sourceDisplayColumns());
+        }
         String sql = "SELECT " + select + " FROM " + from;
+        String groupBy = MatchGroupingSql.groupByClause(req, table, table);
+        if (!groupBy.isEmpty()) {
+            sql += " GROUP BY " + groupBy;
+        }
         return new MatchQuery(sql, List.copyOf(scopeParams), List.copyOf(outerColumns));
+    }
+
+    private QualifiedTable tableForSingleSource(RecordMatchRequest req) {
+        if (!req.sourceDisplayColumns().isEmpty()) {
+            return sameTableFromDisplay(req.sourceDisplayColumns(), "sourceDisplayColumns");
+        }
+        if (!req.groupByColumns().isEmpty()) {
+            return sameTableFromDisplay(req.groupByColumns(), "groupByColumns");
+        }
+        for (AggregateSpec agg : req.aggregates()) {
+            if (agg.column() != null) {
+                return agg.column().qualifiedTable();
+            }
+        }
+        throw new IllegalArgumentException(
+                "singleSource requires display columns, a group key, or an aggregate column");
     }
 
     private ScopeFilteredFrom applySideRules(
@@ -656,6 +687,13 @@ public class RecordMatchService {
             validateSideMembership(req.dedup().qualifiedTable(), sourceTable, targetTable, "dedup.table");
             registry.validateColumn(req.dedup().qualifiedColumn());
         }
+        if (req.grouped()) {
+            MatchGroupingSql.validateGroupedRequest(
+                    req,
+                    analysisProperties.maxGroupColumns(),
+                    analysisProperties.maxGroupColumns());
+            MatchGroupingSql.validateColumnsOnSides(req, sourceTable, targetTable, registry);
+        }
         validateOuterJoinRules(req, sides);
         validateComparisonGroups(req.comparisonGroups(), sides);
         return sides;
@@ -695,27 +733,36 @@ public class RecordMatchService {
                 scopeFrom.planFrom(sides.sourceTable()), req.sourceRules(), sides.sourceTable());
         ScopeFilteredFrom targetScope = applySideRules(
                 scopeFrom.planFrom(sides.targetTable()), req.targetRules(), sides.targetTable());
-        enforceEstimatedRowCeiling(sides, groups, sourceScope, targetScope);
+        enforceEstimatedRowCeiling(sides, groups, sourceScope, targetScope, req.grouped());
 
-        // Comparison placeholders live in SELECT, which precedes ON in the final SQL —
-        // bind comparison params before join params.
-        List<ComparisonPlan> comparisonPlans = planComparisons(req, sides, params);
-
-        appendCriteriaSelects(select, outerColumns, join, req);
-        appendMatchedOnSelects(select, outerColumns, "src", "source_", sourceUnnests);
-        appendMatchedOnSelects(select, outerColumns, "tgt", "target_", targetUnnests);
-        boolean outerComparison = !req.comparisonGroups().isEmpty() && joinType != JoinType.INNER;
-        JoinKeyRefs joinKeys = req.comparisonGroups().isEmpty() ? null : joinKeyRefs(join);
-        String noCounterpartWhen = outerComparison ? noCounterpartPredicate(joinType, joinKeys) : null;
-        if (outerComparison) {
-            appendMatchStatusSelect(select, outerColumns, joinType, joinKeys);
+        List<ComparisonPlan> comparisonPlans = List.of();
+        String dedupAlias = null;
+        if (req.grouped()) {
+            MatchGroupingSql.appendGroupedSelect(
+                    select, outerColumns, req, sides.sourceTable(), sides.targetTable());
+        } else {
+            // Comparison placeholders live in SELECT, which precedes ON in the final SQL —
+            // bind comparison params before join params.
+            comparisonPlans = planComparisons(req, sides, params);
+            appendCriteriaSelects(select, outerColumns, join, req);
+            appendMatchedOnSelects(select, outerColumns, "src", "source_", sourceUnnests);
+            appendMatchedOnSelects(select, outerColumns, "tgt", "target_", targetUnnests);
+            boolean outerComparison = !req.comparisonGroups().isEmpty() && joinType != JoinType.INNER;
+            JoinKeyRefs joinKeys = req.comparisonGroups().isEmpty() ? null : joinKeyRefs(join);
+            String noCounterpartWhen = outerComparison ? noCounterpartPredicate(joinType, joinKeys) : null;
+            if (outerComparison) {
+                appendMatchStatusSelect(select, outerColumns, joinType, joinKeys);
+            }
+            appendComparisonSelects(select, outerColumns, comparisonPlans, noCounterpartWhen);
+            dedupAlias = appendDedupSelect(select, outerColumns, req, join);
+            appendMatchScoreSelect(select, outerColumns, req, groups);
         }
-        appendComparisonSelects(select, outerColumns, comparisonPlans, noCounterpartWhen);
-
-        String dedupAlias = appendDedupSelect(select, outerColumns, req, join);
-        appendMatchScoreSelect(select, outerColumns, req, groups);
         appendJoinConditions(onClause, where, params, groups, joinType);
-        appendMismatchOnlyFilter(where, req, comparisonPlans, params, noCounterpartWhen);
+        if (!req.grouped()) {
+            appendMismatchOnlyFilter(where, req, comparisonPlans, params,
+                    !req.comparisonGroups().isEmpty() && joinType != JoinType.INNER
+                            ? noCounterpartPredicate(joinType, joinKeyRefs(join)) : null);
+        }
 
         if (where.length() == 0) {
             where.append("TRUE");
@@ -730,7 +777,15 @@ public class RecordMatchService {
         String baseSql = "SELECT " + select + " FROM " + sourceFrom + " " + joinType.joinKeyword() + " "
                 + targetFrom + " ON " + onClause + " WHERE " + where;
 
-        String finalSql = wrapWithDedup(baseSql, req, join, dedupAlias);
+        if (req.grouped()) {
+            String groupBy = MatchGroupingSql.groupByClause(req, sides.sourceTable(), sides.targetTable());
+            if (!groupBy.isEmpty()) {
+                baseSql += " GROUP BY " + groupBy;
+            }
+        }
+        String finalSql = req.grouped()
+                ? baseSql
+                : wrapWithDedup(baseSql, req, join, dedupAlias);
         List<Object> allParams = new ArrayList<>(scopeParams.size() + params.size());
         allParams.addAll(scopeParams);
         allParams.addAll(params);
@@ -1158,7 +1213,8 @@ public class RecordMatchService {
             Sides sides,
             List<GroupPlan> groups,
             ScopeFilteredFrom sourceScope,
-            ScopeFilteredFrom targetScope) {
+            ScopeFilteredFrom targetScope,
+            boolean groupedResult) {
         long ceiling = analysisProperties.maxEstimatedRows();
         if (ceiling <= 0 || groups.isEmpty()) {
             return;
@@ -1201,9 +1257,15 @@ public class RecordMatchService {
         }
         if (estimate > ceiling) {
             String scopeNote = scopeEstimateNote(sourceScope, targetScope);
+            String groupedNote = groupedResult
+                    ? "That estimate is rows processed before grouping; the grouped result itself may be much smaller. "
+                    : "";
             throw new IllegalArgumentException(
                     "Estimated match fan-out is about " + formatEstimate(estimate)
-                            + " rows (limit " + formatEstimate(ceiling) + "). "
+                            + " rows processed before the join"
+                            + (groupedResult ? " (before grouping)" : "")
+                            + " (limit " + formatEstimate(ceiling) + "). "
+                            + groupedNote
                             + scopeNote
                             + "Try a longer blocking prefix (SRSE_ANALYSIS_BLOCKING_PREFIX_LEN), "
                             + "a more selective join key, or fewer folded groups.");

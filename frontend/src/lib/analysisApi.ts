@@ -156,6 +156,8 @@ export type RecordMatchRequest = {
   sourceRules?: PredicateSpecWire | null;
   targetRules?: PredicateSpecWire | null;
   singleSource?: boolean;
+  groupByColumns?: DisplayColumn[];
+  aggregates?: AggregateSpecWire[];
 };
 
 export type HubSide = "SOURCE" | "TARGET";
@@ -169,10 +171,21 @@ export type TargetMatchSpec = TableRef & {
   comparisonGroups?: ComparisonGroup[];
 };
 
+export type AggregateFunction = "COUNT" | "SUM" | "AVG" | "MIN" | "MAX";
+
+export type AggregateSpecWire = {
+  function: AggregateFunction;
+  column?: DisplayColumn | null;
+  distinct?: boolean;
+  alias?: string | null;
+};
+
 export type AnalysisLimits = {
   maxTargetSets: number;
   multiMatchBudgetSeconds: number;
   maxGroupColumns: number;
+  maxGroupingColumns: number;
+  maxAggregates: number;
   maxAnyOfGroupsPerSide: number;
   maxProbedPairs: number;
   blockingPrefixLen: number;

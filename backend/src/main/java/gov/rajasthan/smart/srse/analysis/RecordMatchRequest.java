@@ -45,7 +45,9 @@ public record RecordMatchRequest(
         boolean mismatchOnly,
         Ast.PredicateSpec sourceRules,
         Ast.PredicateSpec targetRules,
-        boolean singleSource) {
+        boolean singleSource,
+        List<DisplayColumn> groupByColumns,
+        List<AggregateSpec> aggregates) {
 
     public RecordMatchRequest {
         sourceCriteria = sourceCriteria == null ? List.of() : sourceCriteria;
@@ -54,6 +56,13 @@ public record RecordMatchRequest(
         targetDisplayColumns = targetDisplayColumns == null ? List.of() : targetDisplayColumns;
         joinGroups = joinGroups == null ? List.of() : joinGroups;
         comparisonGroups = comparisonGroups == null ? List.of() : List.copyOf(comparisonGroups);
+        groupByColumns = groupByColumns == null ? List.of() : groupByColumns;
+        aggregates = aggregates == null ? List.of() : aggregates;
+    }
+
+    /** Grouped result when either grouping keys or aggregates are present (§5.5). */
+    public boolean grouped() {
+        return !groupByColumns.isEmpty() || !aggregates.isEmpty();
     }
 
     /**
@@ -67,7 +76,8 @@ public record RecordMatchRequest(
                               boolean highlightDuplicates,
                               DedupSpec dedup) {
         this(sourceCriteria, targetCriteria, sourceDisplayColumns, targetDisplayColumns,
-                List.of(), highlightDuplicates, dedup, null, List.of(), false, null, null, false);
+                List.of(), highlightDuplicates, dedup, null, List.of(), false, null, null, false,
+                List.of(), List.of());
     }
 
     /** Pre–per-target join types: multi-target sub-matches omitted {@code joinType} (INNER). */
@@ -79,7 +89,8 @@ public record RecordMatchRequest(
                               boolean highlightDuplicates,
                               DedupSpec dedup) {
         this(sourceCriteria, targetCriteria, sourceDisplayColumns, targetDisplayColumns,
-                joinGroups, highlightDuplicates, dedup, null, List.of(), false, null, null, false);
+                joinGroups, highlightDuplicates, dedup, null, List.of(), false, null, null, false,
+                List.of(), List.of());
     }
 
     public RecordMatchRequest(List<MatchCriterion> sourceCriteria,
@@ -91,7 +102,8 @@ public record RecordMatchRequest(
                               DedupSpec dedup,
                               JoinType joinType) {
         this(sourceCriteria, targetCriteria, sourceDisplayColumns, targetDisplayColumns,
-                joinGroups, highlightDuplicates, dedup, joinType, List.of(), false, null, null, false);
+                joinGroups, highlightDuplicates, dedup, joinType, List.of(), false, null, null, false,
+                List.of(), List.of());
     }
 
     /** Multi-target sub-match (comparisons + mismatch flag; no extract rules). */
@@ -107,6 +119,6 @@ public record RecordMatchRequest(
                               boolean mismatchOnly) {
         this(sourceCriteria, targetCriteria, sourceDisplayColumns, targetDisplayColumns,
                 joinGroups, highlightDuplicates, dedup, joinType, comparisonGroups, mismatchOnly,
-                null, null, false);
+                null, null, false, List.of(), List.of());
     }
 }

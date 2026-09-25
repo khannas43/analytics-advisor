@@ -16,7 +16,10 @@ import {
   listAnalysisLayers,
   listAnalysisSchemas,
   listAnalysisTables,
+  fetchAnalysisLimits,
   runRecordMatchStream,
+  type AggregateFunction,
+  type AggregateSpecWire,
   type DisplayColumn,
   type JoinType,
   type MatchCriterion,
@@ -110,6 +113,12 @@ export default function ExtractPage() {
   const [targetRuleColumn, setTargetRuleColumn] = useState("");
   const [targetRuleOp, setTargetRuleOp] = useState<RuleOperator>("GT");
   const [targetRuleValue, setTargetRuleValue] = useState("");
+  const [groupEnabled, setGroupEnabled] = useState(false);
+  const [groupByCol, setGroupByCol] = useState("");
+  const [aggregateFn, setAggregateFn] = useState<AggregateFunction>("COUNT");
+  const [aggregateCol, setAggregateCol] = useState("");
+  const [countDistinct, setCountDistinct] = useState(false);
+  const [maxAggregates, setMaxAggregates] = useState(4);
 
   const [sqlPreview, setSqlPreview] = useState<string | null>(null);
   const [sqlPreviewError, setSqlPreviewError] = useState<string | null>(null);
@@ -150,6 +159,12 @@ export default function ExtractPage() {
   }, [sourceRef, loadColumns]);
 
   useEffect(() => {
+    fetchAnalysisLimits()
+      .then((l) => setMaxAggregates(l.maxAggregates))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (mode === "join") {
       void loadColumns(targetRef, "target");
     }
@@ -167,20 +182,37 @@ export default function ExtractPage() {
     }
     const ref = sourceRef as TableRef;
     const displays: DisplayColumn[] = displayCols.map((column) => ({ ...ref, column }));
-    if (displays.length === 0) {
+    const sourceRules = buildRuleSpec(ref, ruleColumn, ruleOp, ruleValue);
+    const groupByColumns: DisplayColumn[] =
+      groupEnabled && groupByCol ? [{ ...ref, column: groupByCol }] : [];
+    const aggregates: AggregateSpecWire[] = [];
+    if (groupEnabled) {
+      if (aggregateFn === "COUNT" && !aggregateCol) {
+        aggregates.push({ function: "COUNT", distinct: countDistinct });
+      } else if (aggregateCol) {
+        aggregates.push({
+          function: aggregateFn,
+          column: { ...ref, column: aggregateCol },
+          distinct: aggregateFn === "COUNT" ? countDistinct : false,
+        });
+      }
+    }
+    const grouped = groupByColumns.length > 0 || aggregates.length > 0;
+    if (!grouped && displays.length === 0) {
       return null;
     }
-    const sourceRules = buildRuleSpec(ref, ruleColumn, ruleOp, ruleValue);
 
     if (mode === "single") {
       return {
         sourceCriteria: [],
         targetCriteria: [],
-        sourceDisplayColumns: displays,
+        sourceDisplayColumns: grouped ? [] : displays,
         highlightDuplicates: false,
         dedup: null,
         sourceRules: sourceRules ?? undefined,
         singleSource: true,
+        groupByColumns: grouped ? groupByColumns : undefined,
+        aggregates: grouped ? aggregates : undefined,
       };
     }
 
@@ -198,12 +230,14 @@ export default function ExtractPage() {
     const req: RecordMatchRequest = {
       sourceCriteria,
       targetCriteria,
-      sourceDisplayColumns: displays,
+      sourceDisplayColumns: grouped ? [] : displays,
       highlightDuplicates: false,
       dedup: null,
       sourceRules: sourceRules ?? undefined,
       targetRules: targetRules ?? undefined,
       singleSource: false,
+      groupByColumns: grouped ? groupByColumns : undefined,
+      aggregates: grouped ? aggregates : undefined,
     };
     if (joinType !== "INNER") {
       req.joinType = joinType;
@@ -376,6 +410,61 @@ export default function ExtractPage() {
       )}
 
       {isCascadeComplete(sourceRef) && (
+        <section className="srse-card" style={{ marginBottom: "1rem" }}>
+          <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Group and aggregate</h2>
+          <label style={{ display: "block", marginBottom: "0.75rem" }}>
+            <input type="checkbox" checked={groupEnabled} onChange={(e) => setGroupEnabled(e.target.checked)} />{" "}
+            Return totals by group (not row-level rows)
+          </label>
+          {groupEnabled && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+              <label>
+                Group by column
+                <select className="srse-select" style={{ width: "100%" }} value={groupByCol} onChange={(e) => setGroupByCol(e.target.value)}>
+                  <option value="">— none (single summary row) —</option>
+                  {sourceColumns.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Aggregate
+                <select className="srse-select" style={{ width: "100%" }} value={aggregateFn} onChange={(e) => setAggregateFn(e.target.value as AggregateFunction)}>
+                  <option value="COUNT">COUNT</option>
+                  <option value="SUM">SUM (numeric columns only)</option>
+                  <option value="AVG">AVG (numeric columns only)</option>
+                  <option value="MIN">MIN</option>
+                  <option value="MAX">MAX</option>
+                </select>
+              </label>
+              <label>
+                On column (leave blank for COUNT(*))
+                <select className="srse-select" style={{ width: "100%" }} value={aggregateCol} onChange={(e) => setAggregateCol(e.target.value)}>
+                  <option value="">— COUNT(*) —</option>
+                  {sourceColumns.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {aggregateFn === "COUNT" && aggregateCol && (
+                <label style={{ alignSelf: "end" }}>
+                  <input type="checkbox" checked={countDistinct} onChange={(e) => setCountDistinct(e.target.checked)} />{" "}
+                  COUNT(DISTINCT) — exact and costly at scale (never approximated)
+                </label>
+              )}
+            </div>
+          )}
+          <p className="srse-text-muted" style={{ fontSize: "0.82rem", marginBottom: 0 }}>
+            NULL group keys appear as &quot;(NULL)&quot; in results. Up to {maxAggregates} aggregates per request.
+          </p>
+        </section>
+      )}
+
+      {isCascadeComplete(sourceRef) && !groupEnabled && (
         <section className="srse-card" style={{ marginBottom: "1rem" }}>
           <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Output columns</h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem 1rem" }}>

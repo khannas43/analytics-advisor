@@ -476,4 +476,15 @@ class EmittedSqlParsesTest {
             assertParsesWithBindableParams(req);
         }
     }
+
+    @Test
+    void groupedSingleSourceParses() {
+        RecordMatchRequest req = new RecordMatchRequest(
+                List.of(), List.of(), List.of(), List.of(), List.of(), false, null, null, List.of(), false,
+                null, null, true,
+                List.of(new DisplayColumn(CATALOG, SCHEMA, "beneficiary", "district")),
+                List.of(new AggregateSpec(AggregateFunction.COUNT, null, false, null)));
+        assertParsesWithBindableParams(req);
+        assertTrue(service.planMatch(req).sql().contains(" GROUP BY "));
+    }
 }

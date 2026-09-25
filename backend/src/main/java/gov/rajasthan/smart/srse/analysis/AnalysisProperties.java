@@ -42,6 +42,8 @@ public record AnalysisProperties(
                 maxTargetSets,
                 multiMatchBudgetSeconds,
                 maxGroupColumns,
+                maxGroupColumns,
+                maxGroupColumns,
                 maxAnyOfGroupsPerSide,
                 maxProbedPairs,
                 blockingPrefixLen,
