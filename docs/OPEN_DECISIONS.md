@@ -1,9 +1,19 @@
-# Open decisions — questions to answer
+# Open decisions — ANSWERED 2026-09-25
 
-Seven decisions are blocking. This file states each as a question, says what
-each answer commits you to, and what it costs to decide later rather than now.
+> **All seven are answered.** The answers are in `docs/PRODUCT_PLAN.md` §0 and
+> `CLAUDE.md`; this file is kept for the reasoning behind each, which the
+> summary tables do not carry.
+>
+> **Answers:** Q1 not mandated → PostgreSQL default, schema stays portable ·
+> Q2 PrestoDB only · Q3 a display label · Q4 single tenant · Q5a build
+> in-house, no directory, no SSO yet · Q6 keep the limits · Q7 second axis
+> confirmed.
+>
+> **One follow-on is open: Q5b (MFA/OTP).** "No SSO" does not answer it —
+> federation and MFA are separate. Assumed no for now.
 
-Answers get recorded in `docs/PRODUCT_PLAN.md` and `CLAUDE.md`.
+This file states each as a question, says what each answer commits you to, and
+what it costs to decide later rather than now.
 
 **Order matters.** Q1, Q4, Q5 and Q7 block the largest piece of remaining work
 (§7 user management, scoping and audit — roughly a third of the build). Q3

@@ -55,24 +55,30 @@ them the hard way.**
 | 6 | **Registry allow-list** — officers reach only admin-registered tables | See below |
 | 7 | **Row-level data scoping is in scope** and shapes the schema | See "Data scoping", `PRODUCT_PLAN.md` §7 |
 
-## Open decisions — do not assume an answer
+## Product decisions — settled 2026-09-25
 
-These are recorded in `docs/PRODUCT_PLAN.md` §0. They are open because they
-change the shape of the work, and code that silently picks one is expensive to
-unpick.
+Recorded in `docs/PRODUCT_PLAN.md` §0, reasoning in `docs/OPEN_DECISIONS.md`.
 
-| # | Open question |
+| # | Decision |
 |---|---|
-| 0.1 | **Operational store: stay on DB2, or move to PostgreSQL?** DB2 was a Rajasthan constraint, not a product choice. |
-| 0.2 | **Query engine: PrestoDB only, or Trino too?** Different drivers and dialects. |
-| 0.3 | How "Source System" maps to physical storage. |
-| 0.4 | Single tenant or multi-tenant. |
-| 0.5 | Who the users are. |
-| 0.6 | Row limits. |
-| A16 | **Is "department" a second, orthogonal dimension alongside geography?** The scoping model assumes yes. |
+| 0.1 | **The operational store is not mandated.** No client requirement for DB2, so **PostgreSQL is the default and reference database** and **the schema must stay vendor-neutral** so DB2 remains a supported target. No vendor-specific column types, no JSONB operators, no dialect-specific DDL. |
+| 0.2 | **PrestoDB 0.297 only.** Revisit if a non-watsonx.data deployment appears. |
+| 0.3 | **"Source System" is a display label on registered tables**, exactly like `layer`. Not a catalog, not an entity owning a connection. One lakehouse connection reaching many catalogs. |
+| 0.4 | **Single tenant.** No owner/tenant column anywhere. Department separation is a scope dimension, not a tenant boundary. |
+| 0.5 | **Users are built in-house.** No directory, no SSO at this stage, few users. Local accounts with password management. **Keep the `AuthMode` seam** so SSO plugs in without touching `SecurityConfig`. |
+| 0.6 | **Keep the inherited row limits** — 10,000 rendered, 200,000 streamed, complete CSV beyond. |
+| 0.7 | **Scope dimensions are orthogonal.** Geography (District → Taluka → Village/City) and department are separate axes, each its own tree. AND across dimensions, OR within one. |
 
-Until 0.1 and 0.2 are settled, **keep the JDBC seams generic**: new code should
-go through the existing datasource configuration rather than naming a driver.
+**Still open: 0.5b — is MFA/OTP required?** Assumed no, seam left open. Confirm
+before §7.1.
+
+### What 0.1 requires of new code
+
+The operational schema must run on **PostgreSQL and DB2 both**. Today it does
+not: `application.yml` pins `org.hibernate.dialect.DB2Dialect` and builds the
+schema with `ddl-auto: update`, and `docs/migrations/*.sql` are hand-run files
+rather than a managed baseline. `PRODUCT_PLAN.md` 1.7 fixes this and **must land
+before §7 creates any table.**
 
 ## The two data planes (critical — never conflate)
 

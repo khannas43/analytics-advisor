@@ -9,19 +9,25 @@ logic, six rows per table). Treat it as a picture of the destination, not a spec
 
 ---
 
-## 0. Decisions needed before building
+## 0. Decisions — ANSWERED 2026-09-25
 
-These change the shape of the work. Nothing below them is safe to start until
-they are settled.
+Full framing and the reasoning behind each in `docs/OPEN_DECISIONS.md`.
 
-| # | Decision | Why it matters |
+| # | Decision | Answer |
 |---|---|---|
-| 0.1 | **Operational database: stay on DB2, or move to PostgreSQL?** | DB2 was a Rajasthan constraint, not a product choice. Everything in §2.1 depends on it. |
-| 0.2 | **Query engine: PrestoDB only, or Trino too?** | Different JDBC drivers and dialect differences. SRSE is deliberately PrestoDB 0.297. |
-| 0.3 | **How does "Source System" map to physical storage?** | See §3.1. The prototype's hierarchy is not the physical one. |
-| 0.4 | **Single tenant or multi-tenant?** | Decides whether every table below needs an owner/tenant column. Cheap now, expensive later. |
-| 0.5 | **Who are the users?** | Prototype has no login at all. Decides §7 entirely. |
-| 0.6 | **Row limits.** Prototype shows 6 rows; SRSE caps display at 10,000 and streams to CSV beyond. | Decides §6. |
+| 0.1 | Operational database | **Not mandated — the product must run on either.** No client requirement for DB2, so PostgreSQL becomes the default and reference database, and the schema stays vendor-neutral so DB2 remains a supported target. See 1.7. |
+| 0.2 | Query engine | **PrestoDB 0.297 only.** Revisit if a non-watsonx.data deployment appears; the SQL emitter is centralised, so a dialect seam costs the same later as now. |
+| 0.3 | "Source System" | **A display label on registered tables** — exactly how `layer` already works. Not a catalog, and not an entity owning its own connection. One lakehouse connection reaching many catalogs. |
+| 0.4 | Tenancy | **Single tenant.** Separation between departments is a scope dimension (0.7), not a tenant boundary. No owner column on any table. |
+| 0.5 | Users | **Built in-house from scratch.** No existing directory, no SSO at this stage, access limited to a small number of users. Local accounts with password management. Keep the existing `AuthMode` seam so SSO can be added without touching `SecurityConfig`. |
+| 0.6 | Row limits | **Keep the inherited limits** — 10,000 rendered, 200,000 streamed, complete CSV beyond. Measured at crore scale rather than guessed. |
+| 0.7 | Scope dimensions (was A16) | **Department is a SECOND AXIS, orthogonal to geography.** A deployment defines N dimensions, each its own tree; a user holds assignments in each; the predicate is AND across dimensions, OR within one. |
+
+### Still open
+
+| # | Question | Impact |
+|---|---|---|
+| 0.5b | **Is MFA or OTP required?** Aadhaar OTP was a requirement on the predecessor product. Not covered by the "no SSO" answer — MFA is separate from federation. | Adds a delivery channel and a verification flow to §7.1. Assumed **no** for now, with the seam left open. Confirm before 7.1 is built. |
 
 ---
 
@@ -35,6 +41,7 @@ they are settled.
 | 1.4 | Rewrite `CLAUDE.md` for this product | N | 1 |
 | 1.5 | Strip SRSE screens from the frontend (Rule Engine page, scheme panels, field-mapping editor) | N | 2 |
 | 1.6 | Rename package root once both repos stop trading fixes | N | 1 |
+| 1.7 | **Make the operational store portable** (decision 0.1): drop the hardcoded `DB2Dialect`, add the PostgreSQL driver, replace `ddl-auto` with a real migration tool, fold `docs/migrations/*.sql` into a baseline. **Must land before §7 creates tables.** | N | 3 |
 
 ---
 
@@ -314,7 +321,7 @@ data if left unanswered.**
 
 | # | Question | Why it matters |
 |---|---|---|
-| A11 | Fully standalone local accounts, or must it integrate with an existing directory (LDAP / AD / departmental SSO) later? | "No Keycloak" rules out one product, not the integration requirement. Worth knowing now. |
+| A11 | **ANSWERED: fully standalone local accounts.** No existing directory, no SSO at this stage, access limited to a small number of users. | Build password management, reset and lockout in-house. Keep the `AuthMode` seam so SSO can be added later without touching `SecurityConfig`. |
 | A12 | Is MFA or OTP required? Aadhaar OTP was a requirement on the predecessor product. | Adds a delivery channel and a whole flow. |
 | A13 | Who creates the first SuperAdmin, and how? | Bootstrapping is a real step, not a detail. |
 | A14 | Concurrent sessions, idle timeout, forced logout. | Usually mandated in government deployments. |
