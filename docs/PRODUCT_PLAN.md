@@ -178,7 +178,7 @@ sessions and everything else an identity product would have given us.
 | 7.1.3 | Local authentication: password hashing, login, logout, session expiry | N | 4 |
 | 7.1.4 | Password lifecycle: admin-set initial, self-service reset, expiry, failed-attempt lockout | N | 5 |
 | 7.1.5 | SuperAdmin / Admin screens to create users, assign roles and scopes, deactivate | N | 6 |
-| 7.1.6 | Should an Admin be scoped themselves (a district admin managing only their own district)? | N | 3 |
+| 7.1.6 | **ANSWERED: yes — an Admin is scoped, a SuperAdmin is not.** An Admin manages only users within their own subtree and may grant only scopes they themselves hold. See AA-07 Part 0. | N | 3 |
 
 **Assignment semantics — settled, and the specification §7.2 builds to.**
 
