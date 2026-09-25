@@ -7,9 +7,11 @@ import gov.rajasthan.smart.srse.compiler.FuzzyMatchSql;
 import gov.rajasthan.smart.srse.compiler.SqlTypeFamily;
 import gov.rajasthan.smart.srse.compiler.TypeCoercion;
 import gov.rajasthan.smart.srse.execution.GuardrailProperties;
+import gov.rajasthan.smart.srse.lakehouse.AnalysisScopeFromService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
 import gov.rajasthan.smart.srse.lakehouse.QualifiedTable;
+import gov.rajasthan.smart.srse.lakehouse.ScopeFilteredFrom;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadata;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -108,19 +110,22 @@ public class RecordMatchService {
     private final AnalysisColumnMetadataRepository columnMetadata;
     private final AnalysisProperties analysisProperties;
     private final ObjectMapper objectMapper;
+    private final AnalysisScopeFromService scopeFrom;
 
     public RecordMatchService(@Qualifier("prestoJdbcTemplate") JdbcTemplate jdbc,
                               LakehouseRegistryService registry,
                               GuardrailProperties guardrails,
                               AnalysisColumnMetadataRepository columnMetadata,
                               AnalysisProperties analysisProperties,
-                              ObjectMapper objectMapper) {
+                              ObjectMapper objectMapper,
+                              AnalysisScopeFromService scopeFrom) {
         this.jdbc = jdbc;
         this.registry = registry;
         this.guardrails = guardrails;
         this.columnMetadata = columnMetadata;
         this.analysisProperties = analysisProperties;
         this.objectMapper = objectMapper;
+        this.scopeFrom = scopeFrom;
     }
 
     /**
@@ -596,7 +601,9 @@ public class RecordMatchService {
         List<UnnestSide> targetUnnests = new ArrayList<>();
         List<GroupPlan> groups = planGroups(join, sides, sourceUnnests, targetUnnests,
                 joinType.preservesSourceSide(), joinType.preservesTargetSide());
-        enforceEstimatedRowCeiling(sides, groups);
+        ScopeFilteredFrom sourceScope = scopeFrom.planFrom(sides.sourceTable());
+        ScopeFilteredFrom targetScope = scopeFrom.planFrom(sides.targetTable());
+        enforceEstimatedRowCeiling(sides, groups, sourceScope, targetScope);
 
         // Comparison placeholders live in SELECT, which precedes ON in the final SQL —
         // bind comparison params before join params.
@@ -625,23 +632,31 @@ public class RecordMatchService {
         // Fully-qualified catalog.schema.table on both sides — the two sides
         // can live in different catalogs entirely (a Silver-vs-Gold
         // reconciliation), which Presto joins natively.
-        String sourceFrom = fromSide(sides.sourceTable().qualifiedName(), "src", sourceUnnests);
-        String targetFrom = fromSide(sides.targetTable().qualifiedName(), "tgt", targetUnnests);
+        List<Object> scopeParams = new ArrayList<>();
+        String sourceFrom = fromSide(sourceScope, "src", sourceUnnests, scopeParams);
+        String targetFrom = fromSide(targetScope, "tgt", targetUnnests, scopeParams);
         String baseSql = "SELECT " + select + " FROM " + sourceFrom + " " + joinType.joinKeyword() + " "
                 + targetFrom + " ON " + onClause + " WHERE " + where;
 
         String finalSql = wrapWithDedup(baseSql, req, join, dedupAlias);
-        return new MatchQuery(finalSql, params, List.copyOf(outerColumns));
+        List<Object> allParams = new ArrayList<>(scopeParams.size() + params.size());
+        allParams.addAll(scopeParams);
+        allParams.addAll(params);
+        return new MatchQuery(finalSql, allParams, List.copyOf(outerColumns));
     }
 
     /**
-     * One side's FROM fragment. Without ANY_OF groups it is the bare qualified
-     * table, character for character what it always was; with them the table is
-     * wrapped in a subquery that pivots each ANY_OF group's columns into rows.
+     * One side's FROM fragment (§7.2.3 Part 0). Scope filter is an inner derived
+     * table; ANY_OF UNNEST wraps outside it. Unfiltered SQL stays byte-identical.
      */
-    private static String fromSide(String qualifiedTable, String alias, List<UnnestSide> unnests) {
+    private String fromSide(ScopeFilteredFrom scope, String alias, List<UnnestSide> unnests,
+                            List<Object> scopeParamsOut) {
+        if (scope.appliesFilter()) {
+            scopeParamsOut.addAll(scope.bindValues());
+        }
+        String innerTable = scope.innerTableExpression();
         if (unnests.isEmpty()) {
-            return qualifiedTable + " " + alias;
+            return scope.fromFragment(alias);
         }
         StringBuilder projected = new StringBuilder("t.*");
         StringBuilder clauses = new StringBuilder();
@@ -649,7 +664,7 @@ public class RecordMatchService {
             projected.append(", ").append(u.keyAlias()).append(", ").append(u.matchedAlias());
             clauses.append(" ").append(u.clause());
         }
-        return "(SELECT " + projected + " FROM " + qualifiedTable + " t" + clauses + ") " + alias;
+        return "(SELECT " + projected + " FROM " + innerTable + " t" + clauses + ") " + alias;
     }
 
     private void appendCriteriaSelects(StringBuilder select, Set<String> outerColumns,
@@ -1047,17 +1062,25 @@ public class RecordMatchService {
      * Distincts use the blocking-key expression on fuzzy groups. Refuses when above
      * {@link AnalysisProperties#maxEstimatedRows()}.
      */
-    private void enforceEstimatedRowCeiling(Sides sides, List<GroupPlan> groups) {
+    private void enforceEstimatedRowCeiling(
+            Sides sides,
+            List<GroupPlan> groups,
+            ScopeFilteredFrom sourceScope,
+            ScopeFilteredFrom targetScope) {
         long ceiling = analysisProperties.maxEstimatedRows();
         if (ceiling <= 0 || groups.isEmpty()) {
             return;
         }
-        TableStats sourceStats = readCatalogStats(sides.sourceTable());
-        TableStats targetStats = readCatalogStats(sides.targetTable());
-        long sourceRows = sourceStats.rowCount() != null
-                ? sourceStats.rowCount() : queryRowCount(sides.sourceTable());
-        long targetRows = targetStats.rowCount() != null
-                ? targetStats.rowCount() : queryRowCount(sides.targetTable());
+        TableStats sourceStats = sourceScope.appliesFilter() ? TableStats.EMPTY : readCatalogStats(sides.sourceTable());
+        TableStats targetStats = targetScope.appliesFilter() ? TableStats.EMPTY : readCatalogStats(sides.targetTable());
+        long sourceRows = sourceScope.appliesFilter()
+                ? queryScopedRowCount(sourceScope)
+                : (sourceStats.rowCount() != null
+                        ? sourceStats.rowCount() : queryRowCount(sides.sourceTable()));
+        long targetRows = targetScope.appliesFilter()
+                ? queryScopedRowCount(targetScope)
+                : (targetStats.rowCount() != null
+                        ? targetStats.rowCount() : queryRowCount(sides.targetTable()));
         if (sourceRows == 0 || targetRows == 0) {
             return;
         }
@@ -1068,9 +1091,9 @@ public class RecordMatchService {
         long denominator = 1;
         for (GroupPlan group : groups) {
             long sourceDistinct = sideDistinctEstimate(
-                    sides.sourceTable(), group.group().source(), group.fuzzy(), sourceStats);
+                    sides.sourceTable(), sourceScope, group.group().source(), group.fuzzy(), sourceStats);
             long targetDistinct = sideDistinctEstimate(
-                    sides.targetTable(), group.group().target(), group.fuzzy(), targetStats);
+                    sides.targetTable(), targetScope, group.group().target(), group.fuzzy(), targetStats);
             long groupMax = Math.max(sourceDistinct, targetDistinct);
             if (groupMax <= 0) {
                 return;
@@ -1085,12 +1108,21 @@ public class RecordMatchService {
             estimate = ceiling + 1;
         }
         if (estimate > ceiling) {
+            String scopeNote = scopeEstimateNote(sourceScope, targetScope);
             throw new IllegalArgumentException(
                     "Estimated match fan-out is about " + formatEstimate(estimate)
                             + " rows (limit " + formatEstimate(ceiling) + "). "
+                            + scopeNote
                             + "Try a longer blocking prefix (SRSE_ANALYSIS_BLOCKING_PREFIX_LEN), "
                             + "a more selective join key, or fewer folded groups.");
         }
+    }
+
+    private static String scopeEstimateNote(ScopeFilteredFrom sourceScope, ScopeFilteredFrom targetScope) {
+        if (!sourceScope.appliesFilter() && !targetScope.appliesFilter()) {
+            return "";
+        }
+        return "Estimate uses officer scope row counts (catalog statistics do not reflect scope filters). ";
     }
 
     /**
@@ -1144,31 +1176,62 @@ public class RecordMatchService {
         return count == null ? 0 : Math.max(0, count);
     }
 
-    private long sideDistinctEstimate(QualifiedTable table, List<MatchCriterion> columns, boolean fuzzy,
-                                      TableStats stats) {
+    private long queryScopedRowCount(ScopeFilteredFrom scope) {
+        if (scope.isEmptyResult()) {
+            return 0;
+        }
+        String sql = "SELECT count(*) FROM (SELECT * FROM " + scope.qualifiedName() + " t WHERE "
+                + scope.whereSql() + ")";
+        Long count = jdbc.queryForObject(sql, scope.bindValues().toArray(), Long.class);
+        return count == null ? 0 : Math.max(0, count);
+    }
+
+    private long sideDistinctEstimate(
+            QualifiedTable table,
+            ScopeFilteredFrom scope,
+            List<MatchCriterion> columns,
+            boolean fuzzy,
+            TableStats stats) {
         if (columns.isEmpty()) {
             return 1;
         }
         long product = 1;
         long ceiling = analysisProperties.maxEstimatedRows();
+        String fromExpr = scope.appliesFilter() ? scopedFromSubquery(scope) : table.qualifiedName();
+        // Qualify columns by the derived table's ALIAS when scoped. Using the
+        // FROM expression itself yields "(SELECT ... WHERE col IN (?)).column",
+        // which embeds the subquery a second time — so the statement carries two
+        // placeholders while only one value is bound, and Presto rejects the
+        // whole query. Every scoped match failed this way before it was caught.
+        String columnQualifier = scope.appliesFilter() ? SCOPED_FROM_ALIAS : table.qualifiedName();
         for (MatchCriterion c : columns) {
             // A fuzzy group joins on the blocking-key EXPRESSION, and no catalog
             // statistic describes substr(lower(col), 1, n) — that one is always
             // computed. Exact groups join on the bare column, which stats cover.
-            Long fromStats = fuzzy ? null : stats.distinctFor(c.column());
+            Long fromStats = (fuzzy || scope.appliesFilter()) ? null : stats.distinctFor(c.column());
+            String columnRef = columnQualifier + "." + c.column();
             long distinct = fromStats != null
                     ? fromStats
-                    : queryApproxDistinct(table, fuzzy
-                            ? blockingKeyExpr(table.qualifiedName() + "." + c.column())
-                            : table.qualifiedName() + "." + c.column());
+                    : queryApproxDistinct(fromExpr, scope, fuzzy ? blockingKeyExpr(columnRef) : columnRef);
             product = multiplyCap(product, distinct, ceiling);
         }
         return product;
     }
 
-    private long queryApproxDistinct(QualifiedTable table, String valueExpression) {
-        String sql = "SELECT CAST(approx_distinct(" + valueExpression + ") AS BIGINT) FROM "
-                + table.qualifiedName();
+    /** Alias for the scope-filtered derived table, so its columns can be referenced. */
+    private static final String SCOPED_FROM_ALIAS = "scoped_src";
+
+    private static String scopedFromSubquery(ScopeFilteredFrom scope) {
+        return "(SELECT * FROM " + scope.qualifiedName() + " t WHERE " + scope.whereSql() + ") "
+                + SCOPED_FROM_ALIAS;
+    }
+
+    private long queryApproxDistinct(String fromExpression, ScopeFilteredFrom scope, String valueExpression) {
+        String sql = "SELECT CAST(approx_distinct(" + valueExpression + ") AS BIGINT) FROM " + fromExpression;
+        if (scope.appliesFilter()) {
+            Long count = jdbc.queryForObject(sql, scope.bindValues().toArray(), Long.class);
+            return count == null ? 0 : Math.max(0, count);
+        }
         Long count = jdbc.queryForObject(sql, Long.class);
         return count == null ? 0 : Math.max(0, count);
     }

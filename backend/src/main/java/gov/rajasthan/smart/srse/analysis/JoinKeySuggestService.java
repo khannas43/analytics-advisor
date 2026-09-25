@@ -4,15 +4,18 @@ import gov.rajasthan.smart.srse.compiler.CompareAs;
 import gov.rajasthan.smart.srse.compiler.SqlTypeFamily;
 import gov.rajasthan.smart.srse.compiler.TypeCoercion;
 import gov.rajasthan.smart.srse.execution.GuardrailProperties;
+import gov.rajasthan.smart.srse.lakehouse.AnalysisScopeFromService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
 import gov.rajasthan.smart.srse.lakehouse.QualifiedTable;
+import gov.rajasthan.smart.srse.lakehouse.ScopeFilteredFrom;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadata;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Service;
 
 import java.sql.ResultSet;
@@ -66,17 +69,20 @@ public class JoinKeySuggestService {
     private final AnalysisProperties analysisProperties;
     private final GuardrailProperties guardrails;
     private final JdbcTemplate jdbc;
+    private final AnalysisScopeFromService scopeFrom;
 
     public JoinKeySuggestService(LakehouseRegistryService registry,
                                  AnalysisColumnMetadataRepository columnMetadata,
                                  AnalysisProperties analysisProperties,
                                  GuardrailProperties guardrails,
-                                 @Qualifier("prestoJdbcTemplate") JdbcTemplate jdbc) {
+                                 @Qualifier("prestoJdbcTemplate") JdbcTemplate jdbc,
+                                 AnalysisScopeFromService scopeFrom) {
         this.registry = registry;
         this.columnMetadata = columnMetadata;
         this.analysisProperties = analysisProperties;
         this.guardrails = guardrails;
         this.jdbc = jdbc;
+        this.scopeFrom = scopeFrom;
     }
 
     public List<JoinKeySuggestion> suggest(SuggestJoinKeysRequest req) {
@@ -340,14 +346,18 @@ public class JoinKeySuggestService {
         if (columnNames.isEmpty()) {
             return Map.of();
         }
-        String sql = buildSourceDistinctnessSql(source, columnNames);
+        ScopeFilteredFrom sourceScope = scopeFrom.planFrom(source);
+        String sql = buildSourceDistinctnessSql(sourceScope, columnNames);
         jdbc.setQueryTimeout(analysisProperties.joinKeyDistinctnessTimeoutSeconds());
-        List<Map<String, Double>> rows = jdbc.query(sql, (rs, rowNum) -> readDistinctnessRow(rs, columnNames));
+        RowMapper<Map<String, Double>> mapper = (rs, rowNum) -> readDistinctnessRow(rs, columnNames);
+        List<Map<String, Double>> rows = sourceScope.appliesFilter()
+                ? jdbc.query(sql, sourceScope.bindValues().toArray(), mapper)
+                : jdbc.query(sql, mapper);
         return rows.isEmpty() ? Map.of() : rows.get(0);
     }
 
     /** Full source-table scan — one aggregate row, named columns only. */
-    static String buildSourceDistinctnessSql(QualifiedTable source, List<String> columnNames) {
+    static String buildSourceDistinctnessSql(ScopeFilteredFrom sourceScope, List<String> columnNames) {
         StringBuilder exprs = new StringBuilder();
         for (String name : columnNames) {
             if (!exprs.isEmpty()) {
@@ -357,7 +367,10 @@ public class JoinKeySuggestService {
                     .append(") AS DOUBLE) / NULLIF(CAST(count(*) AS DOUBLE), 0)) AS d_")
                     .append(name.replace('.', '_'));
         }
-        return "SELECT " + exprs + " FROM " + source.qualifiedName();
+        String from = sourceScope.appliesFilter()
+                ? "(SELECT * FROM " + sourceScope.qualifiedName() + " t WHERE " + sourceScope.whereSql() + ")"
+                : sourceScope.qualifiedName();
+        return "SELECT " + exprs + " FROM " + from;
     }
 
     private static Map<String, Double> readDistinctnessRow(ResultSet rs, List<String> columnNames) throws SQLException {
@@ -395,9 +408,20 @@ public class JoinKeySuggestService {
                 "t.v", pair.targetFamily(),
                 mode);
 
+        ScopeFilteredFrom sourceScope = scopeFrom.planFrom(source);
+        ScopeFilteredFrom targetScope = scopeFrom.planFrom(target);
         String sql = buildProbeOverlapSql(
-                source, target, pair.source(), pair.target(), aligned);
-        Double ratio = jdbc.queryForObject(sql, Double.class);
+                sourceScope, targetScope, pair.source(), pair.target(), aligned);
+        List<Object> params = new ArrayList<>();
+        if (sourceScope.appliesFilter()) {
+            params.addAll(sourceScope.bindValues());
+        }
+        if (targetScope.appliesFilter()) {
+            params.addAll(targetScope.bindValues());
+        }
+        Double ratio = params.isEmpty()
+                ? jdbc.queryForObject(sql, Double.class)
+                : jdbc.queryForObject(sql, params.toArray(), Double.class);
         if (ratio == null || ratio.isNaN()) {
             return null;
         }
@@ -410,11 +434,13 @@ public class JoinKeySuggestService {
      * distinct sampled source values. Target is not sampled.
      */
     static String buildProbeOverlapSql(
-            QualifiedTable source,
-            QualifiedTable target,
+            ScopeFilteredFrom sourceScope,
+            ScopeFilteredFrom targetScope,
             RegisteredColumn sourceCol,
             RegisteredColumn targetCol,
             TypeCoercion.Aligned aligned) {
+        String sourceFrom = scopedSampleFrom(sourceScope);
+        String targetFrom = scopedFullFrom(targetScope);
         return """
                 SELECT CAST(approx_distinct(CASE WHEN t.v IS NOT NULL THEN s.v END) AS DOUBLE)
                      / NULLIF(CAST(approx_distinct(s.v) AS DOUBLE), 0)
@@ -425,9 +451,23 @@ public class JoinKeySuggestService {
                   SELECT %s AS v FROM %s WHERE %s IS NOT NULL
                 ) t ON %s = %s
                 """.formatted(
-                sourceCol.name(), source.qualifiedName(), PROBE_SAMPLE_PERCENT, sourceCol.name(),
-                targetCol.name(), target.qualifiedName(), targetCol.name(),
+                sourceCol.name(), sourceFrom, PROBE_SAMPLE_PERCENT, sourceCol.name(),
+                targetCol.name(), targetFrom, targetCol.name(),
                 aligned.left(), aligned.right());
+    }
+
+    private static String scopedSampleFrom(ScopeFilteredFrom scope) {
+        if (!scope.appliesFilter()) {
+            return scope.qualifiedName();
+        }
+        return "(SELECT * FROM " + scope.qualifiedName() + " t WHERE " + scope.whereSql() + ")";
+    }
+
+    private static String scopedFullFrom(ScopeFilteredFrom scope) {
+        if (!scope.appliesFilter()) {
+            return scope.qualifiedName();
+        }
+        return "(SELECT * FROM " + scope.qualifiedName() + " t WHERE " + scope.whereSql() + ")";
     }
 
     private CompareAs compareAs(QualifiedTable table, String column) {

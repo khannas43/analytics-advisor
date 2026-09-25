@@ -1,7 +1,10 @@
 package gov.rajasthan.smart.srse.analysis;
 
 import gov.rajasthan.smart.srse.execution.GuardrailProperties;
+import gov.rajasthan.smart.srse.lakehouse.AnalysisScopeFromService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
+import gov.rajasthan.smart.srse.lakehouse.QualifiedTable;
+import gov.rajasthan.smart.srse.lakehouse.ScopeFilteredFrom;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadata;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
@@ -42,17 +45,24 @@ class JoinKeySuggestServiceTest {
     private AnalysisColumnMetadataRepository columnMetadata;
     @Mock
     private JdbcTemplate jdbc;
+    @Mock
+    private AnalysisScopeFromService scopeFrom;
 
     private JoinKeySuggestService service;
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.lenient().when(scopeFrom.planFrom(any())).thenAnswer(inv -> {
+            QualifiedTable table = inv.getArgument(0);
+            return ScopeFilteredFrom.unfiltered(table.qualifiedName());
+        });
         service = new JoinKeySuggestService(
                 registry,
                 columnMetadata,
                 new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10),
                 new GuardrailProperties(1000, 30, 50),
-                jdbc);
+                jdbc,
+                scopeFrom);
     }
 
     @Test

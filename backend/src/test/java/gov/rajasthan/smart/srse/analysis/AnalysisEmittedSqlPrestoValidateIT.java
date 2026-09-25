@@ -2,8 +2,11 @@ package gov.rajasthan.smart.srse.analysis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import gov.rajasthan.smart.srse.execution.GuardrailProperties;
+import gov.rajasthan.smart.srse.lakehouse.AnalysisScopeFromService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
+import gov.rajasthan.smart.srse.lakehouse.QualifiedTable;
+import gov.rajasthan.smart.srse.lakehouse.ScopeFilteredFrom;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -87,9 +90,14 @@ class AnalysisEmittedSqlPrestoValidateIT {
             return described;
         });
 
+        AnalysisScopeFromService scopeFrom = mock(AnalysisScopeFromService.class);
+        lenient().when(scopeFrom.planFrom(any())).thenAnswer(inv -> {
+            QualifiedTable table = inv.getArgument(0);
+            return ScopeFilteredFrom.unfiltered(table.qualifiedName());
+        });
         service = new RecordMatchService(
                 presto, registry, new GuardrailProperties(1000, 120, 50), columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10), new ObjectMapper());
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10), new ObjectMapper(), scopeFrom);
     }
 
     /** Live {@code data_type} strings as Presto reports them — drives coercion in {@link RecordMatchService}. */

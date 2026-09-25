@@ -16,7 +16,11 @@ public final class TableScopePolicy {
     private TableScopePolicy() {
     }
 
-    public record AssignmentNode(int depth) {
+    public record AssignmentNode(int depth, String path, String code) {
+        /** Depth-only for visibility/binding tests that do not resolve SQL codes. */
+        public AssignmentNode(int depth) {
+            this(depth, "/", "");
+        }
     }
 
     public record LevelBinding(long levelId, long dimensionId, int levelDepth, String columnName) {

@@ -5,7 +5,9 @@ import gov.rajasthan.smart.srse.compiler.SqlTypeFamily;
 import gov.rajasthan.smart.srse.compiler.TypeCoercion;
 import gov.rajasthan.smart.srse.execution.GuardrailProperties;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
+import gov.rajasthan.smart.srse.lakehouse.AnalysisScopeFromService;
 import gov.rajasthan.smart.srse.lakehouse.QualifiedTable;
+import gov.rajasthan.smart.srse.lakehouse.ScopeFilteredFrom;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -42,17 +44,24 @@ class JoinKeySuggestProbeTest {
     private gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository columnMetadata;
     @Mock
     private JdbcTemplate jdbc;
+    @Mock
+    private AnalysisScopeFromService scopeFrom;
 
     private JoinKeySuggestService service;
 
     @BeforeEach
     void setUp() {
+        org.mockito.Mockito.lenient().when(scopeFrom.planFrom(any())).thenAnswer(inv -> {
+            QualifiedTable table = inv.getArgument(0);
+            return ScopeFilteredFrom.unfiltered(table.qualifiedName());
+        });
         service = new JoinKeySuggestService(
                 registry,
                 columnMetadata,
                 new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10),
                 new GuardrailProperties(1000, 30, 50),
-                jdbc);
+                jdbc,
+                scopeFrom);
     }
 
     @Test
@@ -64,7 +73,10 @@ class JoinKeySuggestProbeTest {
         TypeCoercion.Aligned aligned = TypeCoercion.align(
                 "s.v", SqlTypeFamily.NUMBER, "t.v", SqlTypeFamily.NUMBER, CompareAs.AUTO);
 
-        String sql = JoinKeySuggestService.buildProbeOverlapSql(source, target, sourceCol, targetCol, aligned);
+        ScopeFilteredFrom sourceScope = ScopeFilteredFrom.unfiltered(source.qualifiedName());
+        ScopeFilteredFrom targetScope = ScopeFilteredFrom.unfiltered(target.qualifiedName());
+        String sql = JoinKeySuggestService.buildProbeOverlapSql(
+                sourceScope, targetScope, sourceCol, targetCol, aligned);
 
         assertEquals(1, sql.split("TABLESAMPLE BERNOULLI", -1).length - 1,
                 "Exactly one TABLESAMPLE clause (source side only)");
@@ -89,6 +101,9 @@ class JoinKeySuggestProbeTest {
                 "id", 1.03)));
 
         when(jdbc.queryForObject(anyString(), eq(Double.class))).thenReturn(0.23);
+        org.mockito.Mockito.lenient()
+                .when(jdbc.queryForObject(anyString(), any(Object[].class), eq(Double.class)))
+                .thenReturn(0.23);
 
         List<JoinKeySuggestion> suggestions = service.suggest(new SuggestJoinKeysRequest(
                 CATALOG, SCHEMA, SRC, TGT_CATALOG, TGT_SCHEMA, TGT, true));
@@ -128,7 +143,8 @@ class JoinKeySuggestProbeTest {
     @Test
     void distinctnessSqlScansFullSourceTableNotSampled() {
         QualifiedTable source = new QualifiedTable(CATALOG, SCHEMA, SRC);
-        String sql = JoinKeySuggestService.buildSourceDistinctnessSql(source, List.of("age_years", "id"));
+        String sql = JoinKeySuggestService.buildSourceDistinctnessSql(
+                ScopeFilteredFrom.unfiltered(source.qualifiedName()), List.of("age_years", "id"));
         assertFalse(sql.contains("TABLESAMPLE"), "Distinctness must use full table, not Bernoulli sample");
         assertTrue(sql.contains("FROM " + source.qualifiedName()));
         assertTrue(sql.contains("approx_distinct(age_years)"));

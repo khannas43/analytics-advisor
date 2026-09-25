@@ -6,7 +6,10 @@ import com.facebook.presto.sql.parser.SqlParser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import gov.rajasthan.smart.srse.compiler.ColumnGroupSql;
 import gov.rajasthan.smart.srse.execution.GuardrailProperties;
+import gov.rajasthan.smart.srse.lakehouse.AnalysisScopeFromService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
+import gov.rajasthan.smart.srse.lakehouse.QualifiedTable;
+import gov.rajasthan.smart.srse.lakehouse.ScopeFilteredFrom;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -91,6 +94,8 @@ class EmittedSqlParsesTest {
     private LakehouseRegistryService registry;
     @Mock
     private AnalysisColumnMetadataRepository columnMetadata;
+    @Mock
+    private AnalysisScopeFromService scopeFrom;
 
     private RecordMatchService service;
 
@@ -98,7 +103,11 @@ class EmittedSqlParsesTest {
     void setUp() {
         service = new RecordMatchService(
                 jdbc, registry, new GuardrailProperties(1000, 30, 50), columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10), new ObjectMapper());
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10), new ObjectMapper(), scopeFrom);
+        lenient().when(scopeFrom.planFrom(any())).thenAnswer(inv -> {
+            QualifiedTable table = inv.getArgument(0);
+            return ScopeFilteredFrom.unfiltered(table.qualifiedName());
+        });
         lenient().when(columnMetadata.findByCatalogNameAndSchemaNameAndTableNameAndColumnName(
                 any(), any(), any(), any())).thenReturn(Optional.empty());
         lenient().when(registry.hasColumns(any(), any())).thenReturn(true);

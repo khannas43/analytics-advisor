@@ -5,6 +5,7 @@ import gov.rajasthan.smart.srse.identity.AppUser;
 import gov.rajasthan.smart.srse.identity.AppUserRepository;
 import gov.rajasthan.smart.srse.identity.UserScopeAssignment;
 import gov.rajasthan.smart.srse.identity.UserScopeAssignmentRepository;
+import gov.rajasthan.smart.srse.scope.ScopeNode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -77,8 +78,9 @@ public class OfficerRegistryScopeService {
         for (UserScopeAssignment assignment : assignments) {
             long dimensionId = assignment.getScopeNode().getDimension().getId();
             int depth = assignment.getScopeNode().getLevel().getDepth();
+            ScopeNode node = assignment.getScopeNode();
             byDimension.computeIfAbsent(dimensionId, k -> new ArrayList<>())
-                    .add(new TableScopePolicy.AssignmentNode(depth));
+                    .add(new TableScopePolicy.AssignmentNode(depth, node.getPath(), node.getCode()));
         }
         return new TableScopePolicy.OfficerScopeView(false, Map.copyOf(byDimension));
     }

@@ -2,10 +2,12 @@ package gov.rajasthan.smart.srse.analysis;
 
 import gov.rajasthan.smart.srse.compiler.CompareAs;
 import gov.rajasthan.smart.srse.execution.GuardrailProperties;
+import gov.rajasthan.smart.srse.lakehouse.AnalysisScopeFromService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
 import gov.rajasthan.smart.srse.lakehouse.QualifiedColumn;
 import gov.rajasthan.smart.srse.lakehouse.QualifiedTable;
+import gov.rajasthan.smart.srse.lakehouse.ScopeFilteredFrom;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadata;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -64,6 +66,9 @@ class RecordMatchServiceTest {
     @Mock
     private AnalysisColumnMetadataRepository columnMetadata;
 
+    @Mock
+    private AnalysisScopeFromService scopeFrom;
+
     /** queryTimeoutSeconds=30. */
     private final GuardrailProperties guardrails = new GuardrailProperties(1000, 30, 50);
     private static final AnalysisProperties DEFAULT_ANALYSIS = new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10);
@@ -87,7 +92,12 @@ class RecordMatchServiceTest {
         // to check — the tests that care about a side WITHOUT it say so.
         lenient().when(registry.hasColumns(any(), any())).thenReturn(true);
         lenient().when(jdbc.queryForObject(anyString(), eq(Long.class))).thenReturn(1L);
-        service = new RecordMatchService(jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper);
+        lenient().when(scopeFrom.planFrom(any())).thenAnswer(inv -> {
+            QualifiedTable table = inv.getArgument(0);
+            return ScopeFilteredFrom.unfiltered(table.qualifiedName());
+        });
+        service = new RecordMatchService(
+                jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper, scopeFrom);
     }
 
     /** Every criterion in these tests lives in one catalog+schema unless a test says otherwise. */
@@ -1207,7 +1217,8 @@ class RecordMatchServiceTest {
     @Test
     void blockingPrefixLenComesFromAnalysisProperties() {
         analysisProperties = new AnalysisProperties(5, 120, 4, 2, 10, 6, 50_000_000L, 10);
-        service = new RecordMatchService(jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper);
+        service = new RecordMatchService(
+                jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper, scopeFrom);
         RecordMatchRequest req = new RecordMatchRequest(
                 List.of(fuzzy("beneficiary", "father_name", 75.0)),
                 List.of(exact("beneficiary", "father_name")),
@@ -1276,7 +1287,8 @@ class RecordMatchServiceTest {
     @Test
     void estimatedFanOutLowCardinalityKeyIsRefusedWithMessage() {
         analysisProperties = new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10);
-        service = new RecordMatchService(jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper);
+        service = new RecordMatchService(
+                jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper, scopeFrom);
         stubReconciliationCardinalities(7L, 7L);
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.planMatch(districtCrossTableMatch()));
         assertTrue(ex.getMessage().contains("Estimated match fan-out"), ex.getMessage());
@@ -1460,7 +1472,8 @@ class RecordMatchServiceTest {
     @Test
     void comparisonGroupsDoNotChangeFanOutEstimate() {
         analysisProperties = new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10);
-        service = new RecordMatchService(jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper);
+        service = new RecordMatchService(
+                jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper, scopeFrom);
         stubReconciliationCardinalities(7L, 7L);
 
         RecordMatchRequest base = districtCrossTableMatch();
