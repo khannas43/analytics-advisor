@@ -87,8 +87,49 @@ class TableScopePolicyTest {
         Optional<TableScopePolicy.LevelBinding> chosen =
                 TableScopePolicy.chosenBindingForDimension(officer, table, GEO);
         assertTrue(chosen.isPresent());
-        assertEquals(2, chosen.get().levelDepth());
+        // Depth 3, not 2. The officer holds something at depth 3, and a
+        // district_code filter cannot express it: every row of that node's
+        // parent district shares the district code, so filtering there would
+        // return the whole district instead of the one village. The coarsest
+        // binding is preferred only among those specific enough to be exact.
+        assertEquals(3, chosen.get().levelDepth());
+        assertEquals("village_code", chosen.get().columnName());
+    }
+
+    @Test
+    void theCoarsestUsableBindingWinsWhenSeveralAreExact() {
+        // A17's optimisation: a district officer filtered on district_code binds
+        // one value, where village_code would bind every village in the district.
+        var officer = new TableScopePolicy.OfficerScopeView(
+                false, Map.of(GEO, List.of(new TableScopePolicy.AssignmentNode(1))));
+        var table = new TableScopePolicy.TableScopeMetadata(
+                false,
+                List.of(
+                        binding(GEO, 1, "district_code"),
+                        binding(GEO, 2, "taluka_code"),
+                        binding(GEO, 3, "village_code")),
+                Set.of());
+        Optional<TableScopePolicy.LevelBinding> chosen =
+                TableScopePolicy.chosenBindingForDimension(officer, table, GEO);
+        assertTrue(chosen.isPresent());
+        assertEquals(1, chosen.get().levelDepth());
         assertEquals("district_code", chosen.get().columnName());
+    }
+
+    @Test
+    void aTableBoundOnlyCoarserThanTheOfficersScopeIsUnusableAndInvisible() {
+        // A taluka officer against a table carrying only district_code. The rows
+        // do not say which taluka they belong to, so no filter can be exact —
+        // and showing the table would mean showing the whole district.
+        var talukaOfficer = new TableScopePolicy.OfficerScopeView(
+                false, Map.of(GEO, List.of(new TableScopePolicy.AssignmentNode(2))));
+        var table = new TableScopePolicy.TableScopeMetadata(
+                false, List.of(binding(GEO, 1, "district_code")), Set.of());
+
+        assertTrue(TableScopePolicy.chosenBindingForDimension(talukaOfficer, table, GEO).isEmpty(),
+                "a binding too coarse to express the officer's scope is not a fallback");
+        assertFalse(TableScopePolicy.isTableVisible(talukaOfficer, table),
+                "and the table must be hidden rather than shown and filtered too loosely");
     }
 
     private static TableScopePolicy.LevelBinding binding(long dim, int depth, String column) {

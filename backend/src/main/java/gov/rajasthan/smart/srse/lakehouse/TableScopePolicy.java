@@ -70,9 +70,11 @@ public final class TableScopePolicy {
             if (table.exemptDimensionIds().contains(dimensionId)) {
                 continue;
             }
-            boolean boundInDimension = table.bindings().stream()
-                    .anyMatch(b -> b.dimensionId() == dimensionId);
-            if (!boundInDimension) {
+            // Not "is there a binding" but "is there a binding we can actually
+            // filter with". A table bound only coarser than the officer's scope
+            // would otherwise be shown and then filtered too loosely, which is
+            // the failure this whole section exists to prevent.
+            if (chosenBindingForDimension(officer, table, dimensionId).isEmpty()) {
                 return false;
             }
         }
@@ -100,14 +102,20 @@ public final class TableScopePolicy {
         if (inDimension.isEmpty()) {
             return Optional.empty();
         }
-        List<Integer> userDepths = nodes.stream().map(AssignmentNode::depth).toList();
-        List<LevelBinding> valid = new ArrayList<>();
-        for (LevelBinding binding : inDimension) {
-            boolean coversAll = userDepths.stream().allMatch(d -> binding.levelDepth() <= d);
-            if (coversAll) {
-                valid.add(binding);
-            }
-        }
-        return valid.stream().max(Comparator.comparingInt(LevelBinding::levelDepth));
+        // A binding can express the officer's scope only if its column is at
+        // least as SPECIFIC as their deepest assignment. A taluka officer
+        // against a table carrying only district_code cannot be filtered to
+        // their taluka — the rows do not say which taluka they belong to — so
+        // filtering on district would hand them the whole district. Such a
+        // binding is unusable, not a fallback.
+        int deepestAssignment = nodes.stream().mapToInt(AssignmentNode::depth).max().orElse(0);
+        List<LevelBinding> usable = inDimension.stream()
+                .filter(b -> b.levelDepth() >= deepestAssignment)
+                .toList();
+        // Among usable bindings prefer the COARSEST, which is the smallest
+        // depth (A17). A district officer filtered on district_code binds one
+        // value; the same officer filtered on village_code binds every village
+        // in the district.
+        return usable.stream().min(Comparator.comparingInt(LevelBinding::levelDepth));
     }
 }
