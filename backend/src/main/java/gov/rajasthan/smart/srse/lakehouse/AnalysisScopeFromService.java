@@ -52,8 +52,8 @@ public class AnalysisScopeFromService {
         return planFrom(officer, table.qualifiedName(), metadata);
     }
 
-    /** Package-visible for pure tests with a fixed officer view. */
-    ScopeFilteredFrom planFrom(
+    /** Fixed officer view — saved-query share validation and unit tests (AA-18). */
+    public ScopeFilteredFrom planFrom(
             TableScopePolicy.OfficerScopeView officer,
             String qualifiedName,
             TableScopePolicy.TableScopeMetadata metadata) {

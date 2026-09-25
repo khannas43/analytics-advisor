@@ -2,6 +2,7 @@ package gov.rajasthan.smart.srse.config;
 
 import gov.rajasthan.smart.srse.audit.AuditWriteFailureException;
 import gov.rajasthan.smart.srse.identity.AdminAccessDeniedException;
+import gov.rajasthan.smart.srse.savedquery.SavedQueryPayloadException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -22,6 +23,11 @@ public class ApiExceptionHandler {
      */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<String> badRequest(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ex.getMessage());
+    }
+
+    @ExceptionHandler(SavedQueryPayloadException.class)
+    public ResponseEntity<String> savedQueryPayload(SavedQueryPayloadException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ex.getMessage());
     }
 

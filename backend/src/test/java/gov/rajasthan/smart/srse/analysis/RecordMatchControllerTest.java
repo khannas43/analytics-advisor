@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentCaptor.forClass;
@@ -109,6 +110,25 @@ class RecordMatchControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void matchJsonExportAuditsBeforeStreaming() throws Exception {
+        StreamingResponseBody body = out -> out.write("[{\"source_district\":\"Jaipur\"}]".getBytes(StandardCharsets.UTF_8));
+        RecordMatchService.MatchQuery query = stubQuery();
+        when(analysisAuditService.planMatchAudited(any())).thenReturn(query);
+        when(matchService.matchJson(query)).thenReturn(body);
+
+        MvcResult mvcResult = mockMvc.perform(post("/api/analysis/match.json")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(REQUEST_BODY))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(mvcResult))
+                .andExpect(status().isOk())
+                .andExpect(content().contentTypeCompatibleWith("application/json"));
+        verify(analysisAuditService).recordExport(any(), eq(query), eq("JSON"));
     }
 
     @Test

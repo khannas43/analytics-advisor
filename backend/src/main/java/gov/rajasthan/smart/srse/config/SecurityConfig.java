@@ -89,6 +89,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/audit", "/api/admin/audit.csv").hasAuthority(Authorities.AUDIT_READ)
                 .requestMatchers("/api/admin/**").hasAuthority(Authorities.SRSE_ADMIN)
                 .requestMatchers("/api/analysis/**").hasAuthority(Authorities.STATE_OFFICER)
+                .requestMatchers("/api/saved-queries/**").hasAuthority(Authorities.STATE_OFFICER)
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 .requestMatchers("/error").permitAll()
                 .anyRequest().authenticated()

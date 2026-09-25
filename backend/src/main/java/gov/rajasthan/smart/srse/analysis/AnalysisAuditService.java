@@ -71,13 +71,17 @@ public class AnalysisAuditService {
         }
     }
 
-    public void recordExport(RecordMatchRequest req, RecordMatchService.MatchQuery query) {
+    public void recordExport(RecordMatchRequest req, RecordMatchService.MatchQuery query, String formatLabel) {
         auditCapture.recordExportRequired(buildDraft(
                 AuditActionType.EXPORT,
                 AuditOutcome.SUCCESS,
                 req,
                 query,
-                "CSV export"));
+                formatLabel + " export"));
+    }
+
+    public void recordExport(RecordMatchRequest req, RecordMatchService.MatchQuery query) {
+        recordExport(req, query, "CSV");
     }
 
     public void recordMultiExport(MultiTargetRecordMatchRequest req, String combinedQueryShape) {

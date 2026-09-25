@@ -40,7 +40,8 @@ import java.util.Map;
                 "gov.rajasthan.smart.srse.identity",
                 "gov.rajasthan.smart.srse.scope",
                 "gov.rajasthan.smart.srse.otp",
-                "gov.rajasthan.smart.srse.audit"
+                "gov.rajasthan.smart.srse.audit",
+                "gov.rajasthan.smart.srse.savedquery"
         },
         entityManagerFactoryRef = "operationalEmf",
         transactionManagerRef = "operationalTx"
@@ -69,7 +70,8 @@ public class OperationalDataSourceConfig {
             "gov.rajasthan.smart.srse.identity",
             "gov.rajasthan.smart.srse.scope",
             "gov.rajasthan.smart.srse.otp",
-            "gov.rajasthan.smart.srse.audit"
+            "gov.rajasthan.smart.srse.audit",
+            "gov.rajasthan.smart.srse.savedquery"
     };
 
     @Bean

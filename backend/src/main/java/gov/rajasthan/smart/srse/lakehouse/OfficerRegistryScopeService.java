@@ -69,6 +69,11 @@ public class OfficerRegistryScopeService {
                 .orElseGet(TableScopePolicy.OfficerScopeView::denyScoped);
     }
 
+    /** Scope view for a specific officer (saved-query share/run validation). */
+    public TableScopePolicy.OfficerScopeView officerScopeFor(AppUser user) {
+        return scopeForUser(user);
+    }
+
     private TableScopePolicy.OfficerScopeView scopeForUser(AppUser user) {
         if (adminAuthorization.isSuperAdmin(user)) {
             return TableScopePolicy.OfficerScopeView.bypass();

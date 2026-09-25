@@ -70,16 +70,61 @@ public class RecordMatchController {
      */
     @PostMapping(value = "/match.csv", produces = "text/csv")
     public ResponseEntity<StreamingResponseBody> matchCsv(@RequestBody RecordMatchRequest req) {
+        return exportMatch(req, "CSV", "analysis-match.csv", "text", "csv", matchService::matchCsv);
+    }
+
+    @PostMapping(value = "/match.json", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<StreamingResponseBody> matchJson(@RequestBody RecordMatchRequest req) {
+        return exportMatch(req, "JSON", "analysis-match.json", "application", "json", matchService::matchJson);
+    }
+
+    @PostMapping(value = "/match.xml", produces = MediaType.APPLICATION_XML_VALUE)
+    public ResponseEntity<StreamingResponseBody> matchXml(@RequestBody RecordMatchRequest req) {
+        return exportMatch(req, "XML", "analysis-match.xml", "application", "xml", matchService::matchXml);
+    }
+
+    @PostMapping(value = "/match.xlsx", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    public ResponseEntity<StreamingResponseBody> matchExcel(@RequestBody RecordMatchRequest req) {
         RecordMatchService.MatchQuery query = analysisAuditService.planMatchAudited(req);
+        matchService.assertExcelExportAllowed(query);
+        return exportMatchWithQuery(
+                req,
+                query,
+                "Excel",
+                "analysis-match.xlsx",
+                "application",
+                "vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                matchService::matchExcel);
+    }
+
+    private ResponseEntity<StreamingResponseBody> exportMatch(
+            RecordMatchRequest req,
+            String formatLabel,
+            String filename,
+            String mediaType,
+            String mediaSubtype,
+            java.util.function.Function<RecordMatchService.MatchQuery, StreamingResponseBody> bodyFactory) {
+        RecordMatchService.MatchQuery query = analysisAuditService.planMatchAudited(req);
+        return exportMatchWithQuery(req, query, formatLabel, filename, mediaType, mediaSubtype, bodyFactory);
+    }
+
+    private ResponseEntity<StreamingResponseBody> exportMatchWithQuery(
+            RecordMatchRequest req,
+            RecordMatchService.MatchQuery query,
+            String formatLabel,
+            String filename,
+            String mediaType,
+            String mediaSubtype,
+            java.util.function.Function<RecordMatchService.MatchQuery, StreamingResponseBody> bodyFactory) {
         try {
-            analysisAuditService.recordExport(req, query);
+            analysisAuditService.recordExport(req, query, formatLabel);
         } catch (RuntimeException ex) {
             throw new AuditWriteFailureException("Export audit row could not be written", ex);
         }
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"analysis-match.csv\"")
-                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
-                .body(matchService.matchCsv(query));
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(new MediaType(mediaType, mediaSubtype, StandardCharsets.UTF_8))
+                .body(bodyFactory.apply(query));
     }
 
     /**

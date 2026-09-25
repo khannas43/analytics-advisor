@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   downloadMultiTargetMatchCsv,
-  downloadRecordMatchCsv,
+  downloadRecordMatchExport,
+  type MatchExportFormat,
   fetchAnalysisLimits,
   fetchComparisonSummary,
   fetchMatchSql,
@@ -53,6 +54,12 @@ import {
   canvasTargetNodes,
 } from "@/lib/joinCanvasModel";
 import { buildMultiTargetRecordMatchRequest } from "@/lib/multiTargetMatchBuild";
+import {
+  createSavedQuery,
+  getSavedQuery,
+  listSavedQueries,
+  type SavedQuerySummary,
+} from "@/lib/savedQueryApi";
 import { initTargetProgress, mergeTargetProgress, phaseLabel } from "@/lib/multiTargetProgress";
 import LakehouseCascade, {
   EMPTY_CASCADE,
@@ -643,6 +650,9 @@ function CriterionBox({
 
 export default function AnalysisPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [savedQueries, setSavedQueries] = useState<SavedQuerySummary[]>([]);
+  const [saveQueryName, setSaveQueryName] = useState("");
+  const [savedQueryMessage, setSavedQueryMessage] = useState<string | null>(null);
   const [columnMetadata, setColumnMetadata] = useState<Map<string, ColumnMetadata>>(new Map());
 
   const [highlightDuplicates, setHighlightDuplicates] = useState(false);
@@ -686,6 +696,12 @@ export default function AnalysisPage() {
       setDedupEnabled(false);
     }
   }, [dedupBlockedByJoin]);
+
+  useEffect(() => {
+    listSavedQueries()
+      .then(setSavedQueries)
+      .catch(() => setSavedQueries([]));
+  }, []);
 
   const dedupColumn = detectLastUpdatedColumn(
     (multiMatchMode ? sourceRows[0] : targetRows[0])?.columns ?? [],
@@ -1174,7 +1190,7 @@ export default function AnalysisPage() {
    * given. The match query therefore runs again, which is why this is on an
    * explicit click.
    */
-  async function downloadFullCsv() {
+  async function downloadFullExport(format: MatchExportFormat) {
     if (multiMatchMode) {
       const multiReq = lastRunMultiRequestRef.current;
       if (!multiReq) {
@@ -1195,11 +1211,12 @@ export default function AnalysisPage() {
     if (!req) {
       throw new Error("Run a match first.");
     }
-    const blob = await downloadRecordMatchCsv(req);
+    const ext = format === "xlsx" ? "xlsx" : format;
+    const blob = await downloadRecordMatchExport(req, format);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `analysis-match-${new Date().toISOString().slice(0, 19).replaceAll(/[:T]/g, "-")}.csv`;
+    a.download = `analysis-match-${new Date().toISOString().slice(0, 19).replaceAll(/[:T]/g, "-")}.${ext}`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1327,6 +1344,81 @@ export default function AnalysisPage() {
       </p>
 
       {loadError && <p className="srse-text-danger">{loadError}</p>}
+
+      <section
+        className="srse-panel"
+        style={{ marginBottom: "1rem", padding: "0.75rem 1rem" }}
+        aria-label="Saved queries"
+      >
+        <p className="srse-text-muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
+          Saved queries store your criteria and typed filter values (names, thresholds) in SRSE&apos;s
+          database — not in the audit log. Reopening replans under <strong>your</strong> scope; the
+          author&apos;s district does not travel with the query.
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
+          <input
+            type="text"
+            className="srse-input"
+            placeholder="Save as…"
+            value={saveQueryName}
+            onChange={(e) => setSaveQueryName(e.target.value)}
+            style={{ minWidth: "12rem" }}
+          />
+          <button
+            type="button"
+            className="srse-btn srse-btn-secondary"
+            disabled={multiMatchMode || !saveQueryName.trim()}
+            onClick={async () => {
+              const req = buildRequest(false);
+              if (!req) {
+                setSavedQueryMessage("Complete source/target criteria before saving.");
+                return;
+              }
+              try {
+                await createSavedQuery({ name: saveQueryName.trim(), request: req });
+                setSaveQueryName("");
+                setSavedQueryMessage("Saved.");
+                setSavedQueries(await listSavedQueries());
+              } catch (err: unknown) {
+                setSavedQueryMessage(err instanceof Error ? err.message : String(err));
+              }
+            }}
+          >
+            Save query
+          </button>
+          <select
+            className="srse-input"
+            defaultValue=""
+            onChange={async (e) => {
+              const id = Number(e.target.value);
+              if (!id) return;
+              try {
+                const detail = await getSavedQuery(id);
+                lastRunRequestRef.current = detail.request;
+                setSavedQueryMessage(
+                  `Loaded “${detail.name}”. Run match to execute under your scope (values from save are in the request payload).`,
+                );
+              } catch (err: unknown) {
+                setSavedQueryMessage(err instanceof Error ? err.message : String(err));
+              }
+              e.target.value = "";
+            }}
+          >
+            <option value="">Open saved query…</option>
+            {savedQueries.map((q) => (
+              <option key={q.id} value={q.id}>
+                {q.name}
+                {!q.ownedByMe ? " (shared)" : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+        {savedQueryMessage && (
+          <p className="srse-text-muted" style={{ marginBottom: 0, fontSize: "0.85rem" }}>
+            {savedQueryMessage}
+          </p>
+        )}
+      </section>
 
       <label className="srse-checkbox-label" htmlFor="highlight-duplicates" style={{ marginBottom: "0.5rem", display: "inline-flex" }}>
         <input
@@ -2085,7 +2177,8 @@ export default function AnalysisPage() {
             totalRowsIsPartial={matchCountIsPartial}
             tooManyToDisplay={matchTooManyToDisplay}
             displayLimit={MAX_DISPLAYED_ROWS}
-            onDownloadFullCsv={downloadFullCsv}
+            onDownloadFullCsv={() => downloadFullExport("csv")}
+            onDownloadFullExport={multiMatchMode ? undefined : downloadFullExport}
             fullCsvDownloadNote={
               multiMatchMode
                 ? "Multi-target CSV export is all-or-nothing: if any target set fails, the whole download aborts (unlike the stream, which can return partial rows)."

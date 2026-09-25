@@ -415,8 +415,20 @@ export async function fetchComparisonSummary(
   return res.json() as Promise<ComparisonSummaryResponse>;
 }
 
-export async function downloadRecordMatchCsv(req: RecordMatchRequest): Promise<Blob> {
-  const res = await authorizedFetch(`${API_BASE}/api/analysis/match.csv`, {
+export type MatchExportFormat = "csv" | "json" | "xml" | "xlsx";
+
+const MATCH_EXPORT_PATH: Record<MatchExportFormat, string> = {
+  csv: "/api/analysis/match.csv",
+  json: "/api/analysis/match.json",
+  xml: "/api/analysis/match.xml",
+  xlsx: "/api/analysis/match.xlsx",
+};
+
+export async function downloadRecordMatchExport(
+  req: RecordMatchRequest,
+  format: MatchExportFormat,
+): Promise<Blob> {
+  const res = await authorizedFetch(`${API_BASE}${MATCH_EXPORT_PATH[format]}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -426,6 +438,11 @@ export async function downloadRecordMatchCsv(req: RecordMatchRequest): Promise<B
     throw new Error(`Analysis service error ${res.status}: ${await res.text()}`);
   }
   return res.blob();
+}
+
+/** @deprecated use {@link downloadRecordMatchExport} */
+export async function downloadRecordMatchCsv(req: RecordMatchRequest): Promise<Blob> {
+  return downloadRecordMatchExport(req, "csv");
 }
 
 export type RecordMatchStreamHandlers = {

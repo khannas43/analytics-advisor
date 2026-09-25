@@ -109,6 +109,7 @@ type AnalysisResultsGridProps = Readonly<{
   displayLimit?: number;
   /** Streams the COMPLETE result from the backend; see the page's handler. */
   onDownloadFullCsv?: () => Promise<void>;
+  onDownloadFullExport?: (format: "csv" | "json" | "xml" | "xlsx") => Promise<void>;
   highlightDuplicates: boolean;
   dedupAvailable: boolean;
   dedupEnabled: boolean;
@@ -179,6 +180,7 @@ function TooManyRowsPanel({
   displayLimit,
   streaming,
   onDownloadFullCsv,
+  onDownloadFullExport,
   fullCsvDownloadNote,
 }: Readonly<{
   totalRows: number | null | undefined;
@@ -186,17 +188,22 @@ function TooManyRowsPanel({
   displayLimit: number | undefined;
   streaming: boolean;
   onDownloadFullCsv?: () => Promise<void>;
+  onDownloadFullExport?: (format: "csv" | "json" | "xml" | "xlsx") => Promise<void>;
   fullCsvDownloadNote?: string;
 }>) {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function download() {
-    if (!onDownloadFullCsv) return;
+  async function download(format: "csv" | "json" | "xml" | "xlsx" = "csv") {
+    if (!onDownloadFullExport && !onDownloadFullCsv) return;
     setDownloading(true);
     setError(null);
     try {
-      await onDownloadFullCsv();
+      if (onDownloadFullExport) {
+        await onDownloadFullExport(format);
+      } else if (format === "csv") {
+        await onDownloadFullCsv!();
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -230,16 +237,29 @@ function TooManyRowsPanel({
         <button
           type="button"
           className="srse-btn srse-btn-primary"
-          onClick={download}
-          disabled={downloading || streaming || !onDownloadFullCsv}
+          onClick={() => download("csv")}
+          disabled={downloading || streaming || (!onDownloadFullCsv && !onDownloadFullExport)}
           title={
             streaming
               ? "Wait for the count to finish"
               : "Runs the match again on the server and streams every row into the file"
           }
         >
-          {downloading ? "Preparing CSV…" : "⬇ Download all rows (CSV)"}
+          {downloading ? "Preparing file…" : "⬇ Download all rows (CSV)"}
         </button>
+        {onDownloadFullExport && (
+          <>
+            <button type="button" className="srse-btn srse-btn-secondary" disabled={downloading || streaming} onClick={() => download("json")}>
+              JSON
+            </button>
+            <button type="button" className="srse-btn srse-btn-secondary" disabled={downloading || streaming} onClick={() => download("xml")}>
+              XML
+            </button>
+            <button type="button" className="srse-btn srse-btn-secondary" disabled={downloading || streaming} onClick={() => download("xlsx")}>
+              Excel
+            </button>
+          </>
+        )}
         {downloading && (
           <span className="srse-text-muted" style={{ fontSize: "0.8rem" }}>
             The match runs again to build the file — this can take as long as the match itself did.
@@ -266,6 +286,7 @@ export function AnalysisResultsGrid({
   tooManyToDisplay,
   displayLimit,
   onDownloadFullCsv,
+  onDownloadFullExport,
   highlightDuplicates,
   dedupAvailable,
   dedupEnabled,
@@ -439,6 +460,7 @@ export function AnalysisResultsGrid({
           displayLimit={displayLimit}
           streaming={!!streaming}
           onDownloadFullCsv={onDownloadFullCsv}
+          onDownloadFullExport={onDownloadFullExport}
           fullCsvDownloadNote={fullCsvDownloadNote}
         />
       )}

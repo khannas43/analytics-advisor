@@ -1,5 +1,6 @@
 package gov.rajasthan.smart.srse.analysis;
 
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import gov.rajasthan.smart.srse.compiler.Ast;
 import gov.rajasthan.smart.srse.compiler.ColumnGroupSql;
@@ -189,6 +190,45 @@ public class RecordMatchService {
 
     public StreamingResponseBody matchCsv(RecordMatchService.MatchQuery query) {
         return streamCsv(query);
+    }
+
+    public StreamingResponseBody matchJson(RecordMatchRequest req) {
+        return streamJson(planMatch(req));
+    }
+
+    public StreamingResponseBody matchJson(MatchQuery query) {
+        return streamJson(query);
+    }
+
+    public StreamingResponseBody matchXml(RecordMatchRequest req) {
+        return streamXml(planMatch(req));
+    }
+
+    public StreamingResponseBody matchXml(MatchQuery query) {
+        return streamXml(query);
+    }
+
+    public StreamingResponseBody matchExcel(RecordMatchRequest req) {
+        MatchQuery query = planMatch(req);
+        assertExcelExportAllowed(query);
+        return streamExcel(query);
+    }
+
+    public StreamingResponseBody matchExcel(MatchQuery query) {
+        return streamExcel(query);
+    }
+
+    /**
+     * Refuses before streaming when the match would exceed Excel's per-sheet row limit.
+     */
+    public void assertExcelExportAllowed(MatchQuery query) {
+        long rows = MatchExportStreamer.countRows(jdbc, guardrails.queryTimeoutSeconds(), query);
+        if (rows > MatchExportLimits.EXCEL_MAX_ROWS_PER_SHEET) {
+            throw new IllegalArgumentException(
+                    "Excel export is limited to " + MatchExportLimits.EXCEL_MAX_ROWS_PER_SHEET
+                            + " rows per sheet; this match would return " + rows
+                            + " rows. Use CSV, JSON, or XML for the complete result.");
+        }
     }
 
     /**
@@ -1171,47 +1211,51 @@ public class RecordMatchService {
     private StreamingResponseBody streamCsv(MatchQuery query) {
         return outputStream -> {
             Writer writer = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
-            // UTF-8 BOM: without it Excel reads the file in the local ANSI
-            // codepage and mangles every Devanagari name in it.
             writer.write('\uFEFF');
-            writeCsvRow(writer, query.columns().stream().map(Object.class::cast).toList());
-
-            jdbc.setQueryTimeout(guardrails.queryTimeoutSeconds());
-            ColumnMapRowMapper rowMapper = new ColumnMapRowMapper();
-            jdbc.query(query.sql(), query.params().toArray(), (RowCallbackHandler) rs -> {
-                Map<String, Object> row = rowMapper.mapRow(rs, 0);
-                try {
-                    writeCsvRow(writer, query.columns().stream().map(row::get).toList());
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            });
+            MatchExportWriters.writeCsvRow(
+                    writer, query.columns().stream().map(Object.class::cast).toList());
+            MatchExportStreamer.streamRows(jdbc, guardrails.queryTimeoutSeconds(), query, row ->
+                    MatchExportWriters.writeCsvRow(writer, MatchExportStreamer.columnValues(query, row)));
             writer.flush();
         };
     }
 
-    private static void writeCsvRow(Writer writer, List<Object> values) throws IOException {
-        StringJoiner line = new StringJoiner(",");
-        for (Object value : values) {
-            line.add(csvField(value));
-        }
-        // CRLF, the line ending RFC 4180 specifies and the one Excel expects
-        // for a quoted field that itself contains a newline.
-        writer.write(line.toString());
-        writer.write("\r\n");
+    private StreamingResponseBody streamJson(MatchQuery query) {
+        return outputStream -> {
+            ObjectMapper mapper = new ObjectMapper();
+            try (JsonGenerator gen = mapper.getFactory().createGenerator(outputStream)) {
+                gen.writeStartArray();
+                MatchExportStreamer.streamRows(
+                        jdbc,
+                        guardrails.queryTimeoutSeconds(),
+                        query,
+                        MatchExportWriters.jsonRowSink(query.columns(), gen));
+                gen.writeEndArray();
+                gen.flush();
+            }
+        };
     }
 
-    /** Quotes only when it has to, and doubles any quote inside — RFC 4180. */
-    private static String csvField(Object value) {
-        if (value == null) {
-            return "";
-        }
-        String text = String.valueOf(value);
-        if (text.indexOf('"') < 0 && text.indexOf(',') < 0
-                && text.indexOf('\n') < 0 && text.indexOf('\r') < 0) {
-            return text;
-        }
-        return '"' + text.replace("\"", "\"\"") + '"';
+    private StreamingResponseBody streamXml(MatchQuery query) {
+        return outputStream -> {
+            Writer writer = new BufferedWriter(MatchExportWriters.utf8Writer(outputStream));
+            writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<matchRows>\n");
+            MatchExportStreamer.streamRows(
+                    jdbc,
+                    guardrails.queryTimeoutSeconds(),
+                    query,
+                    MatchExportWriters.xmlRowSink(writer, query.columns()));
+            writer.write("</matchRows>\n");
+            writer.flush();
+        };
+    }
+
+    private StreamingResponseBody streamExcel(MatchQuery query) {
+        return outputStream -> MatchExportWriters.writeExcel(
+                outputStream,
+                query.columns(),
+                body -> MatchExportStreamer.streamRows(
+                        jdbc, guardrails.queryTimeoutSeconds(), query, body));
     }
 
     public record MatchQuery(String sql, List<Object> params, List<String> columns) {

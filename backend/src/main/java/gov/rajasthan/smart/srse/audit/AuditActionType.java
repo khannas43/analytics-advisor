@@ -25,5 +25,9 @@ public enum AuditActionType {
     TABLE_REGISTERED,
     TABLE_UNREGISTERED,
     /** Bulk rename of a registry display label (source system or table group). */
-    REGISTRY_LABEL_RENAMED
+    REGISTRY_LABEL_RENAMED,
+    SAVED_QUERY_CREATED,
+    SAVED_QUERY_UPDATED,
+    SAVED_QUERY_DELETED,
+    SAVED_QUERY_SHARED
 }
