@@ -116,4 +116,21 @@ public class AuditService {
                 null,
                 scopeSummary.summarizeCurrentOfficer()));
     }
+
+    @Transactional
+    public void recordGatewayEvent(
+            AuditActionType action,
+            AppUser actor,
+            AuditOutcome outcome,
+            String detail) {
+        capture.recordRequired(new AuditEventDraft(
+                action,
+                outcome,
+                actor.getId(),
+                null,
+                detail,
+                null,
+                null,
+                scopeSummary.summarizeCurrentOfficer()));
+    }
 }

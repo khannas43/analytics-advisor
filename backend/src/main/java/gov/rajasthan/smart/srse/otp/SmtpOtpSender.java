@@ -48,7 +48,7 @@ public class SmtpOtpSender implements OtpSender {
         }
         Properties javaMail = sender.getJavaMailProperties();
         javaMail.put("mail.smtp.auth", config.username() != null);
-        javaMail.put("mail.smtp.starttls.enable", "true");
+        javaMail.put("mail.smtp.starttls.enable", String.valueOf(config.tls()));
         return sender;
     }
 }

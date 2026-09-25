@@ -22,6 +22,10 @@ const ACTION_TYPES = [
   "ROLE_GRANTED",
   "USER_CREATED",
   "CONTACT_CHANGED",
+  "OTP_SMTP_GATEWAY_UPDATED",
+  "OTP_SMTP_GATEWAY_TEST",
+  "OTP_SMS_GATEWAY_UPDATED",
+  "OTP_SMS_GATEWAY_TEST",
 ] as const;
 
 export function AuditLogPanel() {

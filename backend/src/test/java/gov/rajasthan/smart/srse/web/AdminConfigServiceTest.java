@@ -114,6 +114,33 @@ class AdminConfigServiceTest {
     }
 
     @Test
+    void exportOmitsOtpGatewaySecretsEvenWhenPresentInOverrideFile() throws Exception {
+        Properties overrides = new Properties();
+        overrides.setProperty("srse.otp.smtp.host", "smtp.internal");
+        overrides.setProperty("srse.otp.smtp.password", "smtp-secret");
+        overrides.setProperty("srse.otp.sms.endpoint", "https://sms.example/send");
+        overrides.setProperty("srse.otp.sms.password", "sms-secret");
+        overrides.setProperty("operational.jdbc-url", "jdbc:db2://db2:50000/SRSEDB");
+        overrides.setProperty("operational.username", "db2inst1");
+        overrides.setProperty("operational.driver-class-name", "com.ibm.db2.jcc.DB2Driver");
+        overrides.setProperty("analytical.jdbc-url", ANALYTICAL_URL);
+        overrides.setProperty("analytical.username", ANALYTICAL_USER);
+        overrides.setProperty("analytical.driver-class-name", ANALYTICAL_DRIVER);
+        when(overrideStore.load()).thenReturn(Optional.of(overrides));
+        when(registeredTableRepository.findAll()).thenReturn(List.of());
+        when(columnMetadataRepository.findAllByOrderByCatalogNameAscSchemaNameAscTableNameAscColumnNameAsc())
+                .thenReturn(List.of());
+
+        AdminConfigBundle bundle = service.export();
+        JsonNode root = objectMapper.readTree(objectMapper.writeValueAsString(bundle));
+
+        assertFalse(root.has("srse"));
+        assertFalse(root.toString().contains("smtp-secret"));
+        assertFalse(root.toString().contains("sms-secret"));
+        assertFalse(root.toString().contains("smtp.internal"));
+    }
+
+    @Test
     void exportMasksPasswordsInSerialisedJson() throws Exception {
         Properties overrides = new Properties();
         overrides.setProperty("operational.password", "db2-secret");

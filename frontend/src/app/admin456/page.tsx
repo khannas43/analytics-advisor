@@ -47,6 +47,7 @@ import LakehouseCascade, {
 import { SingleSelectDropdown } from "@/components/MultiSelectDropdown";
 import { AdminIdentityPanel } from "@/components/AdminIdentityPanel";
 import { AuditLogPanel } from "@/components/AuditLogPanel";
+import { OtpGatewayPanel } from "@/components/OtpGatewayPanel";
 import { TableScopeBindingEditor } from "@/components/TableScopeBindingEditor";
 import { fetchAuthSession } from "@/lib/authToken";
 
@@ -1435,6 +1436,19 @@ function AdminAuditSection() {
   );
 }
 
+function SuperAdminOtpGatewaySection() {
+  const [superAdmin, setSuperAdmin] = useState(false);
+  useEffect(() => {
+    fetchAuthSession()
+      .then((s) => setSuperAdmin(Boolean(s?.superAdmin)))
+      .catch(() => setSuperAdmin(false));
+  }, []);
+  if (!superAdmin) {
+    return null;
+  }
+  return <OtpGatewayPanel />;
+}
+
 export default function AdminPage() {
   // Registrations and column settings are loaded once here and passed down:
   // several panels need the same two lists, and they have to refresh TOGETHER.
@@ -1485,6 +1499,7 @@ export default function AdminPage() {
       <ConfigBackupPanel onImported={refresh} />
       <AnalysisGuardrailsPanel />
       <ConnectionsPanel />
+      <SuperAdminOtpGatewaySection />
       <LakehouseRegistryPanel
         registrations={registrations}
         columnMetadata={columnMetadata}

@@ -28,7 +28,15 @@ public class OtpSmtpSettings {
                 intProp(props, PREFIX + "port", 587),
                 blankToNull(props.getProperty(PREFIX + "username")),
                 props.getProperty(PREFIX + "password"),
-                blankToNull(props.getProperty(PREFIX + "from", props.getProperty(PREFIX + "from-address")))));
+                blankToNull(props.getProperty(PREFIX + "from", props.getProperty(PREFIX + "from-address"))),
+                boolProp(props, PREFIX + "tls", true)));
+    }
+
+    public boolean passwordConfigured() {
+        return overrideStore.load()
+                .map(p -> p.getProperty(PREFIX + "password"))
+                .filter(s -> s != null && !s.isBlank())
+                .isPresent();
     }
 
     public void save(SmtpConfig config, boolean mergePasswordFromExisting) {
@@ -50,6 +58,7 @@ public class OtpSmtpSettings {
         if (config.fromAddress() != null) {
             updates.setProperty(PREFIX + "from", config.fromAddress());
         }
+        updates.setProperty(PREFIX + "tls", String.valueOf(config.tls()));
         overrideStore.save(updates);
     }
 
@@ -61,6 +70,14 @@ public class OtpSmtpSettings {
         return Integer.parseInt(raw.trim());
     }
 
+    private static boolean boolProp(Properties props, String key, boolean defaultValue) {
+        String raw = props.getProperty(key);
+        if (raw == null || raw.isBlank()) {
+            return defaultValue;
+        }
+        return Boolean.parseBoolean(raw.trim());
+    }
+
     private static String blankToNull(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -68,6 +85,12 @@ public class OtpSmtpSettings {
         return value.trim();
     }
 
-    public record SmtpConfig(String host, int port, String username, String password, String fromAddress) {
+    public record SmtpConfig(
+            String host,
+            int port,
+            String username,
+            String password,
+            String fromAddress,
+            boolean tls) {
     }
 }
