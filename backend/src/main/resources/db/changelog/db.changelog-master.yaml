@@ -8,3 +8,6 @@ databaseChangeLog:
   - include:
       file: changes/003-scope-and-users.yaml
       relativeToChangelogFile: true
+  - include:
+      file: changes/004-user-contact-verified.yaml
+      relativeToChangelogFile: true

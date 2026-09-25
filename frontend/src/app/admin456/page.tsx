@@ -41,6 +41,7 @@ import LakehouseCascade, {
   type CascadeValue,
 } from "@/components/LakehouseCascade";
 import { SingleSelectDropdown } from "@/components/MultiSelectDropdown";
+import { AdminIdentityPanel } from "@/components/AdminIdentityPanel";
 
 /**
  * Admin cascades browse the LIVE lakehouse — everything the current Presto
@@ -1225,6 +1226,7 @@ export default function AdminPage() {
         per-column display names, fuzzy matching, and comparison settings for registered tables.
       </p>
 
+      <AdminIdentityPanel />
       <ConfigBackupPanel onImported={refresh} />
       <AnalysisGuardrailsPanel />
       <ConnectionsPanel />

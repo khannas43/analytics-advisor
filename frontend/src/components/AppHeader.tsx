@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const TABS = [{ href: "/analysis", label: "Analysis" }];
+const TABS = [
+  { href: "/analysis", label: "Analysis" },
+  { href: "/admin456", label: "Admin" },
+];
 
 export function AppHeader() {
   const pathname = usePathname();

@@ -15,4 +15,8 @@ public interface UserScopeAssignmentRepository extends JpaRepository<UserScopeAs
             where a.user.id = :userId
             """)
     List<UserScopeAssignment> findAllWithNodeByUserId(@Param("userId") Long userId);
+
+    long countByScopeNodeId(long scopeNodeId);
+
+    void deleteByUserId(long userId);
 }

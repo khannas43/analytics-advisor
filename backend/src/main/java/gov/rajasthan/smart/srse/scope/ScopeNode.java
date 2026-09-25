@@ -86,4 +86,8 @@ public class ScopeNode {
     public String getPath() {
         return path;
     }
+
+    public void setName(String name) {
+        this.name = name;
+    }
 }

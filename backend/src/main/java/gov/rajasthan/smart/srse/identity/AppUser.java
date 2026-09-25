@@ -57,6 +57,12 @@ public class AppUser {
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
 
+    @Column(name = "email_verified", nullable = false)
+    private boolean emailVerified = false;
+
+    @Column(name = "mobile_verified", nullable = false)
+    private boolean mobileVerified = false;
+
     protected AppUser() {
     }
 
@@ -178,5 +184,21 @@ public class AppUser {
 
     public void incrementSessionVersion() {
         this.sessionVersion++;
+    }
+
+    public boolean isEmailVerified() {
+        return emailVerified;
+    }
+
+    public void setEmailVerified(boolean emailVerified) {
+        this.emailVerified = emailVerified;
+    }
+
+    public boolean isMobileVerified() {
+        return mobileVerified;
+    }
+
+    public void setMobileVerified(boolean mobileVerified) {
+        this.mobileVerified = mobileVerified;
     }
 }

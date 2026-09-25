@@ -48,4 +48,12 @@ public class ScopeDimension {
     public int getDisplayOrder() {
         return displayOrder;
     }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public void setDisplayOrder(int displayOrder) {
+        this.displayOrder = displayOrder;
+    }
 }

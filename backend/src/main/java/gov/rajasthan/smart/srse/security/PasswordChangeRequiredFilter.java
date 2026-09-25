@@ -38,10 +38,13 @@ public class PasswordChangeRequiredFilter extends OncePerRequestFilter {
     }
 
     private static boolean isPasswordChangeRoute(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        if (HttpMethod.GET.matches(request.getMethod()) && "/api/auth/session".equals(path)) {
+            return true;
+        }
         if (!HttpMethod.POST.matches(request.getMethod())) {
             return false;
         }
-        String path = request.getRequestURI();
         return "/api/auth/change-password".equals(path) || "/api/auth/login".equals(path);
     }
 }
