@@ -86,6 +86,21 @@ export type TableRegistration = {
   /** SILVER / GOLD / null — a display tag, not a level of the hierarchy. */
   layer: string | null;
   qualifiedName: string;
+  sharedReference: boolean;
+};
+
+export type TableScopeConfig = {
+  registrationId: number;
+  sharedReference: boolean;
+  bindings: {
+    id: number;
+    scopeLevelId: number;
+    dimensionId: number;
+    levelDepth: number;
+    levelName: string;
+    columnName: string;
+  }[];
+  exemptDimensionIds: number[];
 };
 
 async function adminGet<T>(path: string): Promise<T> {
@@ -170,6 +185,30 @@ export async function unregisterTable(id: number): Promise<void> {
   if (!res.ok) {
     throw new Error(`Admin service error ${res.status}: ${await res.text()}`);
   }
+}
+
+export function getTableScopeConfig(registrationId: number): Promise<TableScopeConfig> {
+  return adminGet<TableScopeConfig>(`/api/admin/lakehouse/registrations/${registrationId}/scope`);
+}
+
+export async function replaceTableScopeConfig(
+  registrationId: number,
+  body: {
+    bindings: { scopeLevelId: number; columnName: string }[];
+    exemptDimensionIds: number[];
+    sharedReference?: boolean;
+  },
+): Promise<TableScopeConfig> {
+  const res = await authorizedFetch(`${API_BASE}/api/admin/lakehouse/registrations/${registrationId}/scope`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  }, "admin");
+  if (!res.ok) {
+    throw new Error(`Admin service error ${res.status}: ${await res.text()}`);
+  }
+  return res.json();
 }
 
 // ---------------------------------------------------------------------------

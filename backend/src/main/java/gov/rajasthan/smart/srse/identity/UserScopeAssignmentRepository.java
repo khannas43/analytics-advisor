@@ -12,6 +12,7 @@ public interface UserScopeAssignmentRepository extends JpaRepository<UserScopeAs
             select a from UserScopeAssignment a
             join fetch a.scopeNode n
             join fetch n.dimension
+            join fetch n.level
             where a.user.id = :userId
             """)
     List<UserScopeAssignment> findAllWithNodeByUserId(@Param("userId") Long userId);

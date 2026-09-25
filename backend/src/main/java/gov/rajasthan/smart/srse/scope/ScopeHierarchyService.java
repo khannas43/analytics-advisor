@@ -4,6 +4,7 @@ import gov.rajasthan.smart.srse.identity.AdminAccessDeniedException;
 import gov.rajasthan.smart.srse.identity.AdminAuthorizationService;
 import gov.rajasthan.smart.srse.identity.AppUser;
 import gov.rajasthan.smart.srse.identity.UserScopeAssignmentRepository;
+import gov.rajasthan.smart.srse.lakehouse.TableScopeBindingRepository;
 import gov.rajasthan.smart.srse.scope.admin.ScopeAdminDtos;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +20,7 @@ public class ScopeHierarchyService {
     private final ScopeLevelRepository levelRepository;
     private final ScopeNodeRepository nodeRepository;
     private final UserScopeAssignmentRepository assignmentRepository;
+    private final TableScopeBindingRepository tableScopeBindingRepository;
     private final AdminAuthorizationService authorization;
 
     public ScopeHierarchyService(
@@ -26,11 +28,13 @@ public class ScopeHierarchyService {
             ScopeLevelRepository levelRepository,
             ScopeNodeRepository nodeRepository,
             UserScopeAssignmentRepository assignmentRepository,
+            TableScopeBindingRepository tableScopeBindingRepository,
             AdminAuthorizationService authorization) {
         this.dimensionRepository = dimensionRepository;
         this.levelRepository = levelRepository;
         this.nodeRepository = nodeRepository;
         this.assignmentRepository = assignmentRepository;
+        this.tableScopeBindingRepository = tableScopeBindingRepository;
         this.authorization = authorization;
     }
 
@@ -93,6 +97,30 @@ public class ScopeHierarchyService {
         level.setName(req.name().trim());
         return new ScopeAdminDtos.LevelView(
                 level.getId(), level.getDimension().getId(), level.getDepth(), level.getName());
+    }
+
+    @Transactional
+    public void deleteLevel(AppUser caller, long id) {
+        authorization.assertSuperAdminOnly(caller);
+        levelRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Level not found"));
+        long bindingCount = tableScopeBindingRepository.countByScopeLevelId(id);
+        if (bindingCount > 0) {
+            throw new IllegalStateException(
+                    "Cannot delete level: " + bindingCount + " table scope binding(s) reference it");
+        }
+        levelRepository.deleteById(id);
+    }
+
+    @Transactional
+    public void deleteDimension(AppUser caller, long id) {
+        authorization.assertSuperAdminOnly(caller);
+        dimensionRepository.findById(id).orElseThrow(() -> new IllegalArgumentException("Dimension not found"));
+        long bindingCount = tableScopeBindingRepository.countByDimensionId(id);
+        if (bindingCount > 0) {
+            throw new IllegalStateException(
+                    "Cannot delete dimension: " + bindingCount + " table scope binding(s) reference it");
+        }
+        dimensionRepository.deleteById(id);
     }
 
     public List<ScopeAdminDtos.NodeView> listNodes(AppUser caller, Long dimensionId) {

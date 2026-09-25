@@ -44,16 +44,29 @@ import java.util.function.Function;
 @Service
 public class LakehouseRegistryService {
 
+    static final String NOT_VISIBLE_IN_SCOPE =
+            "Table is not visible in your scope — bind scope columns, exempt dimensions, or mark shared reference";
+
     private final RegisteredTableRepository registrations;
     private final AnalysisColumnMetadataRepository columnMetadata;
     private final LakehouseBrowseService browse;
+    private final OfficerRegistryScopeService officerScope;
+    private final RegisteredTableScopeCatalog scopeCatalog;
+    private final TableScopeRegistrationService tableScopeRegistrationService;
 
-    public LakehouseRegistryService(RegisteredTableRepository registrations,
-                                    AnalysisColumnMetadataRepository columnMetadata,
-                                    LakehouseBrowseService browse) {
+    public LakehouseRegistryService(
+            RegisteredTableRepository registrations,
+            AnalysisColumnMetadataRepository columnMetadata,
+            LakehouseBrowseService browse,
+            OfficerRegistryScopeService officerScope,
+            RegisteredTableScopeCatalog scopeCatalog,
+            TableScopeRegistrationService tableScopeRegistrationService) {
         this.registrations = registrations;
         this.columnMetadata = columnMetadata;
         this.browse = browse;
+        this.officerScope = officerScope;
+        this.scopeCatalog = scopeCatalog;
+        this.tableScopeRegistrationService = tableScopeRegistrationService;
     }
 
     // ---- admin: registration ----
@@ -97,6 +110,7 @@ public class LakehouseRegistryService {
 
     @Transactional
     public void unregister(long id) {
+        tableScopeRegistrationService.deleteScopeDataForRegistration(id);
         registrations.deleteById(id);
     }
 
@@ -145,7 +159,7 @@ public class LakehouseRegistryService {
     public List<String> listLayers() {
         TreeSet<String> distinct = new TreeSet<>();
         boolean hasUntagged = false;
-        for (RegisteredTable row : allOrdered()) {
+        for (RegisteredTable row : officerVisible(allOrdered())) {
             if (row.getLayer() == null) {
                 hasUntagged = true;
             } else {
@@ -159,14 +173,18 @@ public class LakehouseRegistryService {
         return List.copyOf(out);
     }
 
-    // ---- officer-facing cascade: only registered entries ----
+    // ---- officer-facing cascade: registered AND scope-visible (§7.2.2a) ----
 
     public List<String> listCatalogs() {
-        return registrations.findDistinctCatalogNames();
+        return officerVisible(allOrdered()).stream()
+                .map(RegisteredTable::getCatalogName)
+                .distinct()
+                .sorted()
+                .toList();
     }
 
     public List<String> listCatalogs(String layerFilter) {
-        return filteredByLayer(layerFilter).stream()
+        return officerVisible(filteredByLayer(layerFilter)).stream()
                 .map(RegisteredTable::getCatalogName)
                 .distinct()
                 .sorted()
@@ -174,11 +192,16 @@ public class LakehouseRegistryService {
     }
 
     public List<String> listSchemas(String catalog) {
-        return registrations.findDistinctSchemaNames(catalog);
+        return officerVisible(allOrdered()).stream()
+                .filter(r -> catalog.equals(r.getCatalogName()))
+                .map(RegisteredTable::getSchemaName)
+                .distinct()
+                .sorted()
+                .toList();
     }
 
     public List<String> listSchemas(String catalog, String layerFilter) {
-        return filteredByLayer(layerFilter).stream()
+        return officerVisible(filteredByLayer(layerFilter)).stream()
                 .filter(r -> catalog.equals(r.getCatalogName()))
                 .map(RegisteredTable::getSchemaName)
                 .distinct()
@@ -187,11 +210,11 @@ public class LakehouseRegistryService {
     }
 
     public List<RegisteredTable> listTables(String catalog, String schema) {
-        return registrations.findByCatalogNameAndSchemaNameOrderByTableName(catalog, schema);
+        return officerVisible(registrations.findByCatalogNameAndSchemaNameOrderByTableName(catalog, schema));
     }
 
     public List<RegisteredTable> listTables(String catalog, String schema, String layerFilter) {
-        return filteredByLayer(layerFilter).stream()
+        return officerVisible(filteredByLayer(layerFilter)).stream()
                 .filter(r -> catalog.equals(r.getCatalogName()) && schema.equals(r.getSchemaName()))
                 .sorted(java.util.Comparator.comparing(RegisteredTable::getTableName))
                 .toList();
@@ -249,10 +272,11 @@ public class LakehouseRegistryService {
         LakehouseIdentifiers.requireSafe("catalog", catalog);
         LakehouseIdentifiers.requireSafe("schema", schema);
         LakehouseIdentifiers.requireSafe("table", table);
-        if (!registrations.existsByCatalogNameAndSchemaNameAndTableName(catalog, schema, table)) {
-            throw new IllegalArgumentException(
-                    "Table is not registered for SRSE: " + catalog + "." + schema + "." + table);
-        }
+        RegisteredTable row = registrations
+                .findByCatalogNameAndSchemaNameAndTableName(catalog, schema, table)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Table is not registered for SRSE: " + catalog + "." + schema + "." + table));
+        assertOfficerVisible(row);
     }
 
     public void validateRegistered(QualifiedTable table) {
@@ -323,5 +347,42 @@ public class LakehouseRegistryService {
      */
     public record RegisteredColumn(String name, String dataType, String businessName,
                                    boolean fuzzyMatchable, boolean visible) {
+    }
+
+    List<RegisteredTable> officerVisible(List<RegisteredTable> rows) {
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+        TableScopePolicy.OfficerScopeView scope = officerScope.currentOfficerScope();
+        Map<Long, TableScopePolicy.TableScopeMetadata> metadata = scopeCatalog.metadataForTables(rows);
+        return rows.stream()
+                .filter(r -> TableScopePolicy.isTableVisible(
+                        scope,
+                        metadata.getOrDefault(
+                                r.getId(),
+                                new TableScopePolicy.TableScopeMetadata(
+                                        r.isSharedReference(), List.of(), Set.of()))))
+                .toList();
+    }
+
+    void assertOfficerVisible(RegisteredTable row) {
+        TableScopePolicy.OfficerScopeView scope = officerScope.currentOfficerScope();
+        TableScopePolicy.TableScopeMetadata metadata = scopeCatalog.metadataFor(row);
+        if (!TableScopePolicy.isTableVisible(scope, metadata)) {
+            throw new IllegalArgumentException(NOT_VISIBLE_IN_SCOPE);
+        }
+    }
+
+    /** For §7.2.3 — coarsest binding per dimension for the current officer and table. */
+    public Map<Long, TableScopePolicy.LevelBinding> chosenBindingsForCurrentOfficer(
+            RegisteredTable table) {
+        TableScopePolicy.OfficerScopeView scope = officerScope.currentOfficerScope();
+        TableScopePolicy.TableScopeMetadata metadata = scopeCatalog.metadataFor(table);
+        Map<Long, TableScopePolicy.LevelBinding> chosen = new LinkedHashMap<>();
+        for (Long dimensionId : scope.assignmentsByDimension().keySet()) {
+            TableScopePolicy.chosenBindingForDimension(scope, metadata, dimensionId)
+                    .ifPresent(b -> chosen.put(dimensionId, b));
+        }
+        return Map.copyOf(chosen);
     }
 }

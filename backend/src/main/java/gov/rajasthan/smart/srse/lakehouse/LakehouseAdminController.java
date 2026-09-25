@@ -27,10 +27,15 @@ public class LakehouseAdminController {
 
     private final LakehouseBrowseService browse;
     private final LakehouseRegistryService registry;
+    private final TableScopeRegistrationService tableScopeRegistrationService;
 
-    public LakehouseAdminController(LakehouseBrowseService browse, LakehouseRegistryService registry) {
+    public LakehouseAdminController(
+            LakehouseBrowseService browse,
+            LakehouseRegistryService registry,
+            TableScopeRegistrationService tableScopeRegistrationService) {
         this.browse = browse;
         this.registry = registry;
+        this.tableScopeRegistrationService = tableScopeRegistrationService;
     }
 
     // ---- live browse: the cascade ----
@@ -97,19 +102,41 @@ public class LakehouseAdminController {
         registry.unregister(id);
     }
 
+    @GetMapping("/registrations/{id}/scope")
+    public TableScopeRegistrationService.TableScopeConfigView scopeConfig(@PathVariable long id) {
+        return tableScopeRegistrationService.getConfig(id);
+    }
+
+    @PutMapping("/registrations/{id}/scope")
+    public TableScopeRegistrationService.TableScopeConfigView replaceScopeConfig(
+            @PathVariable long id,
+            @RequestBody TableScopeRegistrationService.TableScopeConfigRequest request) {
+        return tableScopeRegistrationService.replaceConfig(id, request);
+    }
+
     public record RegisterTableRequest(String catalog, String schema, String table, String layer) {
     }
 
     public record UpdateRegistrationRequest(String layer) {
     }
 
-    public record RegistrationResponse(Long id, String catalog, String schema, String table,
-                                       String layer, String qualifiedName) {
+    public record RegistrationResponse(
+            Long id,
+            String catalog,
+            String schema,
+            String table,
+            String layer,
+            String qualifiedName,
+            boolean sharedReference) {
         static RegistrationResponse from(RegisteredTable entity) {
             return new RegistrationResponse(
-                    entity.getId(), entity.getCatalogName(), entity.getSchemaName(),
-                    entity.getTableName(), entity.getLayer(),
-                    entity.toQualifiedTable().qualifiedName());
+                    entity.getId(),
+                    entity.getCatalogName(),
+                    entity.getSchemaName(),
+                    entity.getTableName(),
+                    entity.getLayer(),
+                    entity.toQualifiedTable().qualifiedName(),
+                    entity.isSharedReference());
         }
     }
 }

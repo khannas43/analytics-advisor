@@ -26,6 +26,8 @@ class ScopeHierarchyServiceTest {
     @Mock
     private UserScopeAssignmentRepository assignmentRepository;
     @Mock
+    private gov.rajasthan.smart.srse.lakehouse.TableScopeBindingRepository tableScopeBindingRepository;
+    @Mock
     private AdminAuthorizationService authorization;
 
     @InjectMocks

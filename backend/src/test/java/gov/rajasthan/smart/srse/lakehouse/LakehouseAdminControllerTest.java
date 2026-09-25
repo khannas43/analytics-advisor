@@ -53,6 +53,9 @@ class LakehouseAdminControllerTest {
     private LakehouseRegistryService registry;
 
     @MockBean
+    private TableScopeRegistrationService tableScopeRegistrationService;
+
+    @MockBean
     private MockJwtService mockJwtService;
 
     @Test

@@ -61,15 +61,25 @@ public class RegisteredTable {
     @Column(name = "layer")
     private String layer;
 
+    /** A4 — visible to all officers regardless of scope bindings. */
+    @Column(name = "shared_reference", nullable = false)
+    private boolean sharedReference = false;
+
     protected RegisteredTable() {
     }
 
     public RegisteredTable(Long id, String catalogName, String schemaName, String tableName, String layer) {
+        this(id, catalogName, schemaName, tableName, layer, false);
+    }
+
+    public RegisteredTable(
+            Long id, String catalogName, String schemaName, String tableName, String layer, boolean sharedReference) {
         this.id = id;
         this.catalogName = catalogName;
         this.schemaName = schemaName;
         this.tableName = tableName;
         this.layer = layer;
+        this.sharedReference = sharedReference;
     }
 
     public Long getId() {
@@ -94,6 +104,14 @@ public class RegisteredTable {
 
     public void setLayer(String layer) {
         this.layer = layer;
+    }
+
+    public boolean isSharedReference() {
+        return sharedReference;
+    }
+
+    public void setSharedReference(boolean sharedReference) {
+        this.sharedReference = sharedReference;
     }
 
     /** The address form used everywhere downstream; re-validates the identifiers. */

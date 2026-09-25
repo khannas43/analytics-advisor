@@ -1,0 +1,79 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-registered-table-shared-reference
+      author: analytics-advisor
+      changes:
+        - addColumn:
+            tableName: registered_table
+            columns:
+              - column:
+                  name: shared_reference
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 005-table-scope-binding
+      author: analytics-advisor
+      changes:
+        - createTable:
+            tableName: table_scope_binding
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_table_scope_binding
+                    nullable: false
+              - column:
+                  name: registered_table_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_table_scope_binding_registration
+                    references: registered_table(id)
+              - column:
+                  name: scope_level_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_table_scope_binding_level
+                    references: scope_level(id)
+              - column:
+                  name: column_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: table_scope_binding
+            constraintName: uq_table_scope_binding_table_level
+            columnNames: registered_table_id, scope_level_id
+
+  - changeSet:
+      id: 005-table-dimension-exemption
+      author: analytics-advisor
+      changes:
+        - createTable:
+            tableName: table_dimension_exemption
+            columns:
+              - column:
+                  name: registered_table_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_table_dim_exempt_registration
+                    references: registered_table(id)
+              - column:
+                  name: scope_dimension_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_table_dim_exempt_dimension
+                    references: scope_dimension(id)
+        - addPrimaryKey:
+            tableName: table_dimension_exemption
+            columnNames: registered_table_id, scope_dimension_id
+            constraintName: pk_table_dimension_exemption

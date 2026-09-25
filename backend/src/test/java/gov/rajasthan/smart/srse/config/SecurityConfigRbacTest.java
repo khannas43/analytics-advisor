@@ -7,6 +7,7 @@ import gov.rajasthan.smart.srse.lakehouse.LakehouseBrowseService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseCatalogController;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.lakehouse.RegisteredTable;
+import gov.rajasthan.smart.srse.lakehouse.TableScopeRegistrationService;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadata;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataController;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
@@ -78,6 +79,9 @@ class SecurityConfigRbacTest {
 
     @MockBean
     private LakehouseRegistryService registry;
+
+    @MockBean
+    private TableScopeRegistrationService tableScopeRegistrationService;
 
     @MockBean
     private AnalysisColumnMetadataRepository analysisColumnMetadataRepository;

@@ -38,16 +38,54 @@ class LakehouseRegistryServiceTest {
     @Mock
     private LakehouseBrowseService browse;
 
+    @Mock
+    private OfficerRegistryScopeService officerScope;
+
+    @Mock
+    private RegisteredTableScopeCatalog scopeCatalog;
+
+    @Mock
+    private TableScopeRegistrationService tableScopeRegistrationService;
+
     private LakehouseRegistryService service;
 
     @BeforeEach
     void setUp() {
-        service = new LakehouseRegistryService(registrations, columnMetadata, browse);
+        service = new LakehouseRegistryService(
+                registrations,
+                columnMetadata,
+                browse,
+                officerScope,
+                scopeCatalog,
+                tableScopeRegistrationService);
+        lenient().when(officerScope.currentOfficerScope())
+                .thenReturn(TableScopePolicy.OfficerScopeView.bypass());
+        lenient().when(scopeCatalog.metadataForTables(org.mockito.ArgumentMatchers.anyList()))
+                .thenAnswer(invocation -> {
+                    java.util.List<RegisteredTable> tables = invocation.getArgument(0);
+                    java.util.Map<Long, TableScopePolicy.TableScopeMetadata> map = new java.util.HashMap<>();
+                    for (RegisteredTable t : tables) {
+                        map.put(
+                                t.getId(),
+                                new TableScopePolicy.TableScopeMetadata(
+                                        t.isSharedReference(), java.util.List.of(), java.util.Set.of()));
+                    }
+                    return map;
+                });
+        lenient().when(scopeCatalog.metadataFor(org.mockito.ArgumentMatchers.any(RegisteredTable.class)))
+                .thenAnswer(invocation -> {
+                    RegisteredTable t = invocation.getArgument(0);
+                    return new TableScopePolicy.TableScopeMetadata(
+                            t.isSharedReference(), java.util.List.of(), java.util.Set.of());
+                });
     }
 
     private void stubRegistered() {
+        RegisteredTable row = new RegisteredTable(1L, CATALOG, SCHEMA, TABLE, "GOLD");
         lenient().when(registrations.existsByCatalogNameAndSchemaNameAndTableName(CATALOG, SCHEMA, TABLE))
                 .thenReturn(true);
+        lenient().when(registrations.findByCatalogNameAndSchemaNameAndTableName(CATALOG, SCHEMA, TABLE))
+                .thenReturn(Optional.of(row));
     }
 
     private void stubLiveColumns(String... names) {
@@ -209,8 +247,8 @@ class LakehouseRegistryServiceTest {
     /** Gate 1: live existence is not enough — an unregistered table is off limits. */
     @Test
     void validateColumnRejectsAnUnregisteredTableEvenThoughItExistsLive() {
-        when(registrations.existsByCatalogNameAndSchemaNameAndTableName(CATALOG, SCHEMA, TABLE))
-                .thenReturn(false);
+        when(registrations.findByCatalogNameAndSchemaNameAndTableName(CATALOG, SCHEMA, TABLE))
+                .thenReturn(Optional.empty());
 
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> service.validateColumn(new QualifiedColumn(CATALOG, SCHEMA, TABLE, "bank_id")));
@@ -246,7 +284,8 @@ class LakehouseRegistryServiceTest {
     /** The officer-facing cascade reads the registry, never the live lakehouse. */
     @Test
     void officerFacingCatalogListComesFromTheRegistryNotTheCluster() {
-        when(registrations.findDistinctCatalogNames()).thenReturn(List.of(CATALOG));
+        when(registrations.findAllByOrderByCatalogNameAscSchemaNameAscTableNameAsc())
+                .thenReturn(List.of(new RegisteredTable(1L, CATALOG, SCHEMA, TABLE, "GOLD")));
 
         assertEquals(List.of(CATALOG), service.listCatalogs());
         verify(browse, never()).listCatalogs();

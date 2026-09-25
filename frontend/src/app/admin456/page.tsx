@@ -42,6 +42,7 @@ import LakehouseCascade, {
 } from "@/components/LakehouseCascade";
 import { SingleSelectDropdown } from "@/components/MultiSelectDropdown";
 import { AdminIdentityPanel } from "@/components/AdminIdentityPanel";
+import { TableScopeBindingEditor } from "@/components/TableScopeBindingEditor";
 
 /**
  * Admin cascades browse the LIVE lakehouse — everything the current Presto
@@ -880,6 +881,7 @@ function RegistrationRow({
               >
                 Edit
               </button>
+              <TableScopeBindingEditor registration={registration} onSaved={onChanged} />
               <ConfirmDeleteButton
                 idleLabel="Delete"
                 confirmLabel="Yes, unregister"
@@ -975,8 +977,10 @@ function LakehouseRegistryPanel({
     <section className="srse-card">
       <h2 className="srse-card-title">Lakehouse registry — Catalog › Schema › Table</h2>
       <p className="srse-page-description" style={{ maxWidth: "none", marginTop: 0 }}>
-        Browse the live lakehouse and register the tables SRSE may use. Officers only ever see registered
-        tables. Registering exposes all of the table&apos;s columns — hide individual ones below. Tag each
+        Browse the live lakehouse and register the tables SRSE may use. Scoped officers only see registered
+        tables that have scope bindings (or dimension exemptions or shared-reference) for every dimension they
+        are assigned in — otherwise the table is hidden, not unfiltered. Use Scope bindings on each row.
+        Registering exposes all live columns; hide individual ones below. Tag each
         table with its layer (<code>BRONZE</code>, <code>SILVER</code>, <code>GOLD</code>, or another
         display tag) so the same table name in two layers stays distinguishable. Older registrations
         without a tag remain reachable in Analysis under <strong>Untagged</strong>.{" "}

@@ -11,3 +11,6 @@ databaseChangeLog:
   - include:
       file: changes/004-user-contact-verified.yaml
       relativeToChangelogFile: true
+  - include:
+      file: changes/005-table-scope-bindings.yaml
+      relativeToChangelogFile: true
