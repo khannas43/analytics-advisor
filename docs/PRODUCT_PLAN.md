@@ -445,7 +445,7 @@ data if left unanswered.**
 
 | # | Question | Why it matters |
 |---|---|---|
-| A16 | **Is "department" a second, orthogonal dimension rather than a level in the geographic tree?** A user might be "Health Department, Jaipur District". | If orthogonal, a deployment defines N dimensions (geography, department, …), each its own tree, and the predicate is AND across dimensions, OR within one. If it is a level in the same tree, every department would have to sit under a district, which does not reflect how departments work. I have assumed **orthogonal dimensions** and designed for it; confirm before 7.1.1 is built. |
+| A16 | **ANSWERED as decision 0.7: yes, a second orthogonal dimension.** Confirmed 2026-09-25; the model built in AA-06 is N dimensions, each its own tree. | Built. |
 
 ### E. Consequence worth designing around
 
