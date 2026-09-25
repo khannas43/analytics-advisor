@@ -278,6 +278,55 @@ fails visibly; this one fails silently and looks like working software.
 
 ---
 
+### 7.1b Bootstrapping the first SuperAdmin (decision A13)
+
+**Settled:** the SuperAdmin's password is **supplied at configuration time**,
+when the app is deployed. It is not defaulted in code and not printed at boot.
+
+| # | Activity | Type | Est |
+|---|---|---|---|
+| 7.1b.1 | Bootstrap on first start **only when the user table is empty**; never on later boots, so a redeploy cannot resurrect or reset the account | N | 1 |
+| 7.1b.2 | Refuse to start if no bootstrap password was supplied and no users exist — fail loudly rather than run unreachable or, worse, open | N | 1 |
+| 7.1b.3 | Force a password change at first login | N | 1 |
+
+**The trap to avoid — MFA and the first login.** §7.1a makes MFA a per-user
+flag, and a delivered OTP needs a verified mobile and email. If the bootstrap
+SuperAdmin is created with `mfa_required` on and no verified contacts, **nobody
+can log in and there is no second admin to fix it.** The account is created
+with the flag **off**; the admin verifies their own contacts at first login and
+turns it on. The bootstrap path is the one place that ordering matters, and it
+is the one place with no way back if it is wrong.
+
+**Never** log the bootstrap password, echo it in a startup banner, or write it
+to the config export (§AA-04 already establishes that secrets do not leave in
+the bundle).
+
+### 7.1c Deactivation and audit archival (decision A15)
+
+**Settled:** users are **never deleted**, only deactivated; a deactivated user's
+audit log is **archived, not removed**.
+
+| # | Activity | Type | Est |
+|---|---|---|---|
+| 7.1c.1 | `user.active` flag; deactivation ends live sessions and refuses login | N | 1 |
+| 7.1c.2 | Deactivated users stay visible to admins and stay resolvable as the author of an audit entry | N | 1 |
+| 7.1c.3 | Archive a deactivated user's audit entries — moved out of the working set, retained and retrievable | N | 3 |
+| 7.1c.4 | Saved queries owned by a deactivated user: retained, and re-assignable by an admin rather than orphaned | N | 2 |
+
+**Archived means retained, not hidden and not deleted.** An audit log that can
+be emptied by deactivating its subject is not an audit log — deactivation would
+become the way to erase a trail. Archiving takes entries out of the default
+view so the working set stays fast; the entries themselves survive and an admin
+can still produce them.
+
+**Open, to settle when §7.3 is built:** who may read an archived log. A10 scopes
+audit access to the requesting officer's own subtree, but a deactivated user may
+have been in a part of the hierarchy the current reader cannot see. Assumed
+**SuperAdmin only**, since a scoped reader would otherwise gain visibility
+through an archive that they never had while the user was active.
+
+---
+
 ## 8. UX shell
 
 | # | Activity | Type | Est |
@@ -287,6 +336,24 @@ fails visibly; this one fails silently and looks like working software.
 | 8.3 | **English / Hindi** — every string, Devanagari font, native-speaker review | N | 10 |
 | 8.4 | Empty, loading and error states throughout | R+ | 3 |
 | 8.5 | Responsive behaviour | N | 3 |
+| 8.6 | **Configuration page: SMS gateway section** — endpoint, credentials, sender ID, plus a "send a test message" action | N | 2 |
+| 8.7 | **Configuration page: email gateway section** — SMTP host, port, credentials, from-address, plus a "send a test message" action | N | 2 |
+
+**8.6 / 8.7 follow the pattern that already exists.** Connection settings are
+edited on the admin page and persisted through `ConnectionOverrideStore` to a
+properties file on a mounted volume, then read back at boot by
+`ConnectionOverrideEnvironmentPostProcessor`, so an edit survives container
+recreation rather than only a restart. Gateway settings use the **same store
+and the same file** under their own prefixes — not a second mechanism.
+
+Two rules carry over with it:
+
+- **These credentials are secrets and must not leave in the config export.**
+  AA-04 established that for the DB2 and Presto passwords; an SMS API key and an
+  SMTP password are the same kind of thing and the same masking applies.
+- **A "test" action belongs beside each**, the way the connection editor tests
+  before saving. A gateway that is only discovered to be misconfigured when an
+  officer cannot log in is a gateway configured too late.
 
 ---
 
@@ -376,6 +443,6 @@ data if left unanswered.**
 |---|---|---|
 | A11 | **ANSWERED: fully standalone local accounts.** No existing directory, no SSO at this stage, access limited to a small number of users. | Build password management, reset and lockout in-house. Keep the `AuthMode` seam so SSO can be added later without touching `SecurityConfig`. |
 | A12 | **ANSWERED: yes — OTP, required, with a per-user admin toggle.** See §7.1a. Channel still open (0.5c). | Adds an enrollment flow, a verification step at login, a recovery path, and possibly an external gateway. |
-| A13 | Who creates the first SuperAdmin, and how? | Bootstrapping is a real step, not a detail. |
+| A13 | **ANSWERED: the SuperAdmin password is supplied when the app is configured**, not defaulted in code. See §7.1b. | Bootstrap runs once, on an empty user table. A shipped default password is the single worst thing this product could do, so there must not be one. |
 | A14 | Concurrent sessions, idle timeout, forced logout. | Usually mandated in government deployments. |
-| A15 | Deactivate versus delete a user — what happens to their audit history and saved queries? | Deleting a user who appears in audit records breaks the record. |
+| A15 | **ANSWERED: soft delete — deactivation only. A deactivated user's audit log is archived, never removed.** See §7.1c. | A user row is never physically deleted, so audit entries keep a real author forever. |
