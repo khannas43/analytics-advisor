@@ -23,11 +23,11 @@ Full framing and the reasoning behind each in `docs/OPEN_DECISIONS.md`.
 | 0.6 | Row limits | **Keep the inherited limits** — 10,000 rendered, 200,000 streamed, complete CSV beyond. Measured at crore scale rather than guessed. |
 | 0.7 | Scope dimensions (was A16) | **Department is a SECOND AXIS, orthogonal to geography.** A deployment defines N dimensions, each its own tree; a user holds assignments in each; the predicate is AND across dimensions, OR within one. |
 
-### Still open
+### Answered since
 
 | # | Question | Impact |
 |---|---|---|
-| 0.5b | **Is MFA or OTP required?** Aadhaar OTP was a requirement on the predecessor product. Not covered by the "no SSO" answer — MFA is separate from federation. | Adds a delivery channel and a verification flow to §7.1. Assumed **no** for now, with the seam left open. Confirm before 7.1 is built. |
+| 0.5c | **ANSWERED: SMS *and* email** — one code, both paths, one window. See §7.1a. The SMS gateway is an external dependency; start procurement early. |
 
 ---
 
@@ -165,6 +165,59 @@ works exactly this way in SRSE.
 ---
 
 ## 7. User management, data scoping and audit
+
+### 7.1a Multi-factor authentication (decision A12)
+
+**Settled:** MFA is **required**, delivered as a **one-time password**, and
+**an admin controls it per user** — some accounts require a second factor,
+others do not. It is an attribute of the user record, not a global switch.
+
+| # | Activity | Type | Est |
+|---|---|---|---|
+| 7.1a.1 | `user.mfa_required` flag, admin-editable from the user screen | N | 1 |
+| 7.1a.2 | **Contact verification** — a mobile number and an email address are proved to work (a code sent to each) before MFA can be switched on for that account. There is no enrollment step as such: a delivered OTP has no shared secret to set up, so what has to be established is that both addresses reach the person. | N | 2 |
+| 7.1a.3 | Verification step at login, between password and session issue | N | 2 |
+| 7.1a.4 | **Recovery** — an admin corrects a user's mobile number or email and re-verifies it. This is the whole recovery path for a delivered OTP: a changed number or a dead mailbox locks the officer out, and only an admin can move them. Log every such change to the audit trail — editing where a second factor is delivered is exactly the move an attacker would make. | N | 1 |
+| 7.1a.5 | Rate-limit and expire codes; lock after repeated failures | N | 1 |
+| 7.1a.6 | SMTP sender | N | 1 |
+| 7.1a.7 | SMS gateway sender (**needs a gateway contract + credentials — external dependency, start procurement early**) | N | 3 |
+| 7.1a.8 | `OtpSender` seam + a log-only sender so the stack runs offline without either gateway | N | 1 |
+
+**Defaults taken unless told otherwise:** the second factor is checked at
+**login**, not per action; a code expires in **5 minutes** and is single-use; an
+admin turning the flag on does not invalidate that user's current session; a
+code is re-sendable, with a cooldown, because non-delivery is expected often
+enough that "request another" must be an ordinary action rather than a dead end.
+
+**Channel — SETTLED: SMS *and* email.**
+
+One code, both delivery paths, one validity window. Sending to both is
+deliberate rather than redundant: SMS delivery is not guaranteed and an
+undelivered message is otherwise a failed login, so email is the standing
+fallback and no user is stranded by a carrier.
+
+Consequences:
+
+- The user record carries **both a mobile number and an email address**, and
+  both are mandatory for any account with `mfa_required` set. An admin cannot
+  turn the flag on for a user missing either — the UI must refuse it rather
+  than create an account that cannot log in.
+- **One code, not two.** Generate once, store once, deliver twice. Two codes
+  with two windows is a race, and whichever arrives second invalidates the one
+  the user is typing.
+- **Delivery failure must be visible.** If both channels fail, the login
+  attempt fails with a message saying so; it must never silently wait for a
+  code that was never sent.
+- **`OtpSender` is a seam with three implementations** — SMTP, SMS gateway, and
+  a log-only sender selected by config. The log sender keeps the local stack
+  runnable with no gateway at all, the same way `AuthMode=mock` keeps auth
+  runnable without SSO. Do not make a working laptop build depend on an SMS
+  contract.
+- **The SMS gateway is an external dependency**: a contract, credentials, and
+  probably a sender-ID registration. It is the long pole in §7.1a and the only
+  item here that cannot be started unilaterally.
+
+
 
 The prototype has none of this. It is now the largest workstream in the product,
 and §7.2 is the riskiest thing in the whole plan.
@@ -322,7 +375,7 @@ data if left unanswered.**
 | # | Question | Why it matters |
 |---|---|---|
 | A11 | **ANSWERED: fully standalone local accounts.** No existing directory, no SSO at this stage, access limited to a small number of users. | Build password management, reset and lockout in-house. Keep the `AuthMode` seam so SSO can be added later without touching `SecurityConfig`. |
-| A12 | Is MFA or OTP required? Aadhaar OTP was a requirement on the predecessor product. | Adds a delivery channel and a whole flow. |
+| A12 | **ANSWERED: yes — OTP, required, with a per-user admin toggle.** See §7.1a. Channel still open (0.5c). | Adds an enrollment flow, a verification step at login, a recovery path, and possibly an external gateway. |
 | A13 | Who creates the first SuperAdmin, and how? | Bootstrapping is a real step, not a detail. |
 | A14 | Concurrent sessions, idle timeout, forced logout. | Usually mandated in government deployments. |
 | A15 | Deactivate versus delete a user — what happens to their audit history and saved queries? | Deleting a user who appears in audit records breaks the record. |
