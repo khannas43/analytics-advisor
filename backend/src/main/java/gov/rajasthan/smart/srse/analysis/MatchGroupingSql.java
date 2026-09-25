@@ -79,13 +79,57 @@ final class MatchGroupingSql {
         }
         SqlTypeFamily family = SqlTypeFamily.of(described.dataType());
         if (agg.function() == AggregateFunction.SUM || agg.function() == AggregateFunction.AVG) {
-            if (family != SqlTypeFamily.NUMBER) {
+            // TEXT is summable through TRY_CAST because Golden Layer data really does
+            // keep numbers in varchar columns, and refusing would block ordinary work.
+            // The total never travels alone: appendGroupedSelect emits a companion count
+            // of the rows it could not add. BOOLEAN, TEMPORAL and UNKNOWN stay refused —
+            // TRY_CAST(date AS DOUBLE) is null for every row, so the answer would be a
+            // confident zero, which is worse than an error.
+            if (family != SqlTypeFamily.NUMBER && family != SqlTypeFamily.TEXT) {
                 throw new IllegalArgumentException(
-                        agg.function() + " requires a numeric column; "
+                        agg.function() + " requires a numeric or text column; "
                                 + agg.column().column() + " is " + described.dataType()
-                                + ". Use COUNT, MIN/MAX on text or dates, or fix the type upstream.");
+                                + ". Use COUNT, or MIN/MAX for ordering.");
             }
         }
+    }
+
+    /**
+     * Live type per aggregated column, resolved once so emission need not re-introspect.
+     * Keyed by fully qualified column name.
+     */
+    static Map<String, SqlTypeFamily> aggregateColumnTypes(
+            RecordMatchRequest req, LakehouseRegistryService registry) {
+        Map<String, SqlTypeFamily> types = new java.util.HashMap<>();
+        for (AggregateSpec agg : req.aggregates()) {
+            if (agg.column() == null) {
+                continue;
+            }
+            String key = aggregateTypeKey(agg);
+            if (types.containsKey(key)) {
+                continue;
+            }
+            RegisteredColumn described = registry.describeColumns(
+                    agg.column().qualifiedTable(), List.of(agg.column().column()))
+                    .get(agg.column().column());
+            types.put(key, described == null ? SqlTypeFamily.UNKNOWN : SqlTypeFamily.of(described.dataType()));
+        }
+        return types;
+    }
+
+    private static String aggregateTypeKey(AggregateSpec agg) {
+        return agg.column().qualifiedTable().qualifiedName() + "." + agg.column().column();
+    }
+
+    /** True when this aggregate needs a TRY_CAST, and therefore an unparseable count beside it. */
+    private static boolean castsText(AggregateSpec agg, Map<String, SqlTypeFamily> types) {
+        if (agg.column() == null) {
+            return false;
+        }
+        if (agg.function() != AggregateFunction.SUM && agg.function() != AggregateFunction.AVG) {
+            return false;
+        }
+        return types.get(aggregateTypeKey(agg)) == SqlTypeFamily.TEXT;
     }
 
     static void appendGroupedSelect(
@@ -93,7 +137,8 @@ final class MatchGroupingSql {
             Set<String> outerColumns,
             RecordMatchRequest req,
             QualifiedTable sourceTable,
-            QualifiedTable targetTable) {
+            QualifiedTable targetTable,
+            Map<String, SqlTypeFamily> aggregateTypes) {
         boolean first = true;
         for (DisplayColumn g : req.groupByColumns()) {
             if (!first) {
@@ -115,7 +160,19 @@ final class MatchGroupingSql {
                     ? null
                     : sideAlias(agg.column().qualifiedTable(), sourceTable, targetTable);
             String outAlias = allocateUniqueAlias(defaultAggregateAlias(agg), outerColumns);
-            select.append(aggregateExpression(agg, side)).append(" AS \"").append(outAlias).append("\"");
+            boolean cast = castsText(agg, aggregateTypes);
+            select.append(aggregateExpression(agg, side, cast)).append(" AS \"").append(outAlias).append("\"");
+            if (cast) {
+                // Emitted ONLY where a cast happened — a sum over a genuinely numeric
+                // column must not grow a column of zeroes. Counts non-null values that
+                // failed to parse, not NULLs: SUM has always ignored NULLs, and an absent
+                // value is not a lost one. This is the number that makes a total wrong.
+                String ref = side + "." + agg.column().column();
+                String countAlias = allocateUniqueAlias(outAlias + "_unparseable", outerColumns);
+                select.append(", count_if(").append(ref).append(" IS NOT NULL AND TRY_CAST(")
+                        .append(ref).append(" AS DOUBLE) IS NULL) AS \"")
+                        .append(countAlias).append("\"");
+            }
         }
         if (first) {
             throw new IllegalStateException("Grouped select must project at least one column");
@@ -153,7 +210,7 @@ final class MatchGroupingSql {
         return sideAlias(table, sourceTable, targetTable);
     }
 
-    private static String aggregateExpression(AggregateSpec agg, String sideAlias) {
+    private static String aggregateExpression(AggregateSpec agg, String sideAlias, boolean castText) {
         return switch (agg.function()) {
             case COUNT -> {
                 if (agg.countStar()) {
@@ -162,11 +219,17 @@ final class MatchGroupingSql {
                 String ref = sideAlias + "." + agg.column().column();
                 yield agg.distinct() ? "count(DISTINCT " + ref + ")" : "count(" + ref + ")";
             }
-            case SUM -> "sum(" + sideAlias + "." + agg.column().column() + ")";
-            case AVG -> "avg(" + sideAlias + "." + agg.column().column() + ")";
+            case SUM -> "sum(" + numericOperand(agg, sideAlias, castText) + ")";
+            case AVG -> "avg(" + numericOperand(agg, sideAlias, castText) + ")";
             case MIN -> "min(" + sideAlias + "." + agg.column().column() + ")";
             case MAX -> "max(" + sideAlias + "." + agg.column().column() + ")";
         };
+    }
+
+    /** MIN and MAX are deliberately absent here: they already mean lexicographic ordering. */
+    private static String numericOperand(AggregateSpec agg, String sideAlias, boolean castText) {
+        String ref = sideAlias + "." + agg.column().column();
+        return castText ? "TRY_CAST(" + ref + " AS DOUBLE)" : ref;
     }
 
     private static String groupKeyAlias(DisplayColumn g, String side) {

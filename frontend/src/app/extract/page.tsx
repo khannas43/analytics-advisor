@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import LakehouseCascade, {
   EMPTY_CASCADE,
   isCascadeComplete,
@@ -128,6 +128,31 @@ export default function ExtractPage() {
   const [matchError, setMatchError] = useState<string | null>(null);
   const [matchColumns, setMatchColumns] = useState<string[]>([]);
   const [matchRows, setMatchRows] = useState<Record<string, unknown>[]>([]);
+
+  /**
+   * Totals a SUM or AVG could not include, surfaced above the grid rather than
+   * left as another column to scroll past.
+   *
+   * The backend emits `<alias>_unparseable` beside any aggregate it had to cast,
+   * counting non-null values that would not parse as numbers. Zero stays silent —
+   * there is nothing to warn about, and a permanent banner is one people learn to
+   * ignore. A wrong total that looks right is the thing this exists to prevent.
+   */
+  const unparseableTotals = useMemo(() => {
+    const suffix = "_unparseable";
+    return matchColumns
+      .filter((c) => c.endsWith(suffix))
+      .map((column) => ({
+        column,
+        forColumn: column.slice(0, -suffix.length),
+        total: matchRows.reduce((sum, row) => {
+          const raw = row[column];
+          const n = typeof raw === "number" ? raw : Number(raw ?? 0);
+          return sum + (Number.isFinite(n) ? n : 0);
+        }, 0),
+      }))
+      .filter((u) => u.total > 0);
+  }, [matchColumns, matchRows]);
   const [matchSql, setMatchSql] = useState("");
   const [matchTotalRows, setMatchTotalRows] = useState<number | null>(null);
   const [matchTooManyToDisplay, setMatchTooManyToDisplay] = useState(false);
@@ -433,8 +458,8 @@ export default function ExtractPage() {
                 Aggregate
                 <select className="srse-select" style={{ width: "100%" }} value={aggregateFn} onChange={(e) => setAggregateFn(e.target.value as AggregateFunction)}>
                   <option value="COUNT">COUNT</option>
-                  <option value="SUM">SUM (numeric columns only)</option>
-                  <option value="AVG">AVG (numeric columns only)</option>
+                  <option value="SUM">SUM</option>
+                  <option value="AVG">AVG</option>
                   <option value="MIN">MIN</option>
                   <option value="MAX">MAX</option>
                 </select>
@@ -621,6 +646,32 @@ export default function ExtractPage() {
         </pre>
       )}
       {matchError && <p className="srse-text-danger">{matchError}</p>}
+
+      {unparseableTotals.length > 0 && (
+        <div
+          className="srse-card"
+          role="alert"
+          style={{
+            marginTop: "1rem",
+            borderLeft: "4px solid #d97706",
+            background: "rgba(217, 119, 6, 0.08)",
+          }}
+        >
+          <strong>Some values could not be added to these totals.</strong>
+          <p style={{ margin: "0.4rem 0 0.2rem" }}>
+            The column holds text, so each value was converted to a number before adding.
+            Values that are not numbers were skipped — the totals below are of everything else.
+          </p>
+          <ul style={{ margin: "0.3rem 0 0", paddingLeft: "1.1rem" }}>
+            {unparseableTotals.map((u) => (
+              <li key={u.column}>
+                <code>{u.forColumn}</code> — {u.total.toLocaleString()} value
+                {u.total === 1 ? "" : "s"} skipped
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {matchColumns.length > 0 && (
         <div style={{ marginTop: "1.5rem" }}>

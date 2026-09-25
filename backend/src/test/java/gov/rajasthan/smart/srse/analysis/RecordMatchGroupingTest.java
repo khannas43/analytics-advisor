@@ -102,7 +102,10 @@ class RecordMatchGroupingTest {
     }
 
     @Test
-    void sumOnTextColumnRefusedWithTypeInMessage() {
+    void sumOverTextCastsAndEmitsAnUnparseableCountBesideIt() {
+        // Golden Layer data keeps numbers in varchar columns, so the cast is allowed —
+        // but a total that silently drops rows is worse than no total, so the count of
+        // rows it could not add travels with it.
         when(scopeFrom.planFrom(SOURCE)).thenReturn(ScopeFilteredFrom.unfiltered(SRC));
         RecordMatchRequest req = groupedSingleSource(
                 new DisplayColumn("iceberg", "srse", "beneficiary", "district"),
@@ -112,9 +115,62 @@ class RecordMatchGroupingTest {
                         false,
                         null)),
                 null);
-        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> matchService.planMatch(req));
-        assertTrue(ex.getMessage().contains("SUM"));
-        assertTrue(ex.getMessage().contains("varchar"), ex.getMessage());
+        String sql = matchService.planMatch(req).sql();
+        assertTrue(sql.contains("sum(TRY_CAST(src.district AS DOUBLE))"), sql);
+        assertTrue(sql.contains("count_if(src.district IS NOT NULL "
+                + "AND TRY_CAST(src.district AS DOUBLE) IS NULL)"), sql);
+        assertTrue(sql.contains("_unparseable"), sql);
+    }
+
+    @Test
+    void theUnparseableCountIgnoresNullsRatherThanCountingThem() {
+        // SUM has always ignored NULLs and an absent value is not a lost one. Counting
+        // them would report every sparse column as broken.
+        when(scopeFrom.planFrom(SOURCE)).thenReturn(ScopeFilteredFrom.unfiltered(SRC));
+        RecordMatchRequest req = groupedSingleSource(
+                new DisplayColumn("iceberg", "srse", "beneficiary", "district"),
+                List.of(new AggregateSpec(
+                        AggregateFunction.SUM,
+                        new DisplayColumn("iceberg", "srse", "beneficiary", "district"),
+                        false,
+                        null)),
+                null);
+        assertTrue(matchService.planMatch(req).sql().contains("IS NOT NULL AND TRY_CAST"));
+    }
+
+    @Test
+    void aSumOverANumericColumnGrowsNoCompanionColumn() {
+        when(scopeFrom.planFrom(SOURCE)).thenReturn(ScopeFilteredFrom.unfiltered(SRC));
+        RecordMatchRequest req = groupedSingleSource(
+                new DisplayColumn("iceberg", "srse", "beneficiary", "district"),
+                List.of(new AggregateSpec(
+                        AggregateFunction.SUM,
+                        new DisplayColumn("iceberg", "srse", "beneficiary", "id"),
+                        false,
+                        null)),
+                null);
+        String sql = matchService.planMatch(req).sql();
+        assertTrue(sql.contains("sum(src.id)"), sql);
+        assertFalse(sql.contains("TRY_CAST"), sql);
+        assertFalse(sql.contains("_unparseable"), sql);
+    }
+
+    @Test
+    void sumOnATemporalColumnIsStillRefused() {
+        // TRY_CAST(date AS DOUBLE) is null for every row, so casting would return a
+        // confident zero — worse than an error.
+        when(scopeFrom.planFrom(SOURCE)).thenReturn(ScopeFilteredFrom.unfiltered(SRC));
+        RecordMatchRequest req = groupedSingleSource(
+                new DisplayColumn("iceberg", "srse", "beneficiary", "district"),
+                List.of(new AggregateSpec(
+                        AggregateFunction.SUM,
+                        new DisplayColumn("iceberg", "srse", "beneficiary", "dob"),
+                        false,
+                        null)),
+                null);
+        IllegalArgumentException ex =
+                assertThrows(IllegalArgumentException.class, () -> matchService.planMatch(req));
+        assertTrue(ex.getMessage().contains("date"), ex.getMessage());
     }
 
     @Test

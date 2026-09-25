@@ -596,7 +596,8 @@ public class RecordMatchService {
         Set<String> outerColumns = new LinkedHashSet<>();
         StringBuilder select = new StringBuilder();
         if (req.grouped()) {
-            MatchGroupingSql.appendGroupedSelect(select, outerColumns, req, table, table);
+            MatchGroupingSql.appendGroupedSelect(select, outerColumns, req, table, table,
+                    MatchGroupingSql.aggregateColumnTypes(req, registry));
         } else {
             appendDisplaySelects(select, outerColumns, "src", "source_", req.sourceDisplayColumns());
         }
@@ -739,7 +740,8 @@ public class RecordMatchService {
         String dedupAlias = null;
         if (req.grouped()) {
             MatchGroupingSql.appendGroupedSelect(
-                    select, outerColumns, req, sides.sourceTable(), sides.targetTable());
+                    select, outerColumns, req, sides.sourceTable(), sides.targetTable(),
+                    MatchGroupingSql.aggregateColumnTypes(req, registry));
         } else {
             // Comparison placeholders live in SELECT, which precedes ON in the final SQL —
             // bind comparison params before join params.
