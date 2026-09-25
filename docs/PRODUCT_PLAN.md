@@ -330,10 +330,34 @@ fails visibly; this one fails silently and looks like working software.
 
 ### 7.3 Audit log
 
+**Settled 2026-09-25 — A7 (what is logged) and A8 (retention).**
+
+**Logged:** authentication (login, logout, failed login, lockout), every query
+that returns data (match, multi-match, comparison summary), **every export**,
+queries planned but not run (SQL preview, fan-out refusals), and every admin
+action that changes who can see what (user create/edit, role and scope grants,
+scope bindings, password resets, shared-reference flag).
+
+**Not logged: metadata browsing.** The registry cascade fires on every dropdown
+interaction, so logging it would outnumber meaningful entries by an order of
+magnitude while recording only that someone opened a list of table names the
+registry already permits them. If browse coverage is ever wanted, add a daily
+rollup rather than per-call rows.
+
+**Retention: keep everything.** At the event set above — roughly 200 events per
+officer per day across ~50 officers — this is about 2.5 million rows a year,
+which needs no archival strategy. **Build the retention setting anyway**, even
+defaulted to never-purge: adding deletion to a table that is append-only by
+design is far harder than enabling it later.
+
+**Still open: A9 (tamper-evidence), A14 (sessions), and who may read an archived
+log.** See `docs/OPEN_DECISIONS_AUDIT.md`. A9 is the one that must be settled
+before 7.3.2 is built.
+
 | # | Activity | Type | Est |
 |---|---|---|---|
-| 7.3.1 | Capture: user, action, tables and columns touched, timestamp, source IP | N | 4 |
-| 7.3.2 | Storage, indexing and retention — this grows with every query run | N | 3 |
+| 7.3.1 | Capture: user, action, tables and columns touched, timestamp, source IP. **Exports are the entry not to compromise on** — a download is the moment data leaves the system. | N | 4 |
+| 7.3.2 | Storage and indexing, sized for the A7 event set; retention setting present but defaulted to never-purge | N | 3 |
 | 7.3.3 | Append-only / tamper-evident storage if audit rules require it | N | ? |
 | 7.3.4 | Log viewer with filters, granted to officers as an RBAC permission | N | 5 |
 | 7.3.5 | Export the log, and audit that export too | N | 2 |

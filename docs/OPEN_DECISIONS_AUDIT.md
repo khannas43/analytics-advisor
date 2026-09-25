@@ -1,5 +1,12 @@
 # Audit log — questions to answer
 
+> **Q1 and Q2 answered 2026-09-25.** Log everything except metadata browsing;
+> keep everything. Recorded in `PRODUCT_PLAN.md` §7.3.
+>
+> **Still open: Q3 (tamper-evidence), Q4 (sessions), Q5 (archived log
+> readership).** Q3 is the one to raise with DoIT&C, and the one that must be
+> settled before 7.3.2 is built.
+
 `PRODUCT_PLAN.md` §7.3 is the last blocked section. Five questions, each with
 what the answer commits you to and a recommendation.
 
