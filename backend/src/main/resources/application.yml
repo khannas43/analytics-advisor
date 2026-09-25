@@ -46,6 +46,11 @@ srse:
   auth-mode: ${SRSE_AUTH_MODE:mock}
   bootstrap:
     super-admin-password: ${SRSE_BOOTSTRAP_SUPER_ADMIN_PASSWORD:}
+  otp:
+    sender: ${SRSE_OTP_SENDER:log}
+    code-ttl-minutes: ${SRSE_OTP_TTL_MINUTES:5}
+    max-verify-attempts: ${SRSE_OTP_MAX_ATTEMPTS:5}
+    resend-cooldown-seconds: ${SRSE_OTP_RESEND_COOLDOWN_SECONDS:60}
   identity:
     lockout:
       max-failed-attempts: ${SRSE_IDENTITY_LOCKOUT_MAX_ATTEMPTS:5}

@@ -79,6 +79,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/health/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/mock-login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/verify-otp").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/resend-otp").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/change-password").authenticated()
                 .requestMatchers(HttpMethod.PUT, "/api/analysis/column-metadata").hasAuthority(Authorities.SRSE_ADMIN)
                 .requestMatchers(HttpMethod.DELETE, "/api/analysis/column-metadata")

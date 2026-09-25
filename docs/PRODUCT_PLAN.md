@@ -9,6 +9,33 @@ logic, six rows per table). Treat it as a picture of the destination, not a spec
 
 ---
 
+## Status at 2026-09-25
+
+**Built and verified against a running stack:** the fork cleanup (§1 bar the
+package rename), the whole of user management and data scoping (§7.1, §7.1b,
+§7.1c.1–2, §7.2), and everything inherited from SRSE that survived the fork —
+the match engine, the lakehouse registry, connection management, exports.
+
+**In flight:** §7.1a MFA (brief AA-10 with the developer), minus the SMS sender.
+
+**Blocked on someone outside the team**, and both worth starting now because
+nothing else waits behind them:
+
+- **SMS gateway contract** — credentials and sender-ID registration. Gates
+  7.1a.7 only; the seam is built around it.
+- **A9, tamper-evidence** — a compliance position, not an engineering choice.
+  Gates 7.3.2, and retrofitting a hash chain onto a populated append-only table
+  is far more expensive than designing it in. See `docs/OPEN_DECISIONS_AUDIT.md`.
+
+**Not started:** §2.3 source-system ops, §3 label vocabulary and the Database
+Overview page, §4 Extract Records, §5 Report Analysis (5.5 Group By is the
+largest single item left), §6.4–6.8 exports and saved queries, §7.3 audit log,
+§8 UX shell, §9.3/9.5.
+
+Legend in the tables below: ✅ done · ◐ partly done · ⏸ waiting on something else.
+
+---
+
 ## 0. Decisions — ANSWERED 2026-09-25
 
 Full framing and the reasoning behind each in `docs/OPEN_DECISIONS.md`.
@@ -35,11 +62,11 @@ Full framing and the reasoning behind each in `docs/OPEN_DECISIONS.md`.
 
 | # | Activity | Type | Est |
 |---|---|---|---|
-| 1.1 | Restore RBAC + controller tests removed at fork (6 slices). **Highest priority — live behaviour is currently untested.** | N | 2 |
-| 1.2 | Restore admin config backup, trimmed to connections + registrations + column metadata | N | 2 |
-| 1.3 | Decide and act on the inherited age filter (drop, or back with a real field concept) | N | 1 |
-| 1.4 | Rewrite `CLAUDE.md` for this product | N | 1 |
-| 1.5 | Strip SRSE screens from the frontend (Rule Engine page, scheme panels, field-mapping editor) | N | 2 |
+| 1.1 | ✅ (AA-01) Restore RBAC + controller tests removed at fork (6 slices). **Highest priority — live behaviour is currently untested.** | N | 2 |
+| 1.2 | ✅ (AA-04) Restore admin config backup, trimmed to connections + registrations + column metadata | N | 2 |
+| 1.3 | ✅ (AA-03) Decide and act on the inherited age filter (drop, or back with a real field concept) | N | 1 |
+| 1.4 | ✅ Rewrite `CLAUDE.md` for this product | N | 1 |
+| 1.5 | ✅ (AA-02) Strip SRSE screens from the frontend (Rule Engine page, scheme panels, field-mapping editor) | N | 2 |
 | 1.6 | Rename package root once both repos stop trading fixes | N | 1 |
 | 1.7 | ~~**Make the operational store portable**~~ Done (AA-05): Liquibase baseline, PostgreSQL default, `ddl-auto: validate`, DB2 still supported. | Y | 3 |
 
@@ -173,11 +200,11 @@ sessions and everything else an identity product would have given us.
 
 | # | Activity | Type | Est |
 |---|---|---|---|
-| 7.1.1 | Org hierarchy: levels (State → District → Taluka → …) and nodes with parents | N | 4 |
-| 7.1.2 | Users, roles, and assignment to one or more hierarchy nodes | N | 5 |
-| 7.1.3 | Local authentication: password hashing, login, logout, session expiry | N | 4 |
-| 7.1.4 | Password lifecycle: admin-set initial, self-service reset, expiry, failed-attempt lockout | N | 5 |
-| 7.1.5 | SuperAdmin / Admin screens to create users, assign roles and scopes, deactivate | N | 6 |
+| 7.1.1 | ✅ (AA-06) Org hierarchy: levels (State → District → Taluka → …) and nodes with parents | N | 4 |
+| 7.1.2 | ✅ (AA-06) Users, roles, and assignment to one or more hierarchy nodes | N | 5 |
+| 7.1.3 | ✅ (AA-06) Local authentication: password hashing, login, logout, session expiry | N | 4 |
+| 7.1.4 | ◐ (AA-06) Password lifecycle — admin-set initial, expiry and lockout done; **self-service reset waits on 7.1a's delivery channel** | N | 5 |
+| 7.1.5 | ✅ (AA-07) SuperAdmin / Admin screens to create users, assign roles and scopes, deactivate | N | 6 |
 | 7.1.6 | **ANSWERED: yes — an Admin is scoped, a SuperAdmin is not.** An Admin manages only users within their own subtree and may grant only scopes they themselves hold. See AA-07 Part 0. | N | 3 |
 
 **Assignment semantics — settled, and the specification §7.2 builds to.**
@@ -261,9 +288,9 @@ when the app is deployed. It is not defaulted in code and not printed at boot.
 
 | # | Activity | Type | Est |
 |---|---|---|---|
-| 7.1b.1 | Bootstrap on first start **only when the user table is empty**; never on later boots, so a redeploy cannot resurrect or reset the account | N | 1 |
-| 7.1b.2 | Refuse to start if no bootstrap password was supplied and no users exist — fail loudly rather than run unreachable or, worse, open | N | 1 |
-| 7.1b.3 | Force a password change at first login | N | 1 |
+| 7.1b.1 | ✅ (AA-06) Bootstrap on first start **only when the user table is empty**; never on later boots, so a redeploy cannot resurrect or reset the account | N | 1 |
+| 7.1b.2 | ✅ (AA-06) Refuse to start if no bootstrap password was supplied and no users exist — fail loudly rather than run unreachable or, worse, open | N | 1 |
+| 7.1b.3 | ✅ (AA-06) Force a password change at first login | N | 1 |
 
 **The trap to avoid — MFA and the first login.** §7.1a makes MFA a per-user
 flag, and a delivered OTP needs a verified mobile and email. If the bootstrap
@@ -284,8 +311,8 @@ audit log is **archived, not removed**.
 
 | # | Activity | Type | Est |
 |---|---|---|---|
-| 7.1c.1 | `user.active` flag; deactivation ends live sessions and refuses login | N | 1 |
-| 7.1c.2 | Deactivated users stay visible to admins and stay resolvable as the author of an audit entry | N | 1 |
+| 7.1c.1 | ✅ (AA-06) `user.active` flag; deactivation ends live sessions and refuses login | N | 1 |
+| 7.1c.2 | ✅ (AA-06) Deactivated users stay visible to admins and stay resolvable as the author of an audit entry | N | 1 |
 | 7.1c.3 | Archive a deactivated user's audit entries — moved out of the working set, retained and retrievable | N | 3 |
 | 7.1c.4 | Saved queries owned by a deactivated user: retained, and re-assignable by an admin rather than orphaned | N | 2 |
 
@@ -314,16 +341,16 @@ that was removed at the fork, for a different purpose.
 
 | # | Activity | Type | Est |
 |---|---|---|---|
-| 7.2.1 | Scope-binding model: per registered table, which column holds each hierarchy level | N | 4 |
-| 7.2.2 | Admin UI to define scope bindings, plus the explicit shared-reference-data flag (A4) | N | 3 |
-| 7.2.2a | Deny-by-default enforcement: an unbound, unflagged table is invisible to scoped users on every path, including browse and column listing | N | 3 |
-| 7.2.3 | Inject the scope predicate into **every** emitted query | N | 8 |
-| 7.2.4 | Cover every path that touches data — match, multi-target, comparison summary, CSV and other exports, SQL preview, suggest-keys probe, fan-out guard, column value lists | N | 6 |
-| 7.2.5 | Join policy: a scoped table joined to an unscoped one | N | 3 |
-| 7.2.6 | Group By and aggregates filter before aggregating | N | 2 |
-| 7.2.7 | Show the injected predicate in the SQL preview — a preview that hides it is misleading | N | 1 |
-| 7.2.8 | Adjust fan-out estimates for the scope filter, or it will refuse queries that would have run | N | 2 |
-| 7.2.9 | Negative tests: prove a scoped user cannot reach another district through *any* endpoint | N | 5 |
+| 7.2.1 | ✅ (AA-08) Scope-binding model: per registered table, which column holds each hierarchy level | N | 4 |
+| 7.2.2 | ✅ (AA-08) Admin UI to define scope bindings, plus the explicit shared-reference-data flag (A4) | N | 3 |
+| 7.2.2a | ✅ (AA-08) Deny-by-default enforcement: an unbound, unflagged table is invisible to scoped users on every path, including browse and column listing | N | 3 |
+| 7.2.3 | ✅ (AA-09) Inject the scope predicate into **every** emitted query | N | 8 |
+| 7.2.4 | ✅ (AA-09) Cover every path that touches data — match, multi-target, comparison summary, CSV and other exports, SQL preview, suggest-keys probe, fan-out guard, column value lists | N | 6 |
+| 7.2.5 | ✅ (AA-09) Join policy — settled by construction: each side is filtered in its own derived table, so a join can narrow but never widen (A5) | N | 3 |
+| 7.2.6 | ⏸ Group By and aggregates filter before aggregating — **nothing to do until 5.5 exists**; revisit with it | N | 2 |
+| 7.2.7 | ✅ (AA-09) Show the injected predicate in the SQL preview — a preview that hides it is misleading | N | 1 |
+| 7.2.8 | ✅ (AA-09) Adjust fan-out estimates for the scope filter, or it will refuse queries that would have run | N | 2 |
+| 7.2.9 | ✅ (AA-09) Negative tests: prove a scoped user cannot reach another district through *any* endpoint | N | 5 |
 
 **Note on 7.2.9.** This is the test suite that matters most. Every other feature
 fails visibly; this one fails silently and looks like working software.

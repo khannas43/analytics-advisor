@@ -1,5 +1,6 @@
 package gov.rajasthan.smart.srse.identity;
 
+import gov.rajasthan.smart.srse.audit.AuditService;
 import gov.rajasthan.smart.srse.identity.admin.UserAdminDtos;
 import gov.rajasthan.smart.srse.scope.ScopeNode;
 import gov.rajasthan.smart.srse.scope.ScopeNodeRepository;
@@ -11,6 +12,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 
 @Service
@@ -23,6 +25,7 @@ public class UserAdminService {
     private final ScopeNodeRepository scopeNodeRepository;
     private final PasswordEncoder passwordEncoder;
     private final AdminAuthorizationService authorization;
+    private final AuditService auditService;
 
     public UserAdminService(
             AppUserRepository userRepository,
@@ -31,7 +34,8 @@ public class UserAdminService {
             UserScopeAssignmentRepository scopeAssignmentRepository,
             ScopeNodeRepository scopeNodeRepository,
             PasswordEncoder passwordEncoder,
-            AdminAuthorizationService authorization) {
+            AdminAuthorizationService authorization,
+            AuditService auditService) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.userRoleRepository = userRoleRepository;
@@ -39,6 +43,7 @@ public class UserAdminService {
         this.scopeNodeRepository = scopeNodeRepository;
         this.passwordEncoder = passwordEncoder;
         this.authorization = authorization;
+        this.auditService = auditService;
     }
 
     public List<UserAdminDtos.UserSummary> listUsers(AppUser caller) {
@@ -95,8 +100,7 @@ public class UserAdminService {
         authorization.assertCanChangeRoles(caller, user, roles);
         authorization.assertCanDemoteOrRemoveSuperAdmin(user, roles);
 
-        user.setEmail(trimToNull(req.email()));
-        user.setMobile(trimToNull(req.mobile()));
+        applyContactUpdate(caller, user, req);
         if (req.mfaRequired() != null) {
             user.setMfaRequired(req.mfaRequired());
         }
@@ -218,6 +222,27 @@ public class UserAdminService {
             return List.of();
         }
         return roles.stream().map(String::trim).filter(s -> !s.isEmpty()).distinct().toList();
+    }
+
+    private void applyContactUpdate(AppUser caller, AppUser user, UserAdminDtos.UpdateUserRequest req) {
+        String newEmail = trimToNull(req.email());
+        String newMobile = trimToNull(req.mobile());
+        if (!Objects.equals(user.getEmail(), newEmail)) {
+            user.setEmail(newEmail);
+            user.setEmailVerified(false);
+            auditService.recordUserContactChange(caller, user, "EMAIL", "Admin updated email");
+        }
+        if (!Objects.equals(user.getMobile(), newMobile)) {
+            user.setMobile(newMobile);
+            user.setMobileVerified(false);
+            auditService.recordUserContactChange(caller, user, "MOBILE", "Admin updated mobile");
+        }
+        if (req.emailVerified() != null) {
+            user.setEmailVerified(req.emailVerified());
+        }
+        if (req.mobileVerified() != null) {
+            user.setMobileVerified(req.mobileVerified());
+        }
     }
 
     private static String trimToNull(String value) {

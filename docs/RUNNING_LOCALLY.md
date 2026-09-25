@@ -1,0 +1,88 @@
+# Running Analytics Advisor locally
+
+Two ways, depending on what you want to look at.
+
+## A. The whole stack — quickest look
+
+```bash
+cd analytics-advisor
+docker compose up --build
+```
+
+Frontend at **http://localhost:3000**, backend on 8080.
+
+This runs `auth-mode=mock`, which is the inherited development seam: there is no
+login screen and every caller is treated as an admin. **You will not see user
+management, login, or data scoping this way** — mock deliberately bypasses
+scoping, because it has no user records to scope against.
+
+Good for: the Analysis tab, the admin page, connections, registrations, column
+metadata, scope-binding configuration, exports.
+
+## B. Local auth — everything built in §7
+
+This is the one to use if you want to see login, users, roles, the hierarchy and
+row-level scoping actually working.
+
+```bash
+# database + lakehouse only
+docker compose up -d postgres presto metastore minio seed
+
+# backend, with real accounts switched on
+cd backend
+JAVA_HOME=$(/usr/libexec/java_home -v 17) mvn -q -DskipTests package
+JAVA_HOME=$(/usr/libexec/java_home -v 17) java -jar target/srse-backend-0.1.0.jar \
+  --server.port=8080 \
+  --spring.profiles.active=local \
+  --srse.auth-mode=local \
+  --srse.datasource.operational.jdbc-url=jdbc:postgresql://localhost:5433/srse \
+  --srse.datasource.operational.username=srse \
+  --srse.datasource.operational.password=srse_local_pw \
+  --srse.datasource.operational.driver-class-name=org.postgresql.Driver \
+  --srse.presto.url=jdbc:presto://localhost:8081 \
+  --srse.presto.user=srse \
+  --srse.bootstrap.super-admin-password='ChooseSomething1!'
+
+# frontend, pointed at local auth
+cd ../frontend
+NEXT_PUBLIC_AUTH_MODE=local NEXT_PUBLIC_API_BASE=http://localhost:8080 npm run dev
+```
+
+**JDK 17 is required** — the build enforcer rejects anything else. There is no
+root pom, so `mvn -pl backend` does not work; use `-f backend/pom.xml` or run
+from inside `backend/`.
+
+The bootstrap password is only used on the **first** start against an empty
+`app_user` table. On a database that already has users it is ignored, and if the
+table is empty and you supply nothing the backend refuses to start rather than
+coming up unreachable.
+
+## What is already in the dev database
+
+The PostgreSQL volume already carries fixtures from verification runs:
+
+| Account | Password | What it shows |
+|---|---|---|
+| `superadmin` | `Restored$Sup1` | Unscoped — sees all 7 districts, 200,000 rows |
+| `jaipurofficer` | `JaiOffic$1x` | Scoped to Jaipur — sees 28,571 rows, that district only |
+| `jaipuradmin` | `JaipurNew$1` | A **scoped admin**: manages only users inside Jaipur |
+| `sanganeruser` | `Officer$New1` | Taluka scope, for the deny-by-default case |
+
+Plus a Geography dimension with District and Taluka levels, and
+`iceberg.srse.beneficiary` registered and bound at District to the `district`
+column.
+
+**The clearest single demonstration:** log in as `jaipurofficer`, run a match on
+`beneficiary` keyed on `id` with `district` as a display column, and note the row
+count. Then do exactly the same as `superadmin`. 28,571 against 200,000, same
+request.
+
+## Worth knowing
+
+- A scope binding matches the officer's node **code** against the column's
+  values. They must agree exactly — a node coded `JAIPUR` against data holding
+  `Jaipur` matches nothing, and nothing currently warns you.
+- `sanganeruser` holds a **taluka**, and `beneficiary` is bound only at
+  **district**, so that table is correctly invisible to them: the rows carry no
+  taluka value, so no filter could be exact. That is deny-by-default working,
+  not a fault.

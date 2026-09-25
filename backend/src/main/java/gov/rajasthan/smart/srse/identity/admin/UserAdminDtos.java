@@ -42,7 +42,9 @@ public final class UserAdminDtos {
             String email,
             String mobile,
             List<String> roles,
-            Boolean mfaRequired) {
+            Boolean mfaRequired,
+            Boolean emailVerified,
+            Boolean mobileVerified) {
     }
 
     public record ReplaceScopesRequest(List<Long> scopeNodeIds) {

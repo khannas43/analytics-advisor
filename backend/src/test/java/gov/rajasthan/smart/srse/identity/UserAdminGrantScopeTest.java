@@ -49,6 +49,8 @@ class UserAdminGrantScopeTest {
     @BeforeEach
     void setUp() {
         authorization = new AdminAuthorizationService(userRoleRepository, assignmentLoader);
+        gov.rajasthan.smart.srse.audit.AuditService auditService =
+                org.mockito.Mockito.mock(gov.rajasthan.smart.srse.audit.AuditService.class);
         userAdminService = new UserAdminService(
                 userRepository,
                 roleRepository,

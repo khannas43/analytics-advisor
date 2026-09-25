@@ -1,5 +1,6 @@
 package gov.rajasthan.smart.srse.identity;
 
+import gov.rajasthan.smart.srse.otp.OtpChallengeService;
 import gov.rajasthan.smart.srse.security.SessionTokenService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,8 @@ class LocalAuthenticationServiceTest {
     private UserRoleRepository userRoleRepository;
     @Mock
     private SessionTokenService sessionTokenService;
+    @Mock
+    private OtpChallengeService otpChallengeService;
 
     private BCryptPasswordEncoder passwordEncoder;
     private LocalAuthenticationService service;
@@ -46,7 +49,8 @@ class LocalAuthenticationServiceTest {
                 new IdentityProperties.Password(90),
                 new IdentityProperties.Bootstrap("superadmin"));
         service = new LocalAuthenticationService(
-                userRepository, userRoleRepository, passwordEncoder, sessionTokenService, props);
+                userRepository, userRoleRepository, passwordEncoder, sessionTokenService, props,
+                otpChallengeService);
     }
 
     @Test

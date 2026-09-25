@@ -1,5 +1,9 @@
 package gov.rajasthan.smart.srse.identity;
 
+import gov.rajasthan.smart.srse.otp.ContactMasking;
+import gov.rajasthan.smart.srse.otp.OtpChallengeService;
+import gov.rajasthan.smart.srse.otp.OtpDeliveryException;
+import gov.rajasthan.smart.srse.otp.OtpPurpose;
 import gov.rajasthan.smart.srse.security.SessionTokenService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -30,18 +34,21 @@ public class LocalAuthenticationService {
     private final PasswordEncoder passwordEncoder;
     private final SessionTokenService sessionTokenService;
     private final IdentityProperties properties;
+    private final OtpChallengeService otpChallengeService;
 
     public LocalAuthenticationService(
             AppUserRepository userRepository,
             UserRoleRepository userRoleRepository,
             PasswordEncoder passwordEncoder,
             SessionTokenService sessionTokenService,
-            IdentityProperties properties) {
+            IdentityProperties properties,
+            OtpChallengeService otpChallengeService) {
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
         this.passwordEncoder = passwordEncoder;
         this.sessionTokenService = sessionTokenService;
         this.properties = properties;
+        this.otpChallengeService = otpChallengeService;
     }
 
     @Transactional
@@ -62,10 +69,51 @@ public class LocalAuthenticationService {
         }
         user.setFailedLoginCount(0);
         user.setLockedUntil(null);
-        user.setLastLoginAt(Instant.now());
         user.touchUpdatedAt();
         userRepository.save(user);
 
+        if (user.isMfaRequired()) {
+            if (!user.isEmailVerified() && !user.isMobileVerified()) {
+                return LoginResult.failure(
+                        "MFA is enabled but you have no verified contact — contact an administrator.");
+            }
+            try {
+                OtpChallengeService.IssuedChallenge challenge = otpChallengeService.beginLoginChallenge(user);
+                return LoginResult.mfaPending(
+                        challenge.publicChallengeId(),
+                        ContactMasking.maskEmail(user.getEmail()),
+                        ContactMasking.maskMobile(user.getMobile()));
+            } catch (OtpDeliveryException ex) {
+                return LoginResult.failure(ex.getMessage());
+            }
+        }
+        return completeSessionLogin(user);
+    }
+
+    @Transactional
+    public LoginResult verifyLoginOtp(String challengeId, String code) {
+        AppUser user = otpChallengeService.verifyAndConsume(challengeId, code, OtpPurpose.LOGIN);
+        user.setLastLoginAt(Instant.now());
+        user.touchUpdatedAt();
+        userRepository.save(user);
+        return completeSessionLogin(user);
+    }
+
+    @Transactional
+    public LoginResult resendLoginOtp(String challengeId) {
+        try {
+            OtpChallengeService.IssuedChallenge challenge = otpChallengeService.resend(challengeId);
+            AppUser user = challenge.user();
+            return LoginResult.mfaPending(
+                    challenge.publicChallengeId(),
+                    ContactMasking.maskEmail(user.getEmail()),
+                    ContactMasking.maskMobile(user.getMobile()));
+        } catch (OtpDeliveryException ex) {
+            return LoginResult.failure(ex.getMessage());
+        }
+    }
+
+    private LoginResult completeSessionLogin(AppUser user) {
         boolean mustChange = user.isMustChangePassword() || isPasswordExpired(user);
         List<String> authorities = RoleAuthorityMapper.toAuthorities(
                 userRoleRepository.findRoleCodesByUserId(user.getId()));
@@ -126,13 +174,29 @@ public class LocalAuthenticationService {
         return Instant.now().isAfter(expires);
     }
 
-    public record LoginResult(boolean success, String token, String message, boolean mustChangePassword) {
+    public record LoginResult(
+            boolean success,
+            String token,
+            String message,
+            boolean mustChangePassword,
+            String mfaChallengeId,
+            String maskedEmail,
+            String maskedMobile) {
+
         static LoginResult success(String token, boolean mustChangePassword) {
-            return new LoginResult(true, token, null, mustChangePassword);
+            return new LoginResult(true, token, null, mustChangePassword, null, null, null);
+        }
+
+        static LoginResult mfaPending(String challengeId, String maskedEmail, String maskedMobile) {
+            return new LoginResult(true, null, null, false, challengeId, maskedEmail, maskedMobile);
         }
 
         static LoginResult failure(String message) {
-            return new LoginResult(false, null, message, false);
+            return new LoginResult(false, null, message, false, null, null, null);
+        }
+
+        public boolean mfaRequired() {
+            return success && mfaChallengeId != null;
         }
     }
 }

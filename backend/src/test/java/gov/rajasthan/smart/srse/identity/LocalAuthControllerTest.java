@@ -37,10 +37,14 @@ class LocalAuthControllerTest {
     @MockBean
     private AppUserRepository appUserRepository;
 
+    @MockBean
+    private ContactVerificationService contactVerificationService;
+
     @Test
     void loginReturnsTokenOnSuccess() throws Exception {
         when(authenticationService.login("alice", "pw"))
-                .thenReturn(new LocalAuthenticationService.LoginResult(true, "tok", null, true));
+                .thenReturn(new LocalAuthenticationService.LoginResult(
+                        true, "tok", null, true, null, null, null));
 
         mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

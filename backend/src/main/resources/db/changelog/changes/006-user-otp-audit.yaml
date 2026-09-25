@@ -1,0 +1,105 @@
+databaseChangeLog:
+  - changeSet:
+      id: 006-user-otp-challenge
+      author: srse
+      changes:
+        - createTable:
+            tableName: user_otp_challenge
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: public_challenge_id
+                  type: varchar(36)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: user_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_otp_user
+                    references: app_user(id)
+              - column:
+                  name: code_hash
+                  type: varchar(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: purpose
+                  type: varchar(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: expires_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: consumed_at
+                  type: timestamp with time zone
+              - column:
+                  name: attempt_count
+                  type: int
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: delivery_status
+                  type: varchar(256)
+              - column:
+                  name: last_sent_at
+                  type: timestamp with time zone
+        - createIndex:
+            tableName: user_otp_challenge
+            indexName: ix_otp_user_purpose_active
+            columns:
+              - column:
+                  name: user_id
+              - column:
+                  name: purpose
+
+  - changeSet:
+      id: 006-audit-event
+      author: srse
+      changes:
+        - createTable:
+            tableName: audit_event
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: occurred_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_user_id
+                  type: bigint
+              - column:
+                  name: target_user_id
+                  type: bigint
+              - column:
+                  name: action_type
+                  type: varchar(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: detail
+                  type: varchar(1024)
