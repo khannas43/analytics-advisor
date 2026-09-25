@@ -182,11 +182,11 @@ works exactly this way in SRSE.
 | 6.1 | ✅ Results grid: sort, per-column filter, column visibility, paging | R | 0 |
 | 6.2 | ✅ Large-result behaviour: stop rendering past a threshold, offer the complete file instead | R | 0 |
 | 6.3 | ✅ CSV export — complete result, streamed, not a re-serialisation of the screen | R | 0 |
-| 6.4 | Excel export | N | 3 |
-| 6.5 | JSON export | N | 1 |
-| 6.6 | XML export | N | 1 |
-| 6.7 | Saved queries — name, reopen, share | N | 5 |
-| 6.8 | Scheduled runs / delivery | N | ? |
+| 6.4 | ✅ (AA-18) Excel export | N | 3 |
+| 6.5 | ✅ (AA-18) JSON export | N | 1 |
+| 6.6 | ✅ (AA-18) XML export | N | 1 |
+| 6.7 | ✅ (AA-18) Saved queries — name, reopen, share | N | 5 |
+| 6.8 | ⏸ Scheduled runs / delivery — **needs a decision first: whose scope does a scheduled run execute under?** The author's is a standing scope leak; the recipient's means the same schedule yields different data per viewer. | N | ? |
 
 ---
 
