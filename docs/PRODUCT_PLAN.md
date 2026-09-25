@@ -493,8 +493,8 @@ data if left unanswered.**
 | # | Question | Why it matters |
 |---|---|---|
 | A6 | **DECIDED (revised): store the query SHAPE, never the bound values.** The SQL is recorded with placeholders; Aadhaar numbers, names and other typed filter values are not stored. | Keeps personal data out of the audit log entirely, so the log never becomes a second copy of the data needing the same protection. The trade, accepted: you can see *what an officer did* structurally — which tables and columns, which operators — but not the exact value they searched for. |
-| A7 | What counts as "accessed"? Every query, every export, every table listing, every login attempt? | Decides log volume by an order of magnitude. |
-| A8 | Retention, archival and volume expectations. | Every query by every officer, indefinitely, is a large table. |
+| A7 | **ANSWERED (as audit Q1): log everything except metadata browsing.** Authentication, queries, exports, refusals and admin actions. See §7.3. | Settled 2026-09-25. |
+| A8 | **ANSWERED (as audit Q2): keep everything.** ~2.5M rows/year at the A7 event set; retention setting present but defaulted to never-purge. See §7.3. | Settled 2026-09-25. |
 | A9 | Is tamper-evidence required (append-only, checksummed), or is a normal table acceptable? | Government audit rules often require the former; it is much harder. |
 | A10 | **DECIDED: yes, the audit log is scoped.** A district officer with log access sees entries for users within their own subtree, not other districts'. | Without this the log leaks exactly what the scoping prevents. Open sub-question: an entry written by a *state-level* user who queried one district's data — does it appear to that district's log viewer? Simplest rule is to scope by the acting user's node, not by the data they touched. |
 
@@ -508,7 +508,7 @@ data if left unanswered.**
 
 | # | Note |
 |---|---|
-| A17 | **Bind each table at the highest level it actually carries.** A district officer querying a table that has a `district_code` column gets `district_code = ?` — one value, cheap. The same officer querying a table that only has `village_code` needs every village in that district, which is an `IN` list running into thousands and a slow query. Where a table carries several levels, the binding should prefer the coarsest column that covers the user's scope. Worth a cap and a clear refusal when expansion would be unreasonable. |
+| A17 | **NOT A QUESTION — implemented.** Bind each table at the coarsest level that still covers the officer's scope. Built in AA-08 and corrected in `7839346`, where a binding coarser than the officer's own scope was found to widen their view and is now rejected as unusable. | Done. |
 
 ### C. Identity and accounts
 
