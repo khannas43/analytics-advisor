@@ -18,7 +18,7 @@ type LoginBody = {
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const returnTo = params.get("returnTo") ?? "/extract";
+  const returnTo = params.get("returnTo") ?? "/overview";
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
