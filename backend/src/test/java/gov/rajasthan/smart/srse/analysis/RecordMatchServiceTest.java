@@ -69,6 +69,9 @@ class RecordMatchServiceTest {
     @Mock
     private AnalysisScopeFromService scopeFrom;
 
+    @Mock
+    private gov.rajasthan.smart.srse.compiler.RuleCompiler ruleCompiler;
+
     /** queryTimeoutSeconds=30. */
     private final GuardrailProperties guardrails = new GuardrailProperties(1000, 30, 50);
     private static final AnalysisProperties DEFAULT_ANALYSIS = new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10);
@@ -96,8 +99,11 @@ class RecordMatchServiceTest {
             QualifiedTable table = inv.getArgument(0);
             return ScopeFilteredFrom.unfiltered(table.qualifiedName());
         });
+        lenient().when(ruleCompiler.compile(any(), any()))
+                .thenReturn(new gov.rajasthan.smart.srse.compiler.CompiledQuery("TRUE", List.of()));
         service = new RecordMatchService(
-                jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper, scopeFrom);
+                jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper, scopeFrom,
+                ruleCompiler);
     }
 
     /** Every criterion in these tests lives in one catalog+schema unless a test says otherwise. */
@@ -1217,8 +1223,11 @@ class RecordMatchServiceTest {
     @Test
     void blockingPrefixLenComesFromAnalysisProperties() {
         analysisProperties = new AnalysisProperties(5, 120, 4, 2, 10, 6, 50_000_000L, 10);
+        lenient().when(ruleCompiler.compile(any(), any()))
+                .thenReturn(new gov.rajasthan.smart.srse.compiler.CompiledQuery("TRUE", List.of()));
         service = new RecordMatchService(
-                jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper, scopeFrom);
+                jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper, scopeFrom,
+                ruleCompiler);
         RecordMatchRequest req = new RecordMatchRequest(
                 List.of(fuzzy("beneficiary", "father_name", 75.0)),
                 List.of(exact("beneficiary", "father_name")),
@@ -1287,8 +1296,11 @@ class RecordMatchServiceTest {
     @Test
     void estimatedFanOutLowCardinalityKeyIsRefusedWithMessage() {
         analysisProperties = new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10);
+        lenient().when(ruleCompiler.compile(any(), any()))
+                .thenReturn(new gov.rajasthan.smart.srse.compiler.CompiledQuery("TRUE", List.of()));
         service = new RecordMatchService(
-                jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper, scopeFrom);
+                jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper, scopeFrom,
+                ruleCompiler);
         stubReconciliationCardinalities(7L, 7L);
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.planMatch(districtCrossTableMatch()));
         assertTrue(ex.getMessage().contains("Estimated match fan-out"), ex.getMessage());
@@ -1472,8 +1484,11 @@ class RecordMatchServiceTest {
     @Test
     void comparisonGroupsDoNotChangeFanOutEstimate() {
         analysisProperties = new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10);
+        lenient().when(ruleCompiler.compile(any(), any()))
+                .thenReturn(new gov.rajasthan.smart.srse.compiler.CompiledQuery("TRUE", List.of()));
         service = new RecordMatchService(
-                jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper, scopeFrom);
+                jdbc, registry, guardrails, columnMetadata, analysisProperties, objectMapper, scopeFrom,
+                ruleCompiler);
         stubReconciliationCardinalities(7L, 7L);
 
         RecordMatchRequest base = districtCrossTableMatch();

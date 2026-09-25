@@ -2,6 +2,7 @@ package gov.rajasthan.smart.srse.compiler;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import gov.rajasthan.smart.srse.lakehouse.QualifiedColumn;
 
 import java.util.List;
 
@@ -53,16 +54,14 @@ public final class Ast {
     }
 
     /**
-     * A single condition: field + operator + value.
-     * {@code fieldKey} is an ABSTRACT catalogue key (e.g. "annual_income_total"),
-     * resolved to a physical column by the mapping service at compile time.
+     * A single condition on a registered lakehouse column ({@code catalog.schema.table.column}).
      * {@code value} may be a scalar, a two-element list (BETWEEN), or a list (IN).
      */
-    public record PredicateNode(String fieldKey, Operator operator, Object value)
+    public record PredicateNode(QualifiedColumn column, Operator operator, Object value)
             implements Node {
         public PredicateNode {
-            if (fieldKey == null || fieldKey.isBlank()) {
-                throw new IllegalArgumentException("PredicateNode requires a fieldKey");
+            if (column == null) {
+                throw new IllegalArgumentException("PredicateNode requires a column");
             }
             if (operator == null) {
                 throw new IllegalArgumentException("PredicateNode requires an operator");
@@ -70,8 +69,8 @@ public final class Ast {
         }
 
         /** Convenience for value-less unary operators (IS_TRUE, IS_FALSE, IS_NULL, NOT_NULL). */
-        public PredicateNode(String fieldKey, Operator operator) {
-            this(fieldKey, operator, null);
+        public PredicateNode(QualifiedColumn column, Operator operator) {
+            this(column, operator, null);
         }
     }
 

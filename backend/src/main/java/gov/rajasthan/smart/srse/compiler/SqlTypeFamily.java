@@ -44,6 +44,32 @@ public enum SqlTypeFamily {
             "double", "real", "float", "decimal", "numeric");
     private static final Set<String> TEMPORAL_TYPES = Set.of("date", "timestamp", "time", "datetime");
 
+    /** Logical family of an officer-supplied bound value (Rule Engine path). */
+    public static SqlTypeFamily ofValue(Object value) {
+        if (value == null) {
+            return TEXT;
+        }
+        if (value instanceof Number) {
+            return NUMBER;
+        }
+        if (value instanceof Boolean) {
+            return BOOLEAN;
+        }
+        if (value instanceof String s) {
+            String trimmed = s.trim();
+            if (trimmed.isEmpty()) {
+                return TEXT;
+            }
+            try {
+                Double.parseDouble(trimmed);
+                return NUMBER;
+            } catch (NumberFormatException ex) {
+                return TEXT;
+            }
+        }
+        return TEXT;
+    }
+
     /** Family of a raw {@code information_schema} type string; never null. */
     public static SqlTypeFamily of(String dataType) {
         String base = baseTypeName(dataType);

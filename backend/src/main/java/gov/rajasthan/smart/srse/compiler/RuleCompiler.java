@@ -1,5 +1,8 @@
 package gov.rajasthan.smart.srse.compiler;
 
+import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
+import gov.rajasthan.smart.srse.lakehouse.QualifiedColumn;
+import gov.rajasthan.smart.srse.lakehouse.QualifiedTable;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -7,80 +10,91 @@ import java.util.List;
 import java.util.StringJoiner;
 
 /**
- * Rule-to-SQL compiler — the hard core of SRSE.
+ * Rule-to-SQL compiler for Extract Records (§4.5).
  *
- * Walks a {@link Ast.PredicateSpec} and emits a single parameterised Presto
- * WHERE-clause fragment plus an ordered parameter list ({@link CompiledQuery}).
- *
- * CONTRACT (do not violate):
- *  - Never emits a JOIN or on-the-fly cross-table calculation. Tier-3 logic is
- *    pre-materialised upstream and appears as a flat column via FieldResolver.
- *  - Values are ALWAYS bound parameters ('?'), never string-concatenated.
- *  - Field keys resolve to columns ONLY through FieldResolver (allow-list).
- *
- * This is a skeleton: the scalar operators are implemented to prove the shape;
- * BETWEEN / IN edge cases and value-type validation are the first build task
- * (design doc §6.1). Unit tests live in src/test (RuleCompilerTest).
+ * <p>Walks a {@link Ast.PredicateSpec} and emits a parameterised WHERE fragment
+ * for use inside a scoped derived table ({@code t} alias). Values are always
+ * bound; columns resolve only through {@link RuleColumnResolver}.
  */
 @Component
 public class RuleCompiler {
 
-    private final FieldResolver fields;
+    private static final String TABLE_ALIAS = "t";
 
-    public RuleCompiler(FieldResolver fields) {
-        this.fields = fields;
+    private final RuleColumnResolver columns;
+
+    public RuleCompiler(RuleColumnResolver columns) {
+        this.columns = columns;
     }
 
-    public CompiledQuery compile(Ast.PredicateSpec spec) {
+    public CompiledQuery compile(Ast.PredicateSpec spec, QualifiedTable table) {
         List<Object> params = new ArrayList<>();
-        String sql = emit(spec.root(), params);
+        String sql = emit(spec.root(), table, params);
         return new CompiledQuery(sql, params);
     }
 
-    private String emit(Ast.Node node, List<Object> params) {
-        // Java 17: if/instanceof pattern matching (JEP 394). Type-pattern
-        // switch expressions require Java 21 and are not used here.
+    private String emit(Ast.Node node, QualifiedTable table, List<Object> params) {
         if (node instanceof Ast.GroupNode g) {
-            return emitGroup(g, params);
+            return emitGroup(g, table, params);
         }
         if (node instanceof Ast.PredicateNode p) {
-            return emitPredicate(p, params);
+            return emitPredicate(p, table, params);
         }
         throw new IllegalStateException("Unexpected node: " + node);
     }
 
-    private String emitGroup(Ast.GroupNode g, List<Object> params) {
+    private String emitGroup(Ast.GroupNode g, QualifiedTable table, List<Object> params) {
         String joiner = g.op() == Ast.BoolOp.AND ? " AND " : " OR ";
         StringJoiner sj = new StringJoiner(joiner, "(", ")");
         for (Ast.Node child : g.children()) {
-            sj.add(emit(child, params));
+            sj.add(emit(child, table, params));
         }
         return sj.toString();
     }
 
     @SuppressWarnings("unchecked")
-    private String emitPredicate(Ast.PredicateNode p, List<Object> params) {
-        String col = fields.resolveColumn(p.fieldKey());   // allow-list resolution
+    private String emitPredicate(Ast.PredicateNode p, QualifiedTable table, List<Object> params) {
+        RegisteredColumn described = columns.resolve(p.column(), table);
+        SqlTypeFamily columnFamily = SqlTypeFamily.of(described.dataType());
+        String colRef = columnRef(p.column().column(), columnFamily, p.operator(), p.value());
         return switch (p.operator()) {
-            case EQ  -> bind(col + " = ?",  p.value(), params);
-            case NE  -> bind(col + " <> ?", p.value(), params);
-            case LT  -> bind(col + " < ?",  p.value(), params);
-            case LTE -> bind(col + " <= ?", p.value(), params);
-            case GT  -> bind(col + " > ?",  p.value(), params);
-            case GTE -> bind(col + " >= ?", p.value(), params);
+            case EQ  -> bind(colRef + " = ?",  p.value(), params);
+            case NE  -> bind(colRef + " <> ?", p.value(), params);
+            case LT  -> bind(colRef + " < ?",  p.value(), params);
+            case LTE -> bind(colRef + " <= ?", p.value(), params);
+            case GT  -> bind(colRef + " > ?",  p.value(), params);
+            case GTE -> bind(colRef + " >= ?", p.value(), params);
 
-            case IS_TRUE  -> col + " = TRUE";
-            case IS_FALSE -> col + " = FALSE";
-            case IS_NULL  -> col + " IS NULL";
-            case NOT_NULL -> col + " IS NOT NULL";
+            case IS_TRUE  -> colRef + " = TRUE";
+            case IS_FALSE -> colRef + " = FALSE";
+            case IS_NULL  -> colRef + " IS NULL";
+            case NOT_NULL -> colRef + " IS NOT NULL";
 
-            case IN     -> emitIn(col, (List<Object>) p.value(), params, false);
-            case NOT_IN -> emitIn(col, (List<Object>) p.value(), params, true);
+            case IN     -> emitIn(colRef, (List<Object>) p.value(), params, false);
+            case NOT_IN -> emitIn(colRef, (List<Object>) p.value(), params, true);
 
-            case BETWEEN -> emitBetween(col, (List<Object>) p.value(), params);
+            case BETWEEN -> emitBetween(colRef, (List<Object>) p.value(), params);
 
-            case FUZZY_MATCH -> emitFuzzyMatch(col, (List<Object>) p.value(), params);
+            case FUZZY_MATCH -> emitFuzzyMatch(colRef, (List<Object>) p.value(), params);
         };
+    }
+
+    private String columnRef(String columnName, SqlTypeFamily columnFamily,
+                             Ast.Operator operator, Object value) {
+        String bare = TABLE_ALIAS + "." + columnName;
+        if (operator == Ast.Operator.IS_NULL
+                || operator == Ast.Operator.NOT_NULL
+                || operator == Ast.Operator.IS_TRUE
+                || operator == Ast.Operator.IS_FALSE) {
+            return bare;
+        }
+        if (columnFamily == SqlTypeFamily.BOOLEAN || columnFamily == SqlTypeFamily.TEMPORAL) {
+            return bare;
+        }
+        if (value == null) {
+            return bare;
+        }
+        return TypeCoercion.alignColumnToValue(bare, columnFamily, SqlTypeFamily.ofValue(value));
     }
 
     private String bind(String frag, Object value, List<Object> params) {
@@ -90,7 +104,6 @@ public class RuleCompiler {
 
     private String emitIn(String col, List<Object> values, List<Object> params, boolean negate) {
         if (values == null || values.isEmpty()) {
-            // Empty IN: emit a constant-false (or true for NOT_IN) to stay safe.
             return negate ? "TRUE" : "FALSE";
         }
         StringJoiner ph = new StringJoiner(", ", "(", ")");
@@ -110,13 +123,6 @@ public class RuleCompiler {
         return col + " BETWEEN ? AND ?";
     }
 
-    /**
-     * Approximate name match — normalized Levenshtein similarity via
-     * PrestoDB's built-in {@code levenshtein_distance}, entirely in
-     * parameterised SQL: no join, no string concatenation. {@code value} is
-     * {@code [name, thresholdPercent]}; the name is bound twice (it appears
-     * twice in the expression) and the threshold once, as a 0..1 fraction.
-     */
     private String emitFuzzyMatch(String col, List<Object> value, List<Object> params) {
         if (value == null || value.size() != 2) {
             throw new IllegalArgumentException("FUZZY_MATCH requires [name, thresholdPercent]");

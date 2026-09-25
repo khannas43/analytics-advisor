@@ -96,14 +96,19 @@ class EmittedSqlParsesTest {
     private AnalysisColumnMetadataRepository columnMetadata;
     @Mock
     private AnalysisScopeFromService scopeFrom;
+    @Mock
+    private gov.rajasthan.smart.srse.compiler.RuleCompiler ruleCompiler;
 
     private RecordMatchService service;
 
     @BeforeEach
     void setUp() {
+        lenient().when(ruleCompiler.compile(any(), any()))
+                .thenReturn(new gov.rajasthan.smart.srse.compiler.CompiledQuery("TRUE", List.of()));
         service = new RecordMatchService(
                 jdbc, registry, new GuardrailProperties(1000, 30, 50), columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10), new ObjectMapper(), scopeFrom);
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10), new ObjectMapper(), scopeFrom,
+                ruleCompiler);
         lenient().when(scopeFrom.planFrom(any())).thenAnswer(inv -> {
             QualifiedTable table = inv.getArgument(0);
             return ScopeFilteredFrom.unfiltered(table.qualifiedName());

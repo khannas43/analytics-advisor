@@ -1,9 +1,12 @@
 package gov.rajasthan.smart.srse.analysis;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import gov.rajasthan.smart.srse.compiler.Ast;
 import gov.rajasthan.smart.srse.compiler.ColumnGroupSql;
 import gov.rajasthan.smart.srse.compiler.CompareAs;
+import gov.rajasthan.smart.srse.compiler.CompiledQuery;
 import gov.rajasthan.smart.srse.compiler.FuzzyMatchSql;
+import gov.rajasthan.smart.srse.compiler.RuleCompiler;
 import gov.rajasthan.smart.srse.compiler.SqlTypeFamily;
 import gov.rajasthan.smart.srse.compiler.TypeCoercion;
 import gov.rajasthan.smart.srse.execution.GuardrailProperties;
@@ -111,6 +114,7 @@ public class RecordMatchService {
     private final AnalysisProperties analysisProperties;
     private final ObjectMapper objectMapper;
     private final AnalysisScopeFromService scopeFrom;
+    private final RuleCompiler ruleCompiler;
 
     public RecordMatchService(@Qualifier("prestoJdbcTemplate") JdbcTemplate jdbc,
                               LakehouseRegistryService registry,
@@ -118,7 +122,8 @@ public class RecordMatchService {
                               AnalysisColumnMetadataRepository columnMetadata,
                               AnalysisProperties analysisProperties,
                               ObjectMapper objectMapper,
-                              AnalysisScopeFromService scopeFrom) {
+                              AnalysisScopeFromService scopeFrom,
+                              RuleCompiler ruleCompiler) {
         this.jdbc = jdbc;
         this.registry = registry;
         this.guardrails = guardrails;
@@ -126,12 +131,16 @@ public class RecordMatchService {
         this.analysisProperties = analysisProperties;
         this.objectMapper = objectMapper;
         this.scopeFrom = scopeFrom;
+        this.ruleCompiler = ruleCompiler;
     }
 
     /**
      * Validates the request and builds the Presto match query without executing it.
      */
     public MatchQuery planMatch(RecordMatchRequest req) {
+        if (req.singleSource()) {
+            return buildSingleSourceQuery(req);
+        }
         JoinPlan join = normalizeJoin(req);
         Sides sides = validateRequest(req, join);
         return buildMatchQuery(req, join, sides);
@@ -273,6 +282,9 @@ public class RecordMatchService {
      * same-size error it has always produced is still produced here.
      */
     private JoinPlan normalizeJoin(RecordMatchRequest req) {
+        if (req.singleSource()) {
+            return new JoinPlan(List.of(), List.of(), List.of());
+        }
         if (req.joinGroups().isEmpty()) {
             if (req.sourceCriteria().size() != req.targetCriteria().size()) {
                 throw new IllegalArgumentException("sourceCriteria and targetCriteria must be the same size");
@@ -556,6 +568,73 @@ public class RecordMatchService {
         return columns.stream().anyMatch(c -> c.column().toLowerCase().contains("name"));
     }
 
+    private MatchQuery buildSingleSourceQuery(RecordMatchRequest req) {
+        if (!req.targetCriteria().isEmpty() || !req.joinGroups().isEmpty()
+                || !req.comparisonGroups().isEmpty()) {
+            throw new IllegalArgumentException("singleSource mode cannot include a join");
+        }
+        if (req.sourceDisplayColumns().isEmpty()) {
+            throw new IllegalArgumentException("singleSource requires at least one display column");
+        }
+        QualifiedTable table = sameTableFromDisplay(req.sourceDisplayColumns(), "sourceDisplayColumns");
+        validateDisplayColumns(req.sourceDisplayColumns(), table, "sourceDisplayColumns");
+        ScopeFilteredFrom scope = applySideRules(
+                scopeFrom.planFrom(table), req.sourceRules(), table);
+        // No join — fan-out guard does not apply; do not call enforceEstimatedRowCeiling with
+        // degenerate empty join groups.
+
+        List<Object> scopeParams = new ArrayList<>();
+        String from = fromSide(scope, "src", List.of(), scopeParams);
+
+        Set<String> outerColumns = new LinkedHashSet<>();
+        StringBuilder select = new StringBuilder();
+        appendDisplaySelects(select, outerColumns, "src", "source_", req.sourceDisplayColumns());
+        String sql = "SELECT " + select + " FROM " + from;
+        return new MatchQuery(sql, List.copyOf(scopeParams), List.copyOf(outerColumns));
+    }
+
+    private ScopeFilteredFrom applySideRules(
+            ScopeFilteredFrom scope, Ast.PredicateSpec rules, QualifiedTable table) {
+        if (rules == null) {
+            return scope;
+        }
+        validateRulesOnTable(rules, table);
+        CompiledQuery compiled = ruleCompiler.compile(rules, table);
+        return scope.withRulePredicate(compiled.predicateSql(), compiled.params());
+    }
+
+    private void validateRulesOnTable(Ast.PredicateSpec spec, QualifiedTable table) {
+        walkRules(spec.root(), table);
+    }
+
+    private void walkRules(Ast.Node node, QualifiedTable table) {
+        if (node instanceof Ast.GroupNode group) {
+            group.children().forEach(child -> walkRules(child, table));
+            return;
+        }
+        if (node instanceof Ast.PredicateNode predicate) {
+            if (!predicate.column().table().equals(table)) {
+                throw new IllegalArgumentException(
+                        "Rule column must be on " + table.qualifiedName());
+            }
+            registry.validateColumn(predicate.column());
+        }
+    }
+
+    private QualifiedTable sameTableFromDisplay(List<DisplayColumn> columns, String label) {
+        if (columns.isEmpty()) {
+            throw new IllegalArgumentException(label + " must not be empty");
+        }
+        QualifiedTable table = columns.get(0).qualifiedTable();
+        for (DisplayColumn column : columns) {
+            if (!column.qualifiedTable().equals(table)) {
+                throw new IllegalArgumentException(
+                        label + " must all reference the same table: " + table.qualifiedName());
+            }
+        }
+        return table;
+    }
+
     private Sides validateRequest(RecordMatchRequest req, JoinPlan join) {
         QualifiedTable sourceTable = sameTable(join.sourceColumns(), "sourceCriteria");
         QualifiedTable targetTable = sameTable(join.targetColumns(), "targetCriteria");
@@ -612,8 +691,10 @@ public class RecordMatchService {
         List<UnnestSide> targetUnnests = new ArrayList<>();
         List<GroupPlan> groups = planGroups(join, sides, sourceUnnests, targetUnnests,
                 joinType.preservesSourceSide(), joinType.preservesTargetSide());
-        ScopeFilteredFrom sourceScope = scopeFrom.planFrom(sides.sourceTable());
-        ScopeFilteredFrom targetScope = scopeFrom.planFrom(sides.targetTable());
+        ScopeFilteredFrom sourceScope = applySideRules(
+                scopeFrom.planFrom(sides.sourceTable()), req.sourceRules(), sides.sourceTable());
+        ScopeFilteredFrom targetScope = applySideRules(
+                scopeFrom.planFrom(sides.targetTable()), req.targetRules(), sides.targetTable());
         enforceEstimatedRowCeiling(sides, groups, sourceScope, targetScope);
 
         // Comparison placeholders live in SELECT, which precedes ON in the final SQL —

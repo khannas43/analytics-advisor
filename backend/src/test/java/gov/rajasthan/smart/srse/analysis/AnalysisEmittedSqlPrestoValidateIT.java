@@ -95,9 +95,13 @@ class AnalysisEmittedSqlPrestoValidateIT {
             QualifiedTable table = inv.getArgument(0);
             return ScopeFilteredFrom.unfiltered(table.qualifiedName());
         });
+        gov.rajasthan.smart.srse.compiler.RuleCompiler ruleCompiler =
+                new gov.rajasthan.smart.srse.compiler.RuleCompiler(
+                        new gov.rajasthan.smart.srse.compiler.RuleColumnResolver(registry));
         service = new RecordMatchService(
                 presto, registry, new GuardrailProperties(1000, 120, 50), columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10), new ObjectMapper(), scopeFrom);
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10), new ObjectMapper(), scopeFrom,
+                ruleCompiler);
     }
 
     /** Live {@code data_type} strings as Presto reports them — drives coercion in {@link RecordMatchService}. */

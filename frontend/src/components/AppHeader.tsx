@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const TABS = [
+  { href: "/extract", label: "Extract" },
   { href: "/analysis", label: "Analysis" },
   { href: "/admin456", label: "Admin" },
 ];
@@ -14,7 +15,7 @@ export function AppHeader() {
   return (
     <header className="srse-header">
       <div className="srse-header-inner">
-        <Link href="/analysis" className="srse-brand">
+        <Link href="/extract" className="srse-brand">
           <span className="srse-brand-mark">Analytics Advisor</span>
           <span className="srse-brand-sub">Lakehouse record matching</span>
         </Link>

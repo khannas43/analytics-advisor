@@ -114,6 +114,34 @@ export type ComparisonSummaryResponse = {
   }[];
 };
 
+export type RuleOperator =
+  | "EQ"
+  | "NE"
+  | "LT"
+  | "LTE"
+  | "GT"
+  | "GTE"
+  | "IS_TRUE"
+  | "IS_FALSE"
+  | "IS_NULL"
+  | "NOT_NULL";
+
+export type QualifiedColumnWire = TableRef & { column: string };
+
+export type PredicateNodeWire = {
+  type: "PREDICATE";
+  column: {
+    table: { catalog: string; schema: string; table: string };
+    column: string;
+  };
+  operator: RuleOperator;
+  value?: unknown;
+};
+
+export type PredicateSpecWire = {
+  root: PredicateNodeWire | { type: "GROUP"; op: "AND" | "OR"; children: PredicateNodeWire[] };
+};
+
 export type RecordMatchRequest = {
   sourceCriteria: MatchCriterion[];
   targetCriteria: MatchCriterion[];
@@ -125,6 +153,9 @@ export type RecordMatchRequest = {
   mismatchOnly?: boolean;
   highlightDuplicates: boolean;
   dedup: DedupSpec | null;
+  sourceRules?: PredicateSpecWire | null;
+  targetRules?: PredicateSpecWire | null;
+  singleSource?: boolean;
 };
 
 export type HubSide = "SOURCE" | "TARGET";

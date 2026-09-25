@@ -113,6 +113,9 @@ class AnalysisAuditServiceTest {
                 null,
                 null,
                 null,
+                false,
+                null,
+                null,
                 false);
     }
 }

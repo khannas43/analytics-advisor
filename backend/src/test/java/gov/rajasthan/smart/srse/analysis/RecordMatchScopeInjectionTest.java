@@ -45,6 +45,8 @@ class RecordMatchScopeInjectionTest {
     private AnalysisColumnMetadataRepository columnMetadata;
     @Mock
     private AnalysisScopeFromService scopeFrom;
+    @Mock
+    private gov.rajasthan.smart.srse.compiler.RuleCompiler ruleCompiler;
 
     private RecordMatchService service;
 
@@ -63,6 +65,8 @@ class RecordMatchScopeInjectionTest {
         });
         lenient().when(jdbc.queryForObject(anyString(), eq(Long.class))).thenReturn(1L);
         lenient().when(jdbc.queryForObject(anyString(), any(Object[].class), eq(Long.class))).thenReturn(1L);
+        lenient().when(ruleCompiler.compile(any(), any()))
+                .thenReturn(new gov.rajasthan.smart.srse.compiler.CompiledQuery("TRUE", List.of()));
         service = new RecordMatchService(
                 jdbc,
                 registry,
@@ -70,7 +74,8 @@ class RecordMatchScopeInjectionTest {
                 columnMetadata,
                 new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10),
                 new ObjectMapper(),
-                scopeFrom);
+                scopeFrom,
+                ruleCompiler);
     }
 
     @Test

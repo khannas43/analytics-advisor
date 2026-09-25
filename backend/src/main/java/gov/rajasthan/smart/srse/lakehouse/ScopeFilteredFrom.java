@@ -31,6 +31,25 @@ public record ScopeFilteredFrom(String qualifiedName, String whereSql, List<Obje
         return new ScopeFilteredFrom(qualifiedName, whereSql, List.copyOf(bindValues));
     }
 
+    /** Merges officer rule predicates into the scope derived-table WHERE (§4.5 / AA-13). */
+    public ScopeFilteredFrom withRulePredicate(String ruleSql, List<Object> ruleParams) {
+        if (ruleSql == null || ruleSql.isBlank()) {
+            return this;
+        }
+        if (isEmptyResult()) {
+            return this;
+        }
+        List<Object> mergedParams = new java.util.ArrayList<>();
+        if (appliesFilter()) {
+            mergedParams.addAll(bindValues());
+        }
+        mergedParams.addAll(ruleParams);
+        String mergedWhere = appliesFilter()
+                ? whereSql + " AND (" + ruleSql + ")"
+                : ruleSql;
+        return filtered(qualifiedName, mergedWhere, mergedParams);
+    }
+
     /** Bare {@code catalog.schema.table alias} when unfiltered — byte-identical to pre-7.2.3. */
     public String fromFragment(String alias) {
         if (!appliesFilter()) {
