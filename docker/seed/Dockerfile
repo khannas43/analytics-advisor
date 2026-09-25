@@ -14,6 +14,6 @@
 
 FROM python:3.12-slim
 WORKDIR /seed
-COPY seed.py .
+COPY seed.py volume_probe.py test_seed_grid.py .
 RUN pip install --no-cache-dir presto-python-client
 ENTRYPOINT ["python", "seed.py"]

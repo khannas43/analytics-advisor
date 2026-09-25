@@ -4,9 +4,19 @@ Synthetic beneficiary data seed for local SRSE development.
 Generates Jan-Aadhaar-shaped rows in Presto (one INSERT … SELECT) and writes a
 compact Iceberg table. Client-side VALUES batches fragment the table and hit
 Presto's 1MB query-text cap.
+
+Distributions are deterministic from row id (repeatable across runs). Opt-in
+volume via ROWS=10000000; default ROWS=200000 keeps the everyday stack fast.
+
+SEED_PROFILE:
+  realistic (default) — skewed districts, long-tailed names, nulls
+  uniform        — legacy-like equal district buckets (200k dev only)
 """
+from __future__ import annotations
+
 import os
 import sys
+import time
 
 import prestodb
 
@@ -14,6 +24,10 @@ PRESTO_URL = os.environ.get("PRESTO_URL", "jdbc:presto://presto:8080/iceberg/srs
 ROWS = int(os.environ.get("ROWS", "200000"))
 # Presto sequence() is capped at 10_000; cross-join two sequences for row count.
 SEQ_A = int(os.environ.get("SEED_SEQ_A", "1000"))
+SEED_PROFILE = os.environ.get("SEED_PROFILE", "realistic").strip().lower()
+SEED_JOIN_TABLE = os.environ.get("SEED_JOIN_TABLE", "true").strip().lower() in ("1", "true", "yes")
+# Fraction of beneficiary ids that appear in the Silver bank table (imperfect overlap).
+JOIN_SAMPLE_MOD = int(os.environ.get("SEED_JOIN_SAMPLE_MOD", "7"))  # id % 7 == 0 → ~14.3%
 
 CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS beneficiary (
@@ -21,6 +35,7 @@ CREATE TABLE IF NOT EXISTS beneficiary (
     age_years            INTEGER,
     gender               VARCHAR,
     district             VARCHAR,
+    district_code        VARCHAR,
     annual_income_total  DECIMAL(12,2),
     marital_status       VARCHAR,
     is_domicile_holder   BOOLEAN,
@@ -84,12 +99,59 @@ def _grid_factors(total_rows: int) -> tuple[int, int]:
     return a, b
 
 
-def build_insert_select(total_rows: int) -> str:
-    seq_a, seq_b = _grid_factors(total_rows)
-
+def _district_expr(profile: str) -> str:
     districts = _sql_string_array(
         ["Jaipur", "Jodhpur", "Udaipur", "Kota", "Ajmer", "Bikaner", "Alwar"]
     )
+    if profile == "uniform":
+        return f"element_at({districts}, 1 + mod(g.id, cardinality({districts})))"
+    # ~10:1 population skew: Jaipur largest, Bikaner smallest (cumulative buckets on mod 100).
+    return f"""CASE
+      WHEN mod(g.id, 100) < 32 THEN 'Jaipur'
+      WHEN mod(g.id, 100) < 52 THEN 'Jodhpur'
+      WHEN mod(g.id, 100) < 66 THEN 'Kota'
+      WHEN mod(g.id, 100) < 76 THEN 'Ajmer'
+      WHEN mod(g.id, 100) < 84 THEN 'Udaipur'
+      WHEN mod(g.id, 100) < 90 THEN 'Alwar'
+      ELSE 'Bikaner'
+    END"""
+
+
+def _district_code_expr(profile: str) -> str:
+    if profile == "uniform":
+        codes = _sql_string_array(
+            ["RJ-JPR", "RJ-JDH", "RJ-UDR", "RJ-KOT", "RJ-AJM", "RJ-BKN", "RJ-ALW"]
+        )
+        return f"element_at({codes}, 1 + mod(g.id, cardinality({codes})))"
+    return """CASE
+      WHEN mod(g.id, 100) < 32 THEN 'RJ-JPR'
+      WHEN mod(g.id, 100) < 52 THEN 'RJ-JDH'
+      WHEN mod(g.id, 100) < 66 THEN 'RJ-KOT'
+      WHEN mod(g.id, 100) < 76 THEN 'RJ-AJM'
+      WHEN mod(g.id, 100) < 84 THEN 'RJ-UDR'
+      WHEN mod(g.id, 100) < 90 THEN 'RJ-ALW'
+      ELSE 'RJ-BKN'
+    END"""
+
+
+def _long_tail_name_expr(id_col: str, common_pool: str, prefix: str) -> str:
+    """Head names (~35% rows) + long tail of synthetic rare names."""
+    common = f"element_at({common_pool}, 1 + mod({id_col}, cardinality({common_pool})))"
+    tail = f"concat('{prefix}', cast(mod({id_col} * 7919, 50000) AS varchar))"
+    base = f"""CASE
+      WHEN mod({id_col}, 100) < 35 THEN {common}
+      ELSE {tail}
+    END"""
+    varied = _vary_name_expr(base, id_col)
+    return f"""CASE
+      WHEN mod({id_col}, 29) = 0 THEN cast(null AS varchar)
+      ELSE {varied}
+    END"""
+
+
+def build_insert_select(total_rows: int, profile: str = SEED_PROFILE) -> str:
+    seq_a, seq_b = _grid_factors(total_rows)
+
     communities = _sql_string_array(["GENERAL", "SAHARIYA", "KATHODI", "KHAIRWA"])
     ration = _sql_string_array(["NONE", "BPL", "ANTYODAYA"])
     census = _sql_string_array(["APL", "BPL", "EWS"])
@@ -112,10 +174,10 @@ def build_insert_select(total_rows: int) -> str:
     )
     disability = "ARRAY[0, 0, 0, 40, 60, 80]"
 
-    father_base = f"element_at({father_pool}, 1 + mod(g.id, cardinality({father_pool})))"
-    mother_base = f"element_at({mother_pool}, 1 + mod(g.id, cardinality({mother_pool})))"
-    father_name = _vary_name_expr(father_base)
-    mother_name = _vary_name_expr(mother_base)
+    district = _district_expr(profile)
+    district_code = _district_code_expr(profile)
+    father_name = _long_tail_name_expr("g.id", father_pool, "F_")
+    mother_name = _long_tail_name_expr("g.id", mother_pool, "M_")
 
     return f"""
 INSERT INTO beneficiary
@@ -123,7 +185,8 @@ SELECT
   g.id,
   CAST(mod(g.id, 91) AS integer) AS age_years,
   element_at(ARRAY['MALE', 'FEMALE'], 1 + mod(g.id, 2)) AS gender,
-  element_at({districts}, 1 + mod(g.id, cardinality({districts}))) AS district,
+  {district} AS district,
+  {district_code} AS district_code,
   CAST(round(mod(g.id * 1237, 300000), 2) AS decimal(12, 2)) AS annual_income_total,
   element_at({marital}, 1 + mod(g.id, cardinality({marital}))) AS marital_status,
   (mod(g.id, 10) <> 0) AS is_domicile_holder,
@@ -169,6 +232,22 @@ WHERE g.id <= {total_rows}
 """
 
 
+def build_join_table_sql(sample_mod: int = JOIN_SAMPLE_MOD) -> str:
+    """Silver bank detail — subset of beneficiaries, ~8% deliberate m_id mismatch."""
+    return f"""
+CREATE TABLE iceberg_silver.silver_txn.tbl_txn_bankdtl AS
+SELECT
+  b.id AS bank_id,
+  CASE WHEN mod(b.id, 100) < 92 THEN b.id ELSE b.id + 1 END AS m_id,
+  CAST(b.id AS varchar) AS account_no,
+  b.father_name,
+  b.district_code,
+  b.district
+FROM iceberg.srse.beneficiary b
+WHERE mod(b.id, {sample_mod}) = 0
+"""
+
+
 def parse_presto_url(url: str):
     """Parse jdbc:presto://host:port/catalog/schema into components."""
     prefix = "jdbc:presto://"
@@ -205,7 +284,10 @@ def _execute(cursor, sql: str):
 def main():
     try:
         seq_a, seq_b = _grid_factors(ROWS)
-        print(f"[seed] target={PRESTO_URL} rows={ROWS} grid={seq_a}x{seq_b} (server-side INSERT … SELECT)")
+        print(
+            f"[seed] target={PRESTO_URL} rows={ROWS} profile={SEED_PROFILE} "
+            f"grid={seq_a}x{seq_b} join_table={SEED_JOIN_TABLE}"
+        )
         host, port, catalog, schema = parse_presto_url(PRESTO_URL)
         print(f"[seed] connecting host={host} port={port} catalog={catalog} schema={schema}")
 
@@ -225,13 +307,27 @@ def main():
         _execute(cursor, CREATE_TABLE)
         print("[seed] table beneficiary ready")
 
-        insert_sql = build_insert_select(ROWS)
+        insert_sql = build_insert_select(ROWS, SEED_PROFILE)
         print(f"[seed] inserting {ROWS} rows in one statement …")
+        t0 = time.perf_counter()
         _execute(cursor, insert_sql)
+        insert_secs = time.perf_counter() - t0
 
         count_rows = _execute(cursor, "SELECT count(*) FROM beneficiary")
         count = count_rows[0][0] if count_rows else ROWS
-        print(f"[seed] done — {count} rows in {catalog}.{schema}.beneficiary")
+        print(f"[seed] beneficiary done — {count} rows in {insert_secs:.1f}s")
+
+        if SEED_JOIN_TABLE:
+            _execute(cursor, "CREATE SCHEMA IF NOT EXISTS iceberg_silver.silver_txn")
+            _execute(cursor, "DROP TABLE IF EXISTS iceberg_silver.silver_txn.tbl_txn_bankdtl")
+            print("[seed] building iceberg_silver.silver_txn.tbl_txn_bankdtl …")
+            t1 = time.perf_counter()
+            _execute(cursor, build_join_table_sql())
+            join_secs = time.perf_counter() - t1
+            bank_count = _execute(cursor, "SELECT count(*) FROM iceberg_silver.silver_txn.tbl_txn_bankdtl")
+            bank_n = bank_count[0][0] if bank_count else 0
+            print(f"[seed] join table done — {bank_n} rows in {join_secs:.1f}s")
+
         cursor.close()
         conn.close()
     except Exception as e:

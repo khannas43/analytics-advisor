@@ -26,11 +26,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 class ConnectionInfoControllerTest {
 
-    static final String ANALYTICAL_PROPS =
-            "srse.datasource.analytical.jdbc-url=jdbc:presto://presto:8080/iceberg/srse,"
-                    + "srse.datasource.analytical.username=srse,"
-                    + "srse.datasource.analytical.driver-class-name=com.facebook.presto.jdbc.PrestoDriver";
-
     static void stubBothPlanesUp(HikariDataSource operational, JdbcTemplate presto) throws Exception {
         Connection conn = org.mockito.Mockito.mock(Connection.class);
         when(operational.getConnection()).thenReturn(conn);
@@ -44,7 +39,9 @@ class ConnectionInfoControllerTest {
     @WebMvcTest(ConnectionInfoController.class)
     @AutoConfigureMockMvc(addFilters = false)
     @TestPropertySource(properties = {
-            ANALYTICAL_PROPS,
+            "srse.datasource.analytical.jdbc-url=jdbc:presto://presto:8080/iceberg/srse",
+            "srse.datasource.analytical.username=srse",
+            "srse.datasource.analytical.driver-class-name=com.facebook.presto.jdbc.PrestoDriver",
             "srse.data-mode=synthetic"
     })
     static class SyntheticMode {
@@ -93,7 +90,9 @@ class ConnectionInfoControllerTest {
     @WebMvcTest(ConnectionInfoController.class)
     @AutoConfigureMockMvc(addFilters = false)
     @TestPropertySource(properties = {
-            ANALYTICAL_PROPS,
+            "srse.datasource.analytical.jdbc-url=jdbc:presto://presto:8080/iceberg/srse",
+            "srse.datasource.analytical.username=srse",
+            "srse.datasource.analytical.driver-class-name=com.facebook.presto.jdbc.PrestoDriver",
             "srse.data-mode=live"
     })
     static class LiveMode {
@@ -124,7 +123,9 @@ class ConnectionInfoControllerTest {
     @WebMvcTest(ConnectionInfoController.class)
     @AutoConfigureMockMvc(addFilters = false)
     @TestPropertySource(properties = {
-            ANALYTICAL_PROPS,
+            "srse.datasource.analytical.jdbc-url=jdbc:presto://presto:8080/iceberg/srse",
+            "srse.datasource.analytical.username=srse",
+            "srse.datasource.analytical.driver-class-name=com.facebook.presto.jdbc.PrestoDriver",
             "srse.data-mode=live",
             "srse.environment-label=UAT"
     })

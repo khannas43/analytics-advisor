@@ -651,6 +651,17 @@ docker compose restart presto
 docker compose up seed          # repopulate if the seed was interrupted
 ```
 
+**AA-17 volume experiments (opt-in):** default `ROWS=200000`. For skewed
+10M-row probes (`docs/performance-at-volume.md`):
+
+```bash
+docker compose run --rm -e ROWS=10000000 seed
+# or: docker run --rm -e ROWS=10000000 -e PRESTO_URL=jdbc:presto://host.docker.internal:8081/iceberg/srse aa-seed
+```
+
+Use `SEED_PROFILE=uniform` only when reproducing legacy equal-district data.
+`SEED_JOIN_TABLE=false` skips the Silver bank table.
+
 Presto now carries `restart: unless-stopped`, so once the JVM actually exits
 Docker brings it back on its own — previously it stayed dead and every request
 failed until someone restarted it by hand. The heap dump is kept (it survives a
