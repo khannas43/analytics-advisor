@@ -16,16 +16,16 @@ package rename), the whole of user management and data scoping (§7.1, §7.1b,
 §7.1c.1–2, §7.2), and everything inherited from SRSE that survived the fork —
 the match engine, the lakehouse registry, connection management, exports.
 
-**In flight:** §7.1a MFA (brief AA-10 with the developer), minus the SMS sender.
+**In flight:** §7.3 audit capture (brief AA-11, ready to hand over).
 
-**Blocked on someone outside the team**, and both worth starting now because
-nothing else waits behind them:
+**Deferred by decision:** the SMS sender (7.1a.7). The seam and a loud
+placeholder are built; email delivers the OTP in the meantime. No longer counted
+as a blocker.
 
-- **SMS gateway contract** — credentials and sender-ID registration. Gates
-  7.1a.7 only; the seam is built around it.
-- **A9, tamper-evidence** — a compliance position, not an engineering choice.
-  Gates 7.3.2, and retrofitting a hash chain onto a populated append-only table
-  is far more expensive than designing it in. See `docs/OPEN_DECISIONS_AUDIT.md`.
+**Blocked on nobody.** Every product and audit decision is settled — see
+`docs/OPEN_DECISIONS.md` and `docs/OPEN_DECISIONS_AUDIT.md`. The SMS gateway is
+the one outstanding external dependency and it is deferred rather than blocking,
+since email carries the OTP without it.
 
 **Not started:** §2.3 source-system ops, §3 label vocabulary and the Database
 Overview page, §4 Extract Records, §5 Report Analysis (5.5 Group By is the
@@ -239,7 +239,7 @@ others do not. It is an attribute of the user record, not a global switch.
 | 7.1a.4 | **Recovery** — an admin corrects a user's mobile number or email and re-verifies it. This is the whole recovery path for a delivered OTP: a changed number or a dead mailbox locks the officer out, and only an admin can move them. Log every such change to the audit trail — editing where a second factor is delivered is exactly the move an attacker would make. | N | 1 |
 | 7.1a.5 | Rate-limit and expire codes; lock after repeated failures | N | 1 |
 | 7.1a.6 | SMTP sender | N | 1 |
-| 7.1a.7 | SMS gateway sender (**needs a gateway contract + credentials — external dependency, start procurement early**) | N | 3 |
+| 7.1a.7 | ⏸ **Deferred by decision, not blocked.** The placeholder stands: `srse.otp.sender=sms` refuses to start and `SmsOtpSenderNotConfigured` never pretends to send, so the gap cannot be reached by accident. Email delivery carries MFA meanwhile. Implement when a gateway contract exists. | N | 3 |
 | 7.1a.8 | `OtpSender` seam + a log-only sender so the stack runs offline without either gateway | N | 1 |
 
 **Defaults taken unless told otherwise:** the second factor is checked at
