@@ -18,14 +18,17 @@ public class AuthSessionController {
     private final AppUserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
     private final AuditService auditService;
+    private final AdminAuthorizationService adminAuthorization;
 
     public AuthSessionController(
             AppUserRepository userRepository,
             UserRoleRepository userRoleRepository,
-            AuditService auditService) {
+            AuditService auditService,
+            AdminAuthorizationService adminAuthorization) {
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
         this.auditService = auditService;
+        this.adminAuthorization = adminAuthorization;
     }
 
     /** Client discards the JWT; server records the logout for audit (§7.3). */
@@ -57,6 +60,7 @@ public class AuthSessionController {
                             authorities,
                             authorities.contains(Authorities.SRSE_ADMIN),
                             roles.contains(AppRole.SUPER_ADMIN),
+                            adminAuthorization.hasAuditRead(user),
                             user.isMustChangePassword(),
                             user.isActive());
                 })
@@ -66,6 +70,7 @@ public class AuthSessionController {
                         authorities,
                         authorities.contains(Authorities.SRSE_ADMIN),
                         false,
+                        authorities.contains(Authorities.AUDIT_READ),
                         false,
                         true));
     }
@@ -76,6 +81,7 @@ public class AuthSessionController {
             List<String> authorities,
             boolean admin,
             boolean superAdmin,
+            boolean auditReader,
             boolean mustChangePassword,
             boolean active) {
     }

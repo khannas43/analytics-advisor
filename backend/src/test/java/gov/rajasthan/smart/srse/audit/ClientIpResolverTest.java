@@ -13,7 +13,7 @@ class ClientIpResolverTest {
 
     @Test
     void ignoresForwardedForWhenNoTrustedProxies() {
-        ClientIpResolver resolver = new ClientIpResolver(new AuditProperties(List.of()));
+        ClientIpResolver resolver = new ClientIpResolver(new AuditProperties(List.of(), 365));
         HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getRemoteAddr()).thenReturn("203.0.113.10");
         when(request.getHeader("X-Forwarded-For")).thenReturn("198.51.100.99");
@@ -23,7 +23,7 @@ class ClientIpResolverTest {
 
     @Test
     void ignoresForwardedForWhenPeerIsNotTrusted() {
-        ClientIpResolver resolver = new ClientIpResolver(new AuditProperties(List.of("10.0.0.1")));
+        ClientIpResolver resolver = new ClientIpResolver(new AuditProperties(List.of("10.0.0.1"), 365));
         HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getRemoteAddr()).thenReturn("203.0.113.10");
         when(request.getHeader("X-Forwarded-For")).thenReturn("198.51.100.99");
@@ -33,7 +33,7 @@ class ClientIpResolverTest {
 
     @Test
     void honoursForwardedForFromTrustedPeerRightmostUntrusted() {
-        ClientIpResolver resolver = new ClientIpResolver(new AuditProperties(List.of("10.0.0.1", "198.51.100.2")));
+        ClientIpResolver resolver = new ClientIpResolver(new AuditProperties(List.of("10.0.0.1", "198.51.100.2"), 365));
         HttpServletRequest request = mock(HttpServletRequest.class);
         when(request.getRemoteAddr()).thenReturn("10.0.0.1");
         when(request.getHeader("X-Forwarded-For")).thenReturn("203.0.113.55, 198.51.100.2, 10.0.0.5");

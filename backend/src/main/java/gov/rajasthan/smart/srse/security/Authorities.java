@@ -13,6 +13,9 @@ public final class Authorities {
     /** Lakehouse browse, registrations, field catalogue/mapping writes, analysis column overrides. */
     public static final String SRSE_ADMIN = "SRSE_ADMIN";
 
+    /** Audit log viewer and export (§7.3.4 / 7.3.5) — separate from {@link #SRSE_ADMIN}. */
+    public static final String AUDIT_READ = "AUDIT_READ";
+
     private Authorities() {
     }
 }

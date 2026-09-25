@@ -18,11 +18,17 @@ public final class RoleAuthorityMapper {
         Set<String> authorities = new LinkedHashSet<>();
         for (String code : roleCodes) {
             switch (code) {
-                case AppRole.SUPER_ADMIN, AppRole.ADMIN -> {
+                case AppRole.SUPER_ADMIN -> {
+                    authorities.add(Authorities.SRSE_ADMIN);
+                    authorities.add(Authorities.STATE_OFFICER);
+                    authorities.add(Authorities.AUDIT_READ);
+                }
+                case AppRole.ADMIN -> {
                     authorities.add(Authorities.SRSE_ADMIN);
                     authorities.add(Authorities.STATE_OFFICER);
                 }
                 case AppRole.OFFICER -> authorities.add(Authorities.STATE_OFFICER);
+                case AppRole.AUDIT_READER -> authorities.add(Authorities.AUDIT_READ);
                 default -> {
                     // unknown role — ignore
                 }

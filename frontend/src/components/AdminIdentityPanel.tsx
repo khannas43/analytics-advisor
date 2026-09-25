@@ -25,7 +25,7 @@ import {
 } from "@/lib/userAdminApi";
 import { fetchAuthSession, type AuthSession } from "@/lib/authToken";
 
-const ROLE_OPTIONS = ["SUPER_ADMIN", "ADMIN", "OFFICER"] as const;
+const ROLE_OPTIONS = ["SUPER_ADMIN", "ADMIN", "OFFICER", "AUDIT_READER"] as const;
 
 export function AdminIdentityPanel() {
   const [session, setSession] = useState<AuthSession | null>(null);

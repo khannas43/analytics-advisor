@@ -93,6 +93,7 @@ public class UserAdminService {
                 AuditActionType.USER_CREATED, caller, user, "username=" + user.getUsername());
         auditService.recordAdminUserEvent(
                 AuditActionType.ROLE_GRANTED, caller, user, String.join(",", roles));
+        auditAuditReaderGrantRevoke(caller, user, List.of(), roles);
         return toSummary(user);
     }
 
@@ -114,11 +115,13 @@ public class UserAdminService {
         authorization.assertMfaDeliverable(user, user.isMfaRequired());
         user.touchUpdatedAt();
         userRepository.save(user);
+        List<String> beforeRoles = authorization.roleCodes(user.getId());
         replaceRoles(user, roles);
         auditService.recordAdminUserEvent(
                 AuditActionType.USER_UPDATED, caller, user, "username=" + user.getUsername());
         auditService.recordAdminUserEvent(
                 AuditActionType.ROLE_GRANTED, caller, user, String.join(",", roles));
+        auditAuditReaderGrantRevoke(caller, user, beforeRoles, roles);
         return toSummary(user);
     }
 
@@ -259,6 +262,25 @@ public class UserAdminService {
         }
         if (req.mobileVerified() != null) {
             user.setMobileVerified(req.mobileVerified());
+        }
+    }
+
+    private void auditAuditReaderGrantRevoke(
+            AppUser caller, AppUser target, List<String> before, List<String> after) {
+        boolean had = before.contains(AppRole.AUDIT_READER);
+        boolean has = after.contains(AppRole.AUDIT_READER);
+        if (!had && has) {
+            auditService.recordAdminUserEvent(
+                    AuditActionType.ROLE_GRANTED,
+                    caller,
+                    target,
+                    AppRole.AUDIT_READER + " granted");
+        } else if (had && !has) {
+            auditService.recordAdminUserEvent(
+                    AuditActionType.ROLE_GRANTED,
+                    caller,
+                    target,
+                    AppRole.AUDIT_READER + " revoked");
         }
     }
 

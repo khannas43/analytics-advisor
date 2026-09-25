@@ -1,0 +1,40 @@
+databaseChangeLog:
+  - changeSet:
+      id: 008-audit-reader-role
+      author: srse
+      changes:
+        - insert:
+            tableName: app_role
+            columns:
+              - column: { name: code, value: AUDIT_READER }
+              - column: { name: name, value: Audit log reader }
+
+  - changeSet:
+      id: 008-audit-event-indexes
+      author: srse
+      changes:
+        - createIndex:
+            tableName: audit_event
+            indexName: ix_audit_occurred_at
+            columns:
+              - column:
+                  name: occurred_at
+                  descending: true
+        - createIndex:
+            tableName: audit_event
+            indexName: ix_audit_actor_occurred
+            columns:
+              - column:
+                  name: actor_user_id
+              - column:
+                  name: occurred_at
+                  descending: true
+        - createIndex:
+            tableName: audit_event
+            indexName: ix_audit_action_occurred
+            columns:
+              - column:
+                  name: action_type
+              - column:
+                  name: occurred_at
+                  descending: true

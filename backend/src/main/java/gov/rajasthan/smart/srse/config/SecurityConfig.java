@@ -86,6 +86,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.DELETE, "/api/analysis/column-metadata")
                     .hasAuthority(Authorities.SRSE_ADMIN)
                 .requestMatchers(HttpMethod.GET, "/api/analysis/column-metadata").hasAuthority(Authorities.STATE_OFFICER)
+                .requestMatchers("/api/admin/audit", "/api/admin/audit.csv").hasAuthority(Authorities.AUDIT_READ)
                 .requestMatchers("/api/admin/**").hasAuthority(Authorities.SRSE_ADMIN)
                 .requestMatchers("/api/analysis/**").hasAuthority(Authorities.STATE_OFFICER)
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()

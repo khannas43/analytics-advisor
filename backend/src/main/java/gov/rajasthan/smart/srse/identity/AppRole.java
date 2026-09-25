@@ -14,6 +14,7 @@ public class AppRole {
     public static final String SUPER_ADMIN = "SUPER_ADMIN";
     public static final String ADMIN = "ADMIN";
     public static final String OFFICER = "OFFICER";
+    public static final String AUDIT_READER = "AUDIT_READER";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

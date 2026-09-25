@@ -71,6 +71,8 @@ srse:
     # Immediate peers (load balancers) allowed to supply X-Forwarded-For.
     # Empty = never trust the header (safe default on a laptop). Set behind a load balancer.
     trusted-proxies: []
+    # Reported to the audit viewer; no purge job runs in this release (§7.3.2).
+    retention-days: ${SRSE_AUDIT_RETENTION_DAYS:365}
   scope:
     max-in-values: ${SRSE_SCOPE_MAX_IN_VALUES:1000}
   analysis:

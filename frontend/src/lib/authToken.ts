@@ -28,6 +28,7 @@ export type AuthSession = {
   authorities: string[];
   admin: boolean;
   superAdmin: boolean;
+  auditReader: boolean;
   mustChangePassword: boolean;
   active: boolean;
 };

@@ -42,7 +42,9 @@ import LakehouseCascade, {
 } from "@/components/LakehouseCascade";
 import { SingleSelectDropdown } from "@/components/MultiSelectDropdown";
 import { AdminIdentityPanel } from "@/components/AdminIdentityPanel";
+import { AuditLogPanel } from "@/components/AuditLogPanel";
 import { TableScopeBindingEditor } from "@/components/TableScopeBindingEditor";
+import { fetchAuthSession } from "@/lib/authToken";
 
 /**
  * Admin cascades browse the LIVE lakehouse — everything the current Presto
@@ -1185,6 +1187,24 @@ function ConfigBackupPanel({ onImported }: Readonly<{ onImported: () => void }>)
   );
 }
 
+function AdminAuditSection() {
+  const [canRead, setCanRead] = useState(false);
+  useEffect(() => {
+    fetchAuthSession()
+      .then((s) => setCanRead(Boolean(s?.auditReader)))
+      .catch(() => setCanRead(false));
+  }, []);
+  if (!canRead) {
+    return null;
+  }
+  return (
+    <section className="srse-card" style={{ marginBottom: "1.25rem" }}>
+      <h2 className="srse-section-title">Audit log</h2>
+      <AuditLogPanel />
+    </section>
+  );
+}
+
 export default function AdminPage() {
   // Registrations and column settings are loaded once here and passed down:
   // several panels need the same two lists, and they have to refresh TOGETHER.
@@ -1231,6 +1251,7 @@ export default function AdminPage() {
       </p>
 
       <AdminIdentityPanel />
+      <AdminAuditSection />
       <ConfigBackupPanel onImported={refresh} />
       <AnalysisGuardrailsPanel />
       <ConnectionsPanel />

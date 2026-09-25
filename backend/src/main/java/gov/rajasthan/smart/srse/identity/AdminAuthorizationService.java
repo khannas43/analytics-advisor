@@ -29,6 +29,21 @@ public class AdminAuthorizationService {
         return userRoleRepository.findRoleCodesByUserId(user.getId()).contains(AppRole.SUPER_ADMIN);
     }
 
+    public boolean hasAuditRead(AppUser user) {
+        return isSuperAdmin(user) || roleCodes(user.getId()).contains(AppRole.AUDIT_READER);
+    }
+
+    /**
+     * §7.3.8 — an entry's actor is visible to a reader only under the same subtree
+     * containment as {@link #canManageUser} (rule 2). SuperAdmin callers bypass.
+     */
+    public boolean readerMaySeeActor(AppUser reader, AppUser actor) {
+        if (isSuperAdmin(reader)) {
+            return true;
+        }
+        return canManageUser(reader, actor);
+    }
+
     public List<String> roleCodes(long userId) {
         return userRoleRepository.findRoleCodesByUserId(userId);
     }
@@ -106,6 +121,7 @@ public class AdminAuthorizationService {
         if (proposedRoleCodes.contains(AppRole.SUPER_ADMIN) && !isSuperAdmin(caller)) {
             throw new AdminAccessDeniedException("Only a SuperAdmin may grant or revoke SuperAdmin role");
         }
+        assertAuditReaderRoleChange(caller, null, List.of(), proposedRoleCodes);
     }
 
     /** Rule 3 — only SuperAdmin may grant or revoke SUPER_ADMIN. */
@@ -115,6 +131,25 @@ public class AdminAuthorizationService {
         boolean willHaveSuper = proposedRoleCodes.contains(AppRole.SUPER_ADMIN);
         if (hadSuper != willHaveSuper && !isSuperAdmin(caller)) {
             throw new AdminAccessDeniedException("Only a SuperAdmin may grant or revoke SuperAdmin role");
+        }
+        assertAuditReaderRoleChange(caller, target, current, proposedRoleCodes);
+    }
+
+    /** Grant/revoke {@link AppRole#AUDIT_READER} — subtree + no self-grant; grantor must already read audit. */
+    public void assertAuditReaderRoleChange(
+            AppUser caller, AppUser target, List<String> currentRoles, List<String> proposedRoleCodes) {
+        boolean had = currentRoles.contains(AppRole.AUDIT_READER);
+        boolean will = proposedRoleCodes.contains(AppRole.AUDIT_READER);
+        if (had == will) {
+            return;
+        }
+        if (!hasAuditRead(caller)) {
+            throw new AdminAccessDeniedException(
+                    "Only an audit reader may grant or revoke " + AppRole.AUDIT_READER);
+        }
+        if (target != null) {
+            assertNotSelfRoleOrScopeEdit(caller, target);
+            assertCanManageUser(caller, target);
         }
     }
 
