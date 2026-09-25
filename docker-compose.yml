@@ -61,6 +61,8 @@ services:
       - SRSE_ANALYSIS_ROW_CAP=1000
       - SRSE_AGE_BAND_COLUMN=${SRSE_AGE_BAND_COLUMN:-age_band}
       - SRSE_CONNECTION_OVERRIDE_PATH=/app/config/connection-overrides.properties
+      # Required on first boot when app_user is empty (7.1b). Change after login.
+      - SRSE_BOOTSTRAP_SUPER_ADMIN_PASSWORD=${SRSE_BOOTSTRAP_SUPER_ADMIN_PASSWORD:}
     volumes:
       - connection-overrides:/app/config
     depends_on:

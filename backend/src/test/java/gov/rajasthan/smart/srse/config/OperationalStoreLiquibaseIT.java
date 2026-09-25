@@ -1,5 +1,7 @@
 package gov.rajasthan.smart.srse.config;
 
+import gov.rajasthan.smart.srse.identity.AppRoleRepository;
+import gov.rajasthan.smart.srse.identity.AppUserRepository;
 import gov.rajasthan.smart.srse.compiler.CompareAs;
 import gov.rajasthan.smart.srse.lakehouse.QualifiedColumn;
 import gov.rajasthan.smart.srse.lakehouse.RegisteredTable;
@@ -47,6 +49,8 @@ class OperationalStoreLiquibaseIT {
         registry.add("srse.datasource.operational.driver-class-name", () -> "org.postgresql.Driver");
         registry.add("srse.datasource.operational.initialization-fail-timeout", () -> "-1");
         registry.add("srse.datasource.analytical.initialization-fail-timeout", () -> "-1");
+        registry.add("srse.bootstrap.super-admin-password", () -> "IntegrationBootstrapPw1!");
+        registry.add("srse.auth-mode", () -> "local");
     }
 
     @Autowired
@@ -55,8 +59,16 @@ class OperationalStoreLiquibaseIT {
     @Autowired
     private AnalysisColumnMetadataRepository columnMetadataRepository;
 
+    @Autowired
+    private AppUserRepository appUserRepository;
+
+    @Autowired
+    private AppRoleRepository appRoleRepository;
+
     @Test
     void liquibaseSchemaValidatesAndRepositoriesRoundTrip() {
+        assertEquals(3, appRoleRepository.count());
+        assertTrue(appUserRepository.count() >= 1L);
         RegisteredTable savedTable = registeredTableRepository.save(
                 new RegisteredTable(null, "iceberg", "srse", "beneficiary", "GOLD"));
         assertNotNull(savedTable.getId());

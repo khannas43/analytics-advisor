@@ -11,7 +11,8 @@ import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadata;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataController;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
 import gov.rajasthan.smart.srse.security.Authorities;
-import gov.rajasthan.smart.srse.security.MockJwtAuthenticationFilter;
+import gov.rajasthan.smart.srse.security.SessionBearerAuthenticationFilter;
+import gov.rajasthan.smart.srse.security.SessionTokenService;
 import gov.rajasthan.smart.srse.security.MockJwtIssuer;
 import gov.rajasthan.smart.srse.security.MockJwtService;
 import gov.rajasthan.smart.srse.web.AdminConfigController;
@@ -42,7 +43,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * End-to-end RBAC through {@link SecurityConfig} + {@link MockJwtAuthenticationFilter}.
+ * End-to-end RBAC through {@link SecurityConfig} + {@link SessionBearerAuthenticationFilter}.
  * Controller logic is stubbed; only HTTP status from authority checks matters here.
  */
 @WebMvcTest(controllers = {
@@ -53,7 +54,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         ConnectionInfoController.class,
         AdminConfigController.class
 })
-@Import({ApiExceptionHandler.class, SecurityConfig.class, MockJwtService.class, MockJwtAuthenticationFilter.class})
+@Import({ApiExceptionHandler.class, SecurityConfig.class, MockJwtService.class,
+        SessionTokenService.class, SessionBearerAuthenticationFilter.class})
 @TestPropertySource(properties = {
         "srse.data-mode=synthetic",
         "srse.datasource.analytical.jdbc-url=jdbc:presto://presto:8080/iceberg/srse",

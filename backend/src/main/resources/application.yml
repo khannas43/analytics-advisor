@@ -44,6 +44,16 @@ srse:
   # Does not change DATA_MODE — UI only.
   environment-label: ${SRSE_ENV_LABEL:}
   auth-mode: ${SRSE_AUTH_MODE:mock}
+  bootstrap:
+    super-admin-password: ${SRSE_BOOTSTRAP_SUPER_ADMIN_PASSWORD:}
+  identity:
+    lockout:
+      max-failed-attempts: ${SRSE_IDENTITY_LOCKOUT_MAX_ATTEMPTS:5}
+      lock-duration-minutes: ${SRSE_IDENTITY_LOCKOUT_MINUTES:15}
+    password:
+      expiry-days: ${SRSE_IDENTITY_PASSWORD_EXPIRY_DAYS:90}
+    bootstrap:
+      super-admin-username: ${SRSE_BOOTSTRAP_SUPER_ADMIN_USERNAME:superadmin}
   # Comma-separated list of origins the browser loads the frontend from —
   # CORS rejects everything else. Must match the ACTUAL URL the browser uses,
   # not a Docker-internal hostname. See SecurityConfig#corsConfigurationSource.

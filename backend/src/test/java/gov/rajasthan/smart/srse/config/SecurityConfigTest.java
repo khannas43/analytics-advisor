@@ -5,7 +5,8 @@ import gov.rajasthan.smart.srse.lakehouse.LakehouseBrowseService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataController;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
-import gov.rajasthan.smart.srse.security.MockJwtAuthenticationFilter;
+import gov.rajasthan.smart.srse.security.SessionBearerAuthenticationFilter;
+import gov.rajasthan.smart.srse.security.SessionTokenService;
 import gov.rajasthan.smart.srse.security.MockJwtIssuer;
 import gov.rajasthan.smart.srse.security.MockJwtService;
 import org.junit.jupiter.api.Test;
@@ -28,7 +29,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * requests and accept a token issued by {@link MockJwtIssuer}.
  */
 @WebMvcTest(controllers = {AnalysisColumnMetadataController.class, MockJwtIssuer.class})
-@Import({ApiExceptionHandler.class, SecurityConfig.class, MockJwtService.class, MockJwtAuthenticationFilter.class})
+@Import({ApiExceptionHandler.class, SecurityConfig.class, MockJwtService.class,
+        SessionTokenService.class, SessionBearerAuthenticationFilter.class})
 class SecurityConfigTest {
 
     @Autowired

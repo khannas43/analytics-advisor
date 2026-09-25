@@ -58,6 +58,7 @@ class OperationalStoreLiquibaseDb2IT {
         registry.add("srse.datasource.operational.initialization-fail-timeout", () -> "-1");
         registry.add("srse.datasource.analytical.initialization-fail-timeout", () -> "-1");
         registry.add("spring.liquibase.enabled", () -> "true");
+        registry.add("srse.bootstrap.super-admin-password", () -> "Db2IntegrationBootstrapPw1!");
     }
 
     @Autowired

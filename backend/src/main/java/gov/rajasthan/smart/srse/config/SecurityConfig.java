@@ -5,17 +5,19 @@ import java.util.List;
 
 import gov.rajasthan.smart.srse.security.AuthMode;
 import gov.rajasthan.smart.srse.security.Authorities;
-import gov.rajasthan.smart.srse.security.MockJwtAuthenticationFilter;
+import gov.rajasthan.smart.srse.security.PasswordChangeRequiredFilter;
 import gov.rajasthan.smart.srse.security.RajSewadwarAuthenticationFilter;
+import gov.rajasthan.smart.srse.security.SessionBearerAuthenticationFilter;
+import gov.rajasthan.smart.srse.security.SessionVersionValidationFilter;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
-import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -23,31 +25,34 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 /**
  * spring-boot-starter-security auto-locks every endpoint behind a login form
  * when no SecurityFilterChain is defined. Officer vs admin is split at
- * <strong>method level</strong> (narrow matchers first) — not a blanket
- * {@code /api/metadata/**} → admin rule, which would break the Rules and
- * Analysis read paths. Enforced by {@link MockJwtAuthenticationFilter} or
- * {@link RajSewadwarAuthenticationFilter} for {@code srse.auth-mode}.
+ * <strong>method level</strong> (narrow matchers first). Enforced by
+ * {@link SessionBearerAuthenticationFilter} (mock/local) or
+ * {@link RajSewadwarAuthenticationFilter} (rajsewadwar).
  */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
-    private final ObjectProvider<MockJwtAuthenticationFilter> mockJwtFilter;
+    private final ObjectProvider<SessionBearerAuthenticationFilter> sessionBearerFilter;
+    private final ObjectProvider<PasswordChangeRequiredFilter> passwordChangeRequiredFilter;
+    private final ObjectProvider<SessionVersionValidationFilter> sessionVersionValidationFilter;
     private final ObjectProvider<RajSewadwarAuthenticationFilter> rajSewadwarFilter;
     private final List<String> allowedOrigins;
 
     public SecurityConfig(@Value("${srse.auth-mode}") String authModeConfig,
                           @Value("${srse.frontend-origins}") String frontendOrigins,
-                          ObjectProvider<MockJwtAuthenticationFilter> mockJwtFilter,
+                          ObjectProvider<SessionBearerAuthenticationFilter> sessionBearerFilter,
+                          ObjectProvider<PasswordChangeRequiredFilter> passwordChangeRequiredFilter,
+                          ObjectProvider<SessionVersionValidationFilter> sessionVersionValidationFilter,
                           ObjectProvider<RajSewadwarAuthenticationFilter> rajSewadwarFilter) {
-        // Fails fast on a typo'd SRSE_AUTH_MODE instead of silently running
-        // with neither auth filter wired (see AuthMode).
         AuthMode.valueOf(authModeConfig.toUpperCase());
         this.allowedOrigins = Arrays.stream(frontendOrigins.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .toList();
-        this.mockJwtFilter = mockJwtFilter;
+        this.sessionBearerFilter = sessionBearerFilter;
+        this.passwordChangeRequiredFilter = passwordChangeRequiredFilter;
+        this.sessionVersionValidationFilter = sessionVersionValidationFilter;
         this.rajSewadwarFilter = rajSewadwarFilter;
     }
 
@@ -73,7 +78,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/health/**").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/mock-login").permitAll()
-                // Narrow admin rules MUST stay before broad /api/analysis/**.
+                .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/change-password").authenticated()
                 .requestMatchers(HttpMethod.PUT, "/api/analysis/column-metadata").hasAuthority(Authorities.SRSE_ADMIN)
                 .requestMatchers(HttpMethod.DELETE, "/api/analysis/column-metadata")
                     .hasAuthority(Authorities.SRSE_ADMIN)
@@ -81,17 +87,21 @@ public class SecurityConfig {
                 .requestMatchers("/api/admin/**").hasAuthority(Authorities.SRSE_ADMIN)
                 .requestMatchers("/api/analysis/**").hasAuthority(Authorities.STATE_OFFICER)
                 .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                // Without this, Spring Boot's internal error-dispatch to /error gets blocked by security too, masking the real HTTP status/error body behind a generic 403.
                 .requestMatchers("/error").permitAll()
                 .anyRequest().authenticated()
             );
 
-        // authMode selects which of these ObjectProviders actually has a bean
-        // (each filter is @ConditionalOnProperty on the same srse.auth-mode
-        // value) — at most one is non-null.
-        MockJwtAuthenticationFilter mock = mockJwtFilter.getIfAvailable();
-        if (mock != null) {
-            http.addFilterBefore(mock, UsernamePasswordAuthenticationFilter.class);
+        SessionBearerAuthenticationFilter bearer = sessionBearerFilter.getIfAvailable();
+        if (bearer != null) {
+            http.addFilterBefore(bearer, UsernamePasswordAuthenticationFilter.class);
+        }
+        PasswordChangeRequiredFilter passwordChange = passwordChangeRequiredFilter.getIfAvailable();
+        if (passwordChange != null) {
+            http.addFilterAfter(passwordChange, SessionBearerAuthenticationFilter.class);
+        }
+        SessionVersionValidationFilter sessionVersion = sessionVersionValidationFilter.getIfAvailable();
+        if (sessionVersion != null) {
+            http.addFilterAfter(sessionVersion, SessionBearerAuthenticationFilter.class);
         }
         RajSewadwarAuthenticationFilter rajSewadwar = rajSewadwarFilter.getIfAvailable();
         if (rajSewadwar != null) {

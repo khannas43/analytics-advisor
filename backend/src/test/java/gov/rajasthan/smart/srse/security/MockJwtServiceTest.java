@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MockJwtServiceTest {
 
-    private final MockJwtService jwtService = new MockJwtService();
+    private final MockJwtService jwtService = new MockJwtService(new SessionTokenService());
 
     @Test
     void defaultIssueCarriesOfficerAuthorityOnly() {

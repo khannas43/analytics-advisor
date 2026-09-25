@@ -10,7 +10,7 @@ class MockJwtIssuerTest {
 
     @Test
     void defaultLoginIssuesOfficerToken() {
-        MockJwtService service = new MockJwtService();
+        MockJwtService service = new MockJwtService(new SessionTokenService());
         MockJwtIssuer issuer = new MockJwtIssuer(service);
         String token = issuer.mockLogin(null).token();
         assertEquals(List.of(Authorities.STATE_OFFICER), service.parseAuthorities(token));
@@ -18,7 +18,7 @@ class MockJwtIssuerTest {
 
     @Test
     void adminRoleQueryIssuesBothAuthorities() {
-        MockJwtService service = new MockJwtService();
+        MockJwtService service = new MockJwtService(new SessionTokenService());
         MockJwtIssuer adminIssuer = new MockJwtIssuer(service);
         String token = adminIssuer.mockLogin("admin").token();
         assertEquals(

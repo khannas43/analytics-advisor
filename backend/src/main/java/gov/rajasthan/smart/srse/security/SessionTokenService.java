@@ -4,7 +4,6 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -17,7 +16,6 @@ import java.util.List;
  * Signing key is generated per boot (acceptable for non-production modes).
  */
 @Component
-@ConditionalOnExpression("'${srse.auth-mode:mock}' == 'mock' || '${srse.auth-mode:mock}' == 'local'")
 public class SessionTokenService {
 
     public static final String CLAIM_AUTHORITIES = "authorities";

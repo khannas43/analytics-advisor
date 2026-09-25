@@ -26,19 +26,18 @@ public final class ScopeAccessEvaluator {
     public static boolean canAccess(
             Map<Long, List<String>> assignmentPathsByDimension,
             Map<Long, String> dataPathsByDimension) {
-        if (assignmentPathsByDimension == null || assignmentPathsByDimension.isEmpty()) {
+        if (dataPathsByDimension == null || dataPathsByDimension.isEmpty()) {
             return false;
         }
-        for (Long dimensionId : assignmentPathsByDimension.keySet()) {
-            List<String> assigned = assignmentPathsByDimension.get(dimensionId);
+        for (Map.Entry<Long, String> dataEntry : dataPathsByDimension.entrySet()) {
+            Long dimensionId = dataEntry.getKey();
+            List<String> assigned = assignmentPathsByDimension == null
+                    ? null
+                    : assignmentPathsByDimension.get(dimensionId);
             if (assigned == null || assigned.isEmpty()) {
                 return false;
             }
-            String dataPath = dataPathsByDimension.get(dimensionId);
-            if (dataPath == null) {
-                return false;
-            }
-            if (!matchesAnyAssignedPath(assigned, dataPath)) {
+            if (!matchesAnyAssignedPath(assigned, dataEntry.getValue())) {
                 return false;
             }
         }
@@ -55,9 +54,21 @@ public final class ScopeAccessEvaluator {
         return canAccess(assignmentPathsByDimension, dataPathsByDimension);
     }
 
-    /** Assignment covers the node and all descendants via materialised path prefix (A3). */
+    /**
+     * Assignment covers the node and all descendants via materialised path prefix (A3).
+     *
+     * <p><b>Both sides are normalised, and both matter.</b> Normalising the
+     * assignment stops {@code /G/JAIPUR} matching the unrelated
+     * {@code /G/JAIPURX/} — the classic materialised-path bug, where a prefix
+     * test silently grants a sibling whose name merely starts the same way.
+     * Normalising the DATA path stops the opposite error: without it
+     * {@code "/G/JAIPUR".startsWith("/G/JAIPUR/")} is false, so a user assigned
+     * exactly the node being accessed is refused their own node. That one fails
+     * closed, which is the safe direction but still wrong, and it would present
+     * as "the district officer cannot see their own district".
+     */
     public static boolean assignmentCoversDataPath(String assignmentPath, String dataPath) {
-        return dataPath.startsWith(normalizePath(assignmentPath));
+        return normalizePath(dataPath).startsWith(normalizePath(assignmentPath));
     }
 
     /**

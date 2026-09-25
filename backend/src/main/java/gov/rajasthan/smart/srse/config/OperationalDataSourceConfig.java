@@ -36,7 +36,9 @@ import java.util.Map;
         // on the operational plane like the rest of the metadata.
         basePackages = {
                 "gov.rajasthan.smart.srse.metadata",
-                "gov.rajasthan.smart.srse.lakehouse"
+                "gov.rajasthan.smart.srse.lakehouse",
+                "gov.rajasthan.smart.srse.identity",
+                "gov.rajasthan.smart.srse.scope"
         },
         entityManagerFactoryRef = "operationalEmf",
         transactionManagerRef = "operationalTx"
@@ -61,7 +63,9 @@ public class OperationalDataSourceConfig {
      */
     static final String[] OPERATIONAL_PACKAGES = {
             "gov.rajasthan.smart.srse.metadata",
-            "gov.rajasthan.smart.srse.lakehouse"
+            "gov.rajasthan.smart.srse.lakehouse",
+            "gov.rajasthan.smart.srse.identity",
+            "gov.rajasthan.smart.srse.scope"
     };
 
     @Bean
