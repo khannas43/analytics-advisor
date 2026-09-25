@@ -95,12 +95,15 @@ class AnalysisEmittedSqlPrestoValidateIT {
             QualifiedTable table = inv.getArgument(0);
             return ScopeFilteredFrom.unfiltered(table.qualifiedName());
         });
+        AnalysisProperties analysisProperties =
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100);
         gov.rajasthan.smart.srse.compiler.RuleCompiler ruleCompiler =
                 new gov.rajasthan.smart.srse.compiler.RuleCompiler(
-                        new gov.rajasthan.smart.srse.compiler.RuleColumnResolver(registry));
+                        new gov.rajasthan.smart.srse.compiler.RuleColumnResolver(registry),
+                        analysisProperties);
         service = new RecordMatchService(
                 presto, registry, new GuardrailProperties(1000, 120, 50), columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10), new ObjectMapper(), scopeFrom,
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100), new ObjectMapper(), scopeFrom,
                 ruleCompiler);
     }
 

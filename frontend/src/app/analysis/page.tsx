@@ -94,6 +94,8 @@ type CriterionRow = {
   column: string;
   columns: RegisteredColumn[];
   fuzzyThresholdPercent: number;
+  fuzzyIgnoreSpaces: boolean;
+  fuzzyCaseSensitive: boolean;
   // Columns folded in alongside `column` — a target's first_name + last_name
   // against the hub's one full_name. Empty for every row until the officer
   // clicks "+ add column", which is what keeps the request shape unchanged for
@@ -119,6 +121,8 @@ function createEmptyRow(): CriterionRow {
     column: "",
     columns: [],
     fuzzyThresholdPercent: 80,
+    fuzzyIgnoreSpaces: false,
+    fuzzyCaseSensitive: false,
     extraColumns: [],
     mode: "COMBINE",
     separator: " ",
@@ -259,6 +263,7 @@ type CriterionBoxProps = Readonly<{
   onTableChange: (rowId: string, ref: CascadeValue) => void;
   onColumnChange: (rowId: string, column: string) => void;
   onFuzzyChange: (rowId: string, value: number) => void;
+  onFuzzyOptionsChange: (rowId: string, patch: { fuzzyIgnoreSpaces?: boolean; fuzzyCaseSensitive?: boolean }) => void;
   onExtraColumnsChange: (rowId: string, extraColumns: string[]) => void;
   onModeChange: (rowId: string, mode: GroupMode) => void;
   onSeparatorChange: (rowId: string, separator: string) => void;
@@ -440,6 +445,7 @@ function CriterionBox({
   onTableChange,
   onColumnChange,
   onFuzzyChange,
+  onFuzzyOptionsChange,
   onExtraColumnsChange,
   onModeChange,
   onSeparatorChange,
@@ -528,6 +534,22 @@ function CriterionBox({
                 value={row.fuzzyThresholdPercent}
                 onChange={(e) => onFuzzyChange(row.id, Number(e.target.value))}
               />
+              <label style={{ fontSize: "0.72rem", display: "block", marginTop: "0.25rem" }}>
+                <input
+                  type="checkbox"
+                  checked={row.fuzzyIgnoreSpaces}
+                  onChange={(e) => onFuzzyOptionsChange(row.id, { fuzzyIgnoreSpaces: e.target.checked })}
+                />{" "}
+                Ignore spaces
+              </label>
+              <label style={{ fontSize: "0.72rem", display: "block" }}>
+                <input
+                  type="checkbox"
+                  checked={row.fuzzyCaseSensitive}
+                  onChange={(e) => onFuzzyOptionsChange(row.id, { fuzzyCaseSensitive: e.target.checked })}
+                />{" "}
+                Case sensitive
+              </label>
             </div>
           )}
           {rows.length > 1 && (
@@ -822,6 +844,14 @@ export default function AnalysisPage() {
     fuzzyThresholdPercent: number,
   ) {
     setRows((rows) => updateRowById(rows, rowId, { fuzzyThresholdPercent }));
+  }
+
+  function handleFuzzyOptionsChange(
+    setRows: React.Dispatch<React.SetStateAction<CriterionRow[]>>,
+    rowId: string,
+    patch: { fuzzyIgnoreSpaces?: boolean; fuzzyCaseSensitive?: boolean },
+  ) {
+    setRows((rows) => updateRowById(rows, rowId, patch));
   }
 
   function handleExtraColumnsChange(
@@ -1475,6 +1505,7 @@ export default function AnalysisPage() {
           onTableChange={(rowId, ref) => handleTableChange(setSourceRows, rowId, ref)}
           onColumnChange={(rowId, column) => handleColumnChange(setSourceRows, rowId, column)}
           onFuzzyChange={(rowId, value) => handleFuzzyChange(setSourceRows, rowId, value)}
+          onFuzzyOptionsChange={(rowId, patch) => handleFuzzyOptionsChange(setSourceRows, rowId, patch)}
           onExtraColumnsChange={(rowId, cols) => handleExtraColumnsChange(setSourceRows, rowId, cols)}
           onModeChange={(rowId, mode) => handleModeChange(setSourceRows, rowId, mode)}
           onSeparatorChange={(rowId, sep) => handleSeparatorChange(setSourceRows, rowId, sep)}
@@ -1522,6 +1553,7 @@ export default function AnalysisPage() {
             onTableChange={(rowId, ref) => handleTableChange(setTargetRows, rowId, ref)}
             onColumnChange={(rowId, column) => handleColumnChange(setTargetRows, rowId, column)}
             onFuzzyChange={(rowId, value) => handleFuzzyChange(setTargetRows, rowId, value)}
+            onFuzzyOptionsChange={(rowId, patch) => handleFuzzyOptionsChange(setTargetRows, rowId, patch)}
             onExtraColumnsChange={(rowId, cols) => handleExtraColumnsChange(setTargetRows, rowId, cols)}
             onModeChange={(rowId, mode) => handleModeChange(setTargetRows, rowId, mode)}
             onSeparatorChange={(rowId, sep) => handleSeparatorChange(setTargetRows, rowId, sep)}
@@ -1681,6 +1713,7 @@ export default function AnalysisPage() {
                   )
                 }
                 onFuzzyChange={() => {}}
+                onFuzzyOptionsChange={() => {}}
                 onExtraColumnsChange={(rowId, cols) =>
                   setTargetBlocks((blocks) =>
                     blocks.map((b) =>

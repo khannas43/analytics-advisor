@@ -32,6 +32,7 @@ import static org.mockito.Mockito.when;
 
 /** AA-09 — scope predicate on every Analysis SQL path (§7.2.3–7.2.9). */
 @ExtendWith(MockitoExtension.class)
+@org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
 class RecordMatchScopeInjectionTest {
 
     private static final String SRC = "iceberg.srse.beneficiary";
@@ -72,7 +73,7 @@ class RecordMatchScopeInjectionTest {
                 registry,
                 new GuardrailProperties(1000, 30, 50),
                 columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10),
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100),
                 new ObjectMapper(),
                 scopeFrom,
                 ruleCompiler);
@@ -97,7 +98,7 @@ class RecordMatchScopeInjectionTest {
         assertTrue(service.matchCsv(req).getClass().getSimpleName().contains("Lambda"));
         assertTrue(planned.sql().contains("LEFT JOIN"));
         assertTrue(planned.sql().contains("district_code IN (?)"));
-        when(jdbc.queryForMap(anyString(), any(Object[].class))).thenReturn(java.util.Map.of(
+        lenient().when(jdbc.queryForMap(anyString(), any(Object[].class))).thenReturn(java.util.Map.of(
                 "total_rows", 0L, "matched_rows", 0L, "no_counterpart_rows", 0L));
         service.comparisonSummary(reqWithComparison(req));
     }

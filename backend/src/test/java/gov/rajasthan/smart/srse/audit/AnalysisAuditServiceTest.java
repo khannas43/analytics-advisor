@@ -1,6 +1,7 @@
 package gov.rajasthan.smart.srse.audit;
 
 import gov.rajasthan.smart.srse.analysis.AnalysisAuditService;
+import gov.rajasthan.smart.srse.analysis.ColumnDistinctValuesService;
 import gov.rajasthan.smart.srse.analysis.MatchCriterion;
 import gov.rajasthan.smart.srse.analysis.RecordMatchRequest;
 import gov.rajasthan.smart.srse.analysis.RecordMatchService;
@@ -30,6 +31,8 @@ class AnalysisAuditServiceTest {
     @Mock
     private RecordMatchService matchService;
     @Mock
+    private ColumnDistinctValuesService columnValuesService;
+    @Mock
     private AuditCaptureService auditCapture;
     @Mock
     private AuditScopeSummaryService scopeSummary;
@@ -38,7 +41,7 @@ class AnalysisAuditServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new AnalysisAuditService(matchService, auditCapture, scopeSummary);
+        service = new AnalysisAuditService(matchService, columnValuesService, auditCapture, scopeSummary);
         when(scopeSummary.summarizeCurrentOfficer()).thenReturn("BYPASS");
         when(scopeSummary.currentActorUserId()).thenReturn(42L);
     }

@@ -1,5 +1,7 @@
 package gov.rajasthan.smart.srse.analysis;
 
+import gov.rajasthan.smart.srse.compiler.FuzzyOptions;
+
 import java.util.List;
 
 /**
@@ -29,7 +31,8 @@ public record MatchGroup(
         List<MatchCriterion> target,
         GroupMode mode,
         Double fuzzyThresholdPercent,
-        String separator) {
+        String separator,
+        FuzzyOptions fuzzyOptions) {
 
     /** The separator used when a COMBINE side has more than one column and none was given. */
     public static final String DEFAULT_SEPARATOR = " ";
@@ -41,6 +44,16 @@ public record MatchGroup(
         separator = separator == null || separator.isEmpty() ? DEFAULT_SEPARATOR : separator;
     }
 
+    /** Backward-compatible constructor without fuzzy options. */
+    public MatchGroup(
+            List<MatchCriterion> source,
+            List<MatchCriterion> target,
+            GroupMode mode,
+            Double fuzzyThresholdPercent,
+            String separator) {
+        this(source, target, mode, fuzzyThresholdPercent, separator, null);
+    }
+
     /** A single-column group — the shape every legacy criterion pair normalises to. */
     public static MatchGroup of(MatchCriterion sourceColumn, MatchCriterion targetColumn) {
         return new MatchGroup(
@@ -48,6 +61,7 @@ public record MatchGroup(
                 List.of(targetColumn),
                 GroupMode.COMBINE,
                 sourceColumn.fuzzyThresholdPercent(),
+                null,
                 null);
     }
 

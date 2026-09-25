@@ -10,7 +10,18 @@ import java.util.List;
  * never inlined — this is the structural SQL-injection defence. Callers pass
  * {@code params} straight to JdbcTemplate in order.
  */
-public record CompiledQuery(String predicateSql, List<Object> params) {
+public record CompiledQuery(String predicateSql, List<Object> params, FuzzyScoreProjection fuzzyScore) {
+
+    public record FuzzyScoreProjection(String selectExpr, List<Object> params) {
+        public FuzzyScoreProjection {
+            params = List.copyOf(params);
+        }
+    }
+
+    public CompiledQuery(String predicateSql, List<Object> params) {
+        this(predicateSql, params, null);
+    }
+
     public CompiledQuery {
         params = List.copyOf(params);
     }

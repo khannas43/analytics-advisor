@@ -9,6 +9,8 @@ export type CriterionRowModel = {
   columns?: RegisteredColumn[];
   extraColumns: string[];
   fuzzyThresholdPercent: number;
+  fuzzyIgnoreSpaces: boolean;
+  fuzzyCaseSensitive: boolean;
   mode: GroupMode;
   separator: string;
 };
@@ -73,6 +75,12 @@ export function buildMatchGroup(
     target: rowCriteria(target),
     mode: source.mode,
     fuzzyThresholdPercent: fuzzy ? source.fuzzyThresholdPercent : null,
+    fuzzyOptions: fuzzy
+      ? {
+          ignoreSpaces: source.fuzzyIgnoreSpaces,
+          caseSensitive: source.fuzzyCaseSensitive,
+        }
+      : null,
     separator: source.mode === "COMBINE" ? source.separator : null,
   };
 }

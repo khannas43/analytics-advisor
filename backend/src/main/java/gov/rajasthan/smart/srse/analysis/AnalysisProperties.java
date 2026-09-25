@@ -35,7 +35,8 @@ public record AnalysisProperties(
         int maxProbedPairs,
         int blockingPrefixLen,
         long maxEstimatedRows,
-        int joinKeyDistinctnessTimeoutSeconds) {
+        int joinKeyDistinctnessTimeoutSeconds,
+        int maxColumnDistinctValues) {
 
     public AnalysisLimitsResponse toLimitsResponse() {
         return new AnalysisLimitsResponse(
@@ -47,6 +48,7 @@ public record AnalysisProperties(
                 maxAnyOfGroupsPerSide,
                 maxProbedPairs,
                 blockingPrefixLen,
-                maxEstimatedRows);
+                maxEstimatedRows,
+                maxColumnDistinctValues);
     }
 }

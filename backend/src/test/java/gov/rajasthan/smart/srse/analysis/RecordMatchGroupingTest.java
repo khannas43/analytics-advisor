@@ -64,7 +64,9 @@ class RecordMatchGroupingTest {
 
     @BeforeEach
     void setUp() {
-        RuleCompiler ruleCompiler = new RuleCompiler(new RuleColumnResolver(registry));
+        RuleCompiler ruleCompiler = new RuleCompiler(
+                new RuleColumnResolver(registry),
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100));
         lenient().when(columnMetadata.findByCatalogNameAndSchemaNameAndTableNameAndColumnName(
                 anyString(), anyString(), anyString(), anyString())).thenReturn(Optional.empty());
         lenient().when(registry.hasColumns(any(), any())).thenReturn(true);
@@ -79,7 +81,7 @@ class RecordMatchGroupingTest {
                 registry,
                 new GuardrailProperties(1000, 30, 50),
                 columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10),
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100),
                 new ObjectMapper(),
                 scopeFrom,
                 ruleCompiler);
@@ -242,10 +244,12 @@ class RecordMatchGroupingTest {
                 registry,
                 new GuardrailProperties(1000, 30, 50),
                 columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 1_000L, 10),
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 1_000L, 10, 100),
                 new ObjectMapper(),
                 scopeFrom,
-                new RuleCompiler(new RuleColumnResolver(registry)));
+                new RuleCompiler(
+                        new RuleColumnResolver(registry),
+                        new AnalysisProperties(5, 120, 4, 2, 10, 3, 1_000L, 10, 100)));
         MatchCriterion src = new MatchCriterion("iceberg", "srse", "beneficiary", "district", null);
         MatchCriterion tgt = new MatchCriterion("iceberg", "srse", "beneficiary", "district", null);
         RecordMatchRequest req = new RecordMatchRequest(
@@ -277,7 +281,12 @@ class RecordMatchGroupingTest {
         when(scopeFrom.planFrom(SOURCE)).thenReturn(ScopeFilteredFrom.unfiltered(SRC));
         when(scopeSummary.summarizeCurrentOfficer()).thenReturn("RJ-JPR");
         when(scopeSummary.currentActorUserId()).thenReturn(1L);
-        AnalysisAuditService audit = new AnalysisAuditService(matchService, auditCapture, scopeSummary);
+        AnalysisAuditService audit = new AnalysisAuditService(
+                matchService,
+                new ColumnDistinctValuesService(jdbc, registry, scopeFrom,
+                        new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100)),
+                auditCapture,
+                scopeSummary);
         Ast.PredicateSpec rules = new Ast.PredicateSpec(
                 new Ast.PredicateNode(col("age_years"), Ast.Operator.GT, 48000));
         RecordMatchRequest req = groupedSingleSource(

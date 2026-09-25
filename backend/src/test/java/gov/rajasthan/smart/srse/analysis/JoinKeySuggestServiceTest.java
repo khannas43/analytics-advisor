@@ -59,7 +59,7 @@ class JoinKeySuggestServiceTest {
         service = new JoinKeySuggestService(
                 registry,
                 columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10),
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100),
                 new GuardrailProperties(1000, 30, 50),
                 jdbc,
                 scopeFrom);

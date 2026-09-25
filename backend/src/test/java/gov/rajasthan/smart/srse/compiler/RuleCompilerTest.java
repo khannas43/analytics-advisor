@@ -1,5 +1,6 @@
 package gov.rajasthan.smart.srse.compiler;
 
+import gov.rajasthan.smart.srse.analysis.AnalysisProperties;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
 import gov.rajasthan.smart.srse.lakehouse.QualifiedColumn;
@@ -35,7 +36,9 @@ class RuleCompilerTest {
 
     @BeforeEach
     void setUp() {
-        compiler = new RuleCompiler(new RuleColumnResolver(registry));
+        compiler = new RuleCompiler(
+                new RuleColumnResolver(registry),
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100));
         lenient().when(registry.describeColumns(eq(TABLE), any()))
                 .thenAnswer(invocation -> {
                     @SuppressWarnings("unchecked")
@@ -99,7 +102,43 @@ class RuleCompilerTest {
         return new QualifiedColumn(TABLE, name);
     }
 
+    @Test
+    void inListMatchesHandBuiltPredicate() {
+        var node = new Ast.PredicateNode(col("district"), Ast.Operator.IN, List.of("Jaipur", "Udaipur"));
+        CompiledQuery q = compiler.compile(new Ast.PredicateSpec(node), TABLE);
+        assertEquals("t.district IN (?, ?)", q.predicateSql());
+        assertEquals(List.of("Jaipur", "Udaipur"), q.params());
+    }
+
+    @Test
+    void fuzzyMatchUsesBlockingKeyAndKeepsTypedValueAsPlaceholder() {
+        when(registry.describeColumns(eq(TABLE), eq(List.of("father_name"))))
+                .thenReturn(Map.of("father_name", column("father_name", "varchar")));
+        var node = new Ast.PredicateNode(
+                col("father_name"),
+                Ast.Operator.FUZZY_MATCH,
+                List.of("Ram Kumar", 80));
+        CompiledQuery q = compiler.compile(new Ast.PredicateSpec(node), TABLE);
+        assertTrue(q.predicateSql().contains("substr(lower(t.father_name), 1, 3) = substr(lower(?), 1, 3)"));
+        assertTrue(q.predicateSql().contains("levenshtein_distance(lower(t.father_name), lower(?))"));
+        // Three bindings of the name, not two: one for the blocking constant and two
+        // for the similarity, which uses its right side in levenshtein_distance AND in
+        // the length denominator. Binding it once left the statement a parameter short
+        // and every typed-text fuzzy failed with a SQLException.
+        assertEquals(List.of("Ram Kumar", "Ram Kumar", "Ram Kumar", 0.8), q.params());
+        assertTrue(q.fuzzyScore().selectExpr().contains("src.father_name"));
+        assertEquals(List.of("Ram Kumar", "Ram Kumar"), q.fuzzyScore().params());
+        assertEquals(countPlaceholders(q.predicateSql()), q.params().size(),
+                "every placeholder in the predicate needs a parameter");
+        assertEquals(countPlaceholders(q.fuzzyScore().selectExpr()), q.fuzzyScore().params().size(),
+                "every placeholder in the score projection needs a parameter");
+    }
+
     private static RegisteredColumn column(String name, String type) {
         return new RegisteredColumn(name, type, null, false, true);
+    }
+
+    private static int countPlaceholders(String sql) {
+        return (int) sql.chars().filter(c -> c == '?').count();
     }
 }

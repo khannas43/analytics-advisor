@@ -8,6 +8,7 @@ import LakehouseCascade, {
   type CascadeValue,
 } from "@/components/LakehouseCascade";
 import { AnalysisResultsGrid } from "@/components/AnalysisResultsGrid";
+import ValueFilterPicker from "@/components/ValueFilterPicker";
 import {
   downloadRecordMatchCsv,
   fetchMatchSql,
@@ -114,6 +115,13 @@ export default function ExtractPage() {
   const [ruleColumn, setRuleColumn] = useState("");
   const [ruleOp, setRuleOp] = useState<RuleOperator>("GT");
   const [ruleValue, setRuleValue] = useState("");
+  const [useValuePicker, setUseValuePicker] = useState(false);
+  const [valuePickerSpec, setValuePickerSpec] = useState<PredicateSpecWire | null>(null);
+  const [fuzzyRuleEnabled, setFuzzyRuleEnabled] = useState(false);
+  const [fuzzyRuleName, setFuzzyRuleName] = useState("");
+  const [fuzzyRuleThreshold, setFuzzyRuleThreshold] = useState(80);
+  const [fuzzyIgnoreSpaces, setFuzzyIgnoreSpaces] = useState(false);
+  const [fuzzyCaseSensitive, setFuzzyCaseSensitive] = useState(false);
   const [targetRuleColumn, setTargetRuleColumn] = useState("");
   const [targetRuleOp, setTargetRuleOp] = useState<RuleOperator>("GT");
   const [targetRuleValue, setTargetRuleValue] = useState("");
@@ -211,7 +219,26 @@ export default function ExtractPage() {
     }
     const ref = sourceRef as TableRef;
     const displays: DisplayColumn[] = displayCols.map((column) => ({ ...ref, column }));
-    const sourceRules = buildRuleSpec(ref, ruleColumn, ruleOp, ruleValue);
+    let sourceRules = buildRuleSpec(ref, ruleColumn, ruleOp, ruleValue);
+    if (useValuePicker && valuePickerSpec) {
+      sourceRules = valuePickerSpec;
+    } else if (fuzzyRuleEnabled && ruleColumn && fuzzyRuleName.trim()) {
+      sourceRules = {
+        root: {
+          type: "PREDICATE",
+          column: {
+            table: { catalog: ref.catalog, schema: ref.schema, table: ref.table },
+            column: ruleColumn,
+          },
+          operator: "FUZZY_MATCH",
+          value: [
+            fuzzyRuleName.trim(),
+            fuzzyRuleThreshold,
+            { ignoreSpaces: fuzzyIgnoreSpaces, caseSensitive: fuzzyCaseSensitive },
+          ],
+        },
+      };
+    }
     const groupByColumns: DisplayColumn[] =
       groupEnabled && groupByCol ? [{ ...ref, column: groupByCol }] : [];
     const aggregates: AggregateSpecWire[] = [];
@@ -553,6 +580,46 @@ export default function ExtractPage() {
 
       <section className="srse-card" style={{ marginBottom: "1rem" }}>
         <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Source filter rule</h2>
+        <label style={{ fontSize: "0.82rem", display: "block", marginBottom: "0.5rem" }}>
+          <input type="checkbox" checked={useValuePicker} onChange={(e) => setUseValuePicker(e.target.checked)} /> Pick
+          values from list (IN rule)
+        </label>
+        <label style={{ fontSize: "0.82rem", display: "block", marginBottom: "0.5rem" }}>
+          <input type="checkbox" checked={fuzzyRuleEnabled} onChange={(e) => setFuzzyRuleEnabled(e.target.checked)} />{" "}
+          Typed-text fuzzy match (inside scoped table)
+        </label>
+        {useValuePicker && isCascadeComplete(sourceRef) && ruleColumn && (
+          <ValueFilterPicker table={sourceRef} column={ruleColumn} onChange={setValuePickerSpec} />
+        )}
+        {fuzzyRuleEnabled && (
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
+            <label>
+              Name to match
+              <input className="srse-input" style={{ width: "100%" }} value={fuzzyRuleName} onChange={(e) => setFuzzyRuleName(e.target.value)} />
+            </label>
+            <label>
+              Threshold %
+              <input
+                type="number"
+                className="srse-input"
+                style={{ width: "100%" }}
+                min={0}
+                max={100}
+                value={fuzzyRuleThreshold}
+                onChange={(e) => setFuzzyRuleThreshold(Number(e.target.value))}
+              />
+            </label>
+            <div>
+              <label style={{ fontSize: "0.78rem", display: "block" }}>
+                <input type="checkbox" checked={fuzzyIgnoreSpaces} onChange={(e) => setFuzzyIgnoreSpaces(e.target.checked)} /> Ignore spaces
+              </label>
+              <label style={{ fontSize: "0.78rem", display: "block" }}>
+                <input type="checkbox" checked={fuzzyCaseSensitive} onChange={(e) => setFuzzyCaseSensitive(e.target.checked)} /> Case sensitive
+              </label>
+            </div>
+          </div>
+        )}
+        {!useValuePicker && !fuzzyRuleEnabled && (
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "0.75rem", alignItems: "end" }}>
           <label>
             Column
@@ -582,6 +649,7 @@ export default function ExtractPage() {
             </label>
           )}
         </div>
+        )}
       </section>
 
       {mode === "join" && (

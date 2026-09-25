@@ -78,6 +78,7 @@ export type MatchGroup = {
   target: MatchCriterion[];
   mode: GroupMode;
   fuzzyThresholdPercent: number | null;
+  fuzzyOptions?: FuzzyOptionsWire | null;
   // Joins a multi-column COMBINE side. Order is the officer's and it matters:
   // Levenshtein is order-sensitive.
   separator: string | null;
@@ -121,10 +122,19 @@ export type RuleOperator =
   | "LTE"
   | "GT"
   | "GTE"
+  | "IN"
+  | "NOT_IN"
   | "IS_TRUE"
   | "IS_FALSE"
   | "IS_NULL"
-  | "NOT_NULL";
+  | "NOT_NULL"
+  | "FUZZY_MATCH";
+
+/** §5.3 — must stay aligned with backend {@code FuzzyOptions}. */
+export type FuzzyOptionsWire = {
+  caseSensitive?: boolean;
+  ignoreSpaces?: boolean;
+};
 
 export type QualifiedColumnWire = TableRef & { column: string };
 
@@ -190,7 +200,37 @@ export type AnalysisLimits = {
   maxProbedPairs: number;
   blockingPrefixLen: number;
   maxEstimatedRows: number;
+  maxColumnDistinctValues: number;
 };
+
+export type ColumnValuesResponse = {
+  values: (string | null)[];
+  truncated: boolean;
+  includesNull: boolean;
+};
+
+export async function fetchColumnDistinctValues(
+  ref: TableRef,
+  column: string,
+  search?: string,
+): Promise<ColumnValuesResponse> {
+  const res = await authorizedFetch(`${API_BASE}/api/analysis/column-values`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      catalog: ref.catalog,
+      schema: ref.schema,
+      table: ref.table,
+      column,
+      search: search || null,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Analysis service error ${res.status}: ${await res.text()}`);
+  }
+  return res.json() as Promise<ColumnValuesResponse>;
+}
 
 export type MultiTargetRecordMatchRequest = {
   hubCriteria: MatchCriterion[];

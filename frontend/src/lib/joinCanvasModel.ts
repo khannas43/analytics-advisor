@@ -49,6 +49,8 @@ export function createEmptyCanvasSlot(hubTable: CascadeValue, targetIds: string[
     column: "",
     extraColumns: [],
     fuzzyThresholdPercent: 80,
+    fuzzyIgnoreSpaces: false,
+    fuzzyCaseSensitive: false,
     mode: "COMBINE",
     separator: " ",
   });
@@ -194,6 +196,8 @@ function emptyCriterionFor(ref: CascadeValue): CriterionRowModel {
     column: "",
     extraColumns: [],
     fuzzyThresholdPercent: 80,
+    fuzzyIgnoreSpaces: false,
+    fuzzyCaseSensitive: false,
     mode: "COMBINE",
     separator: " ",
   };

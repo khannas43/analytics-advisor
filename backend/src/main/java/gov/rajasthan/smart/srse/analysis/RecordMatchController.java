@@ -35,6 +35,13 @@ public class RecordMatchController {
         this.joinKeySuggestService = joinKeySuggestService;
     }
 
+    /** Scoped distinct values for the value-filter picker (§5.1) — audited as QUERY_EXECUTED. */
+    @PostMapping("/column-values")
+    public ColumnDistinctValuesService.ColumnValuesResponse columnValues(
+            @RequestBody ColumnDistinctValuesService.ColumnValuesRequest req) {
+        return analysisAuditService.columnValuesAudited(req);
+    }
+
     @GetMapping("/limits")
     public AnalysisLimitsResponse limits() {
         return multiMatchService.analysisLimits();

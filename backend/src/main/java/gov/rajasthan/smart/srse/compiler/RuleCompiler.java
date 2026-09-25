@@ -1,5 +1,6 @@
 package gov.rajasthan.smart.srse.compiler;
 
+import gov.rajasthan.smart.srse.analysis.AnalysisProperties;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
 import gov.rajasthan.smart.srse.lakehouse.QualifiedColumn;
 import gov.rajasthan.smart.srse.lakehouse.QualifiedTable;
@@ -7,6 +8,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.StringJoiner;
 
 /**
@@ -20,40 +22,47 @@ import java.util.StringJoiner;
 public class RuleCompiler {
 
     private static final String TABLE_ALIAS = "t";
+    /** Outer alias for single-source extract score projection (§5.4). */
+    private static final String OUTER_ALIAS = "src";
 
     private final RuleColumnResolver columns;
+    private final AnalysisProperties analysisProperties;
 
-    public RuleCompiler(RuleColumnResolver columns) {
+    public RuleCompiler(RuleColumnResolver columns, AnalysisProperties analysisProperties) {
         this.columns = columns;
+        this.analysisProperties = analysisProperties;
     }
 
     public CompiledQuery compile(Ast.PredicateSpec spec, QualifiedTable table) {
         List<Object> params = new ArrayList<>();
-        String sql = emit(spec.root(), table, params);
-        return new CompiledQuery(sql, params);
+        FuzzyMatchContext fuzzyCtx = new FuzzyMatchContext();
+        String sql = emit(spec.root(), table, params, fuzzyCtx);
+        CompiledQuery.FuzzyScoreProjection score = fuzzyCtx.buildScoreProjection();
+        return new CompiledQuery(sql, params, score);
     }
 
-    private String emit(Ast.Node node, QualifiedTable table, List<Object> params) {
+    private String emit(Ast.Node node, QualifiedTable table, List<Object> params, FuzzyMatchContext fuzzyCtx) {
         if (node instanceof Ast.GroupNode g) {
-            return emitGroup(g, table, params);
+            return emitGroup(g, table, params, fuzzyCtx);
         }
         if (node instanceof Ast.PredicateNode p) {
-            return emitPredicate(p, table, params);
+            return emitPredicate(p, table, params, fuzzyCtx);
         }
         throw new IllegalStateException("Unexpected node: " + node);
     }
 
-    private String emitGroup(Ast.GroupNode g, QualifiedTable table, List<Object> params) {
+    private String emitGroup(Ast.GroupNode g, QualifiedTable table, List<Object> params, FuzzyMatchContext fuzzyCtx) {
         String joiner = g.op() == Ast.BoolOp.AND ? " AND " : " OR ";
         StringJoiner sj = new StringJoiner(joiner, "(", ")");
         for (Ast.Node child : g.children()) {
-            sj.add(emit(child, table, params));
+            sj.add(emit(child, table, params, fuzzyCtx));
         }
         return sj.toString();
     }
 
     @SuppressWarnings("unchecked")
-    private String emitPredicate(Ast.PredicateNode p, QualifiedTable table, List<Object> params) {
+    private String emitPredicate(
+            Ast.PredicateNode p, QualifiedTable table, List<Object> params, FuzzyMatchContext fuzzyCtx) {
         RegisteredColumn described = columns.resolve(p.column(), table);
         SqlTypeFamily columnFamily = SqlTypeFamily.of(described.dataType());
         String colRef = columnRef(p.column().column(), columnFamily, p.operator(), p.value());
@@ -75,7 +84,7 @@ public class RuleCompiler {
 
             case BETWEEN -> emitBetween(colRef, (List<Object>) p.value(), params);
 
-            case FUZZY_MATCH -> emitFuzzyMatch(colRef, (List<Object>) p.value(), params);
+            case FUZZY_MATCH -> emitFuzzyMatch(p.column().column(), colRef, (List<Object>) p.value(), params, fuzzyCtx);
         };
     }
 
@@ -123,8 +132,13 @@ public class RuleCompiler {
         return col + " BETWEEN ? AND ?";
     }
 
-    private String emitFuzzyMatch(String col, List<Object> value, List<Object> params) {
-        if (value == null || value.size() != 2) {
+    private String emitFuzzyMatch(
+            String columnName,
+            String colRef,
+            List<Object> value,
+            List<Object> params,
+            FuzzyMatchContext fuzzyCtx) {
+        if (value == null || value.size() < 2) {
             throw new IllegalArgumentException("FUZZY_MATCH requires [name, thresholdPercent]");
         }
         Object nameObj = value.get(0);
@@ -135,9 +149,56 @@ public class RuleCompiler {
         if (thresholdPct < 0 || thresholdPct > 100) {
             throw new IllegalArgumentException("FUZZY_MATCH threshold must be between 0 and 100");
         }
+        FuzzyOptions options = parseFuzzyOptions(value);
+        int prefixLen = analysisProperties.blockingPrefixLen();
+        String blockingCol = FuzzyMatchSql.blockingKeyExpr(colRef, prefixLen, options);
+        String blockingConst = FuzzyMatchSql.blockingKeyExpr("?", prefixLen, options);
+        String similarity = FuzzyMatchSql.similarityExpr(colRef, "?", options);
+        // One for the blocking constant, then however many the similarity needs — it
+        // uses the right side twice, and binding once left the statement a parameter
+        // short, so every typed-text fuzzy failed outright.
         params.add(name);
-        params.add(name);
+        params.addAll(FuzzyMatchSql.rightSideParams(name));
         params.add(thresholdPct / 100.0);
-        return FuzzyMatchSql.similarityExpr(col, "?") + " >= ?";
+        fuzzyCtx.record(columnName, options, name, thresholdPct);
+        return blockingCol + " = " + blockingConst + " AND " + similarity + " >= ?";
+    }
+
+    private static FuzzyOptions parseFuzzyOptions(List<Object> value) {
+        if (value.size() >= 3 && value.get(2) instanceof Map<?, ?> map) {
+            Boolean caseSensitive = map.get("caseSensitive") instanceof Boolean b ? b : null;
+            Boolean ignoreSpaces = map.get("ignoreSpaces") instanceof Boolean b ? b : null;
+            return new FuzzyOptions(caseSensitive, ignoreSpaces);
+        }
+        return null;
+    }
+
+    /** Captures the first FUZZY_MATCH for outer {@code match_score_pct} projection (§5.4). */
+    private static final class FuzzyMatchContext {
+        private String columnName;
+        private FuzzyOptions options;
+        private String boundName;
+        private double thresholdPct;
+
+        void record(String columnName, FuzzyOptions options, String boundName, double thresholdPct) {
+            if (this.columnName != null) {
+                return;
+            }
+            this.columnName = columnName;
+            this.options = options;
+            this.boundName = boundName;
+            this.thresholdPct = thresholdPct;
+        }
+
+        CompiledQuery.FuzzyScoreProjection buildScoreProjection() {
+            if (columnName == null) {
+                return null;
+            }
+            String outerCol = OUTER_ALIAS + "." + columnName;
+            String sim = FuzzyMatchSql.similarityExpr(outerCol, "?", FuzzyOptions.resolve(options));
+            String expr = "ROUND((" + sim + ") * 100, 1)";
+            return new CompiledQuery.FuzzyScoreProjection(
+                    expr, FuzzyMatchSql.rightSideParams(boundName));
+        }
     }
 }

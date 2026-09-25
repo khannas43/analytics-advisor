@@ -19,14 +19,17 @@ import java.util.StringJoiner;
 public class AnalysisAuditService {
 
     private final RecordMatchService matchService;
+    private final ColumnDistinctValuesService columnValuesService;
     private final AuditCaptureService auditCapture;
     private final AuditScopeSummaryService scopeSummary;
 
     public AnalysisAuditService(
             RecordMatchService matchService,
+            ColumnDistinctValuesService columnValuesService,
             AuditCaptureService auditCapture,
             AuditScopeSummaryService scopeSummary) {
         this.matchService = matchService;
+        this.columnValuesService = columnValuesService;
         this.auditCapture = auditCapture;
         this.scopeSummary = scopeSummary;
     }
@@ -37,6 +40,35 @@ public class AnalysisAuditService {
 
     public RecordMatchService.MatchQuery planPreviewAudited(RecordMatchRequest req) {
         return plan(req, AuditActionType.QUERY_PREVIEWED);
+    }
+
+    public ColumnDistinctValuesService.ColumnValuesResponse columnValuesAudited(
+            ColumnDistinctValuesService.ColumnValuesRequest req) {
+        ColumnDistinctValuesService.PlannedColumnValues planned = columnValuesService.plan(req);
+        try {
+            ColumnDistinctValuesService.ColumnValuesResponse response = columnValuesService.execute(planned);
+            auditCapture.recordBestEffort(new AuditEventDraft(
+                    AuditActionType.QUERY_EXECUTED,
+                    AuditOutcome.SUCCESS,
+                    scopeSummary.currentActorUserId(),
+                    null,
+                    "column distinct values",
+                    req.catalog() + "." + req.schema() + "." + req.table(),
+                    QueryShapeAudit.queryShapeFromSql(planned.sql()),
+                    scopeSummary.summarizeCurrentOfficer()));
+            return response;
+        } catch (RuntimeException ex) {
+            auditCapture.recordBestEffort(new AuditEventDraft(
+                    AuditActionType.QUERY_REFUSED,
+                    AuditOutcome.REFUSED,
+                    scopeSummary.currentActorUserId(),
+                    null,
+                    truncate(ex.getMessage(), 512),
+                    req.catalog() + "." + req.schema() + "." + req.table(),
+                    QueryShapeAudit.queryShapeFromSql(planned.sql()),
+                    scopeSummary.summarizeCurrentOfficer()));
+            throw ex;
+        }
     }
 
     public void recordExport(RecordMatchRequest req, RecordMatchService.MatchQuery query) {

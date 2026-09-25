@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -69,13 +70,19 @@ class RecordMatchExtractRulesTest {
 
     @BeforeEach
     void setUp() {
-        ruleCompiler = new RuleCompiler(new RuleColumnResolver(registry));
+        ruleCompiler = new RuleCompiler(
+                new RuleColumnResolver(registry),
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100));
         lenient().when(columnMetadata.findByCatalogNameAndSchemaNameAndTableNameAndColumnName(
                 anyString(), anyString(), anyString(), anyString())).thenReturn(Optional.empty());
         lenient().when(registry.hasColumns(any(), any())).thenReturn(true);
         lenient().when(registry.describeColumns(any(), any())).thenAnswer(inv -> {
             Map<String, RegisteredColumn> described = new LinkedHashMap<>();
-            for (Object column : inv.getArgument(1, List.class)) {
+            List<?> columns = inv.getArgument(1, List.class);
+            if (columns == null) {
+                return described;
+            }
+            for (Object column : columns) {
                 String name = String.valueOf(column);
                 described.put(name, new RegisteredColumn(name, "bigint", null, false, true));
             }
@@ -89,7 +96,7 @@ class RecordMatchExtractRulesTest {
                 registry,
                 new GuardrailProperties(1000, 30, 50),
                 columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10),
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100),
                 new ObjectMapper(),
                 scopeFrom,
                 ruleCompiler);
@@ -163,7 +170,12 @@ class RecordMatchExtractRulesTest {
         when(scopeFrom.planFrom(SOURCE_TABLE)).thenReturn(ScopeFilteredFrom.unfiltered(SRC));
         when(scopeSummary.summarizeCurrentOfficer()).thenReturn("RJ-JPR");
         when(scopeSummary.currentActorUserId()).thenReturn(7L);
-        auditService = new AnalysisAuditService(matchService, auditCapture, scopeSummary);
+        auditService = new AnalysisAuditService(
+                matchService,
+                new ColumnDistinctValuesService(jdbc, registry, scopeFrom,
+                        new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100)),
+                auditCapture,
+                scopeSummary);
         DisplayColumn district = new DisplayColumn("iceberg", "srse", "beneficiary", "district_code");
         Ast.PredicateSpec rules = new Ast.PredicateSpec(
                 new Ast.PredicateNode(col("age_years"), Ast.Operator.GT, 48000));
@@ -179,6 +191,34 @@ class RecordMatchExtractRulesTest {
         assertTrue(draft.queryShape().contains("?"));
         assertFalse(draft.queryShape().contains("48000"));
         assertEqualsOutcome(draft, AuditActionType.QUERY_EXECUTED, AuditOutcome.SUCCESS);
+    }
+
+    @Test
+    void typedTextFuzzyRuleInsideDerivedTableWithScoreColumn() {
+        when(registry.describeColumns(eq(SOURCE_TABLE), eq(List.of("father_name"))))
+                .thenReturn(Map.of("father_name", new RegisteredColumn("father_name", "varchar", null, false, true)));
+        DisplayColumn name = new DisplayColumn("iceberg", "srse", "beneficiary", "father_name");
+        Ast.PredicateSpec rules = new Ast.PredicateSpec(new Ast.PredicateNode(
+                col("father_name"), Ast.Operator.FUZZY_MATCH, List.of("Ram Kumar", 80)));
+        RecordMatchRequest req = new RecordMatchRequest(
+                List.of(), List.of(),
+                List.of(name), List.of(),
+                List.of(), false, null, null, List.of(), false,
+                rules, null, true, List.of(), List.of());
+        RecordMatchService.MatchQuery query = matchService.planMatch(req);
+        assertTrue(query.sql().contains("(SELECT * FROM " + SRC + " t WHERE district_code IN (?) AND ("));
+        assertTrue(query.sql().contains("substr(lower(t.father_name), 1, 3) = substr(lower(?), 1, 3)"));
+        assertFalse(query.sql().contains(" ON "));
+        assertTrue(query.sql().contains("match_score_pct"));
+        // Order follows the SQL, not the order things were built. The score projection
+        // lives in SELECT and so binds first, then the scope predicate, then the rule's
+        // blocking constant, its similarity (which uses the right side twice) and its
+        // threshold. Binding the score last put the threshold into a lower().
+        assertArrayEquals(
+                new Object[] {"Ram Kumar", "Ram Kumar", "RJ-SGN", "Ram Kumar", "Ram Kumar", "Ram Kumar", 0.8},
+                query.params().toArray());
+        assertEquals((int) query.sql().chars().filter(c -> c == '?').count(), query.params().size(),
+                "placeholders and parameters must agree, or Presto rejects the statement");
     }
 
     @Test

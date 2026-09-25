@@ -6,6 +6,7 @@ import gov.rajasthan.smart.srse.compiler.ColumnGroupSql;
 import gov.rajasthan.smart.srse.compiler.CompareAs;
 import gov.rajasthan.smart.srse.compiler.CompiledQuery;
 import gov.rajasthan.smart.srse.compiler.FuzzyMatchSql;
+import gov.rajasthan.smart.srse.compiler.FuzzyOptions;
 import gov.rajasthan.smart.srse.compiler.RuleCompiler;
 import gov.rajasthan.smart.srse.compiler.SqlTypeFamily;
 import gov.rajasthan.smart.srse.compiler.TypeCoercion;
@@ -585,8 +586,9 @@ public class RecordMatchService {
         if (!req.sourceDisplayColumns().isEmpty()) {
             validateDisplayColumns(req.sourceDisplayColumns(), table, "sourceDisplayColumns");
         }
-        ScopeFilteredFrom scope = applySideRules(
+        AppliedSideRules applied = applySideRules(
                 scopeFrom.planFrom(table), req.sourceRules(), table);
+        ScopeFilteredFrom scope = applied.scope();
         // No join — fan-out guard does not apply; do not call enforceEstimatedRowCeiling with
         // degenerate empty join groups.
 
@@ -601,12 +603,24 @@ public class RecordMatchService {
         } else {
             appendDisplaySelects(select, outerColumns, "src", "source_", req.sourceDisplayColumns());
         }
+        // The score projection's placeholders sit in SELECT, which precedes FROM in the
+        // emitted SQL, so its parameters must be bound BEFORE the scope and rule ones.
+        // Appending them instead fed the threshold into a lower(), and Presto rejected
+        // the statement with "Unexpected parameters (double) for function lower".
+        // Same ordering trap CLAUDE.md records for comparison placeholders.
+        List<Object> params = new ArrayList<>();
+        if (applied.fuzzyScore() != null) {
+            select.append(", ").append(applied.fuzzyScore().selectExpr()).append(" AS \"match_score_pct\"");
+            outerColumns.add("match_score_pct");
+            params.addAll(applied.fuzzyScore().params());
+        }
+        params.addAll(scopeParams);
         String sql = "SELECT " + select + " FROM " + from;
         String groupBy = MatchGroupingSql.groupByClause(req, table, table);
         if (!groupBy.isEmpty()) {
             sql += " GROUP BY " + groupBy;
         }
-        return new MatchQuery(sql, List.copyOf(scopeParams), List.copyOf(outerColumns));
+        return new MatchQuery(sql, List.copyOf(params), List.copyOf(outerColumns));
     }
 
     private QualifiedTable tableForSingleSource(RecordMatchRequest req) {
@@ -625,14 +639,20 @@ public class RecordMatchService {
                 "singleSource requires display columns, a group key, or an aggregate column");
     }
 
-    private ScopeFilteredFrom applySideRules(
+    private record AppliedSideRules(
+            ScopeFilteredFrom scope, CompiledQuery.FuzzyScoreProjection fuzzyScore) {
+    }
+
+    private AppliedSideRules applySideRules(
             ScopeFilteredFrom scope, Ast.PredicateSpec rules, QualifiedTable table) {
         if (rules == null) {
-            return scope;
+            return new AppliedSideRules(scope, null);
         }
         validateRulesOnTable(rules, table);
         CompiledQuery compiled = ruleCompiler.compile(rules, table);
-        return scope.withRulePredicate(compiled.predicateSql(), compiled.params());
+        return new AppliedSideRules(
+                scope.withRulePredicate(compiled.predicateSql(), compiled.params()),
+                compiled.fuzzyScore());
     }
 
     private void validateRulesOnTable(Ast.PredicateSpec spec, QualifiedTable table) {
@@ -731,9 +751,9 @@ public class RecordMatchService {
         List<GroupPlan> groups = planGroups(join, sides, sourceUnnests, targetUnnests,
                 joinType.preservesSourceSide(), joinType.preservesTargetSide());
         ScopeFilteredFrom sourceScope = applySideRules(
-                scopeFrom.planFrom(sides.sourceTable()), req.sourceRules(), sides.sourceTable());
+                scopeFrom.planFrom(sides.sourceTable()), req.sourceRules(), sides.sourceTable()).scope();
         ScopeFilteredFrom targetScope = applySideRules(
-                scopeFrom.planFrom(sides.targetTable()), req.targetRules(), sides.targetTable());
+                scopeFrom.planFrom(sides.targetTable()), req.targetRules(), sides.targetTable()).scope();
         enforceEstimatedRowCeiling(sides, groups, sourceScope, targetScope, req.grouped());
 
         List<ComparisonPlan> comparisonPlans = List.of();
@@ -1047,9 +1067,11 @@ public class RecordMatchService {
         if (threshold < 0 || threshold > 100) {
             throw new IllegalArgumentException("fuzzyThresholdPercent must be between 0 and 100");
         }
-        onClause.append(blockingKeyExpr(group.sourceRef())).append(" = ")
-                .append(blockingKeyExpr(group.targetRef()));
-        String similarity = FuzzyMatchSql.similarityExpr(group.sourceRef(), group.targetRef()) + " >= ?";
+        FuzzyOptions fuzzyOptions = group.group().fuzzyOptions();
+        onClause.append(blockingKeyExpr(group.sourceRef(), fuzzyOptions)).append(" = ")
+                .append(blockingKeyExpr(group.targetRef(), fuzzyOptions));
+        String similarity = FuzzyMatchSql.similarityExpr(
+                group.sourceRef(), group.targetRef(), fuzzyOptions) + " >= ?";
         if (joinType == JoinType.INNER) {
             appendWhereClause(where, similarity);
         } else {
@@ -1201,8 +1223,9 @@ public class RecordMatchService {
         out.flush();
     }
 
-    private String blockingKeyExpr(String columnRef) {
-        return "substr(lower(" + columnRef + "), 1, " + analysisProperties.blockingPrefixLen() + ")";
+    private String blockingKeyExpr(String columnRef, FuzzyOptions options) {
+        return FuzzyMatchSql.blockingKeyExpr(
+                columnRef, analysisProperties.blockingPrefixLen(), options);
     }
 
     /**
@@ -1241,9 +1264,11 @@ public class RecordMatchService {
         long denominator = 1;
         for (GroupPlan group : groups) {
             long sourceDistinct = sideDistinctEstimate(
-                    sides.sourceTable(), sourceScope, group.group().source(), group.fuzzy(), sourceStats);
+                    sides.sourceTable(), sourceScope, group.group().source(), group.fuzzy(),
+                    group.group().fuzzyOptions(), sourceStats);
             long targetDistinct = sideDistinctEstimate(
-                    sides.targetTable(), targetScope, group.group().target(), group.fuzzy(), targetStats);
+                    sides.targetTable(), targetScope, group.group().target(), group.fuzzy(),
+                    group.group().fuzzyOptions(), targetStats);
             long groupMax = Math.max(sourceDistinct, targetDistinct);
             if (groupMax <= 0) {
                 return;
@@ -1347,6 +1372,7 @@ public class RecordMatchService {
             ScopeFilteredFrom scope,
             List<MatchCriterion> columns,
             boolean fuzzy,
+            FuzzyOptions fuzzyOptions,
             TableStats stats) {
         if (columns.isEmpty()) {
             return 1;
@@ -1368,7 +1394,8 @@ public class RecordMatchService {
             String columnRef = columnQualifier + "." + c.column();
             long distinct = fromStats != null
                     ? fromStats
-                    : queryApproxDistinct(fromExpr, scope, fuzzy ? blockingKeyExpr(columnRef) : columnRef);
+                    : queryApproxDistinct(
+                            fromExpr, scope, fuzzy ? blockingKeyExpr(columnRef, fuzzyOptions) : columnRef);
             product = multiplyCap(product, distinct, ceiling);
         }
         return product;
@@ -1410,7 +1437,8 @@ public class RecordMatchService {
         List<String> terms = new ArrayList<>();
         for (GroupPlan group : groups) {
             terms.add(group.fuzzy()
-                    ? FuzzyMatchSql.similarityExpr(group.sourceRef(), group.targetRef())
+                    ? FuzzyMatchSql.similarityExpr(
+                            group.sourceRef(), group.targetRef(), group.group().fuzzyOptions())
                     : "1.0");
         }
         String sum = String.join(" + ", terms);
