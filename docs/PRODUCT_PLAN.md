@@ -166,6 +166,20 @@ works exactly this way in SRSE.
 
 ## 7. User management, data scoping and audit
 
+### 7.1 Users and the organisation hierarchy
+
+Built in-house — no Keycloak. That means we own password storage, reset, lockout,
+sessions and everything else an identity product would have given us.
+
+| # | Activity | Type | Est |
+|---|---|---|---|
+| 7.1.1 | Org hierarchy: levels (State → District → Taluka → …) and nodes with parents | N | 4 |
+| 7.1.2 | Users, roles, and assignment to one or more hierarchy nodes | N | 5 |
+| 7.1.3 | Local authentication: password hashing, login, logout, session expiry | N | 4 |
+| 7.1.4 | Password lifecycle: admin-set initial, self-service reset, expiry, failed-attempt lockout | N | 5 |
+| 7.1.5 | SuperAdmin / Admin screens to create users, assign roles and scopes, deactivate | N | 6 |
+| 7.1.6 | Should an Admin be scoped themselves (a district admin managing only their own district)? | N | 3 |
+
 ### 7.1a Multi-factor authentication (decision A12)
 
 **Settled:** MFA is **required**, delivered as a **one-time password**, and
@@ -222,62 +236,6 @@ Consequences:
 The prototype has none of this. It is now the largest workstream in the product,
 and §7.2 is the riskiest thing in the whole plan.
 
-### 7.1 Users and the organisation hierarchy
-
-Built in-house — no Keycloak. That means we own password storage, reset, lockout,
-sessions and everything else an identity product would have given us.
-
-| # | Activity | Type | Est |
-|---|---|---|---|
-| 7.1.1 | Org hierarchy: levels (State → District → Taluka → …) and nodes with parents | N | 4 |
-| 7.1.2 | Users, roles, and assignment to one or more hierarchy nodes | N | 5 |
-| 7.1.3 | Local authentication: password hashing, login, logout, session expiry | N | 4 |
-| 7.1.4 | Password lifecycle: admin-set initial, self-service reset, expiry, failed-attempt lockout | N | 5 |
-| 7.1.5 | SuperAdmin / Admin screens to create users, assign roles and scopes, deactivate | N | 6 |
-| 7.1.6 | Should an Admin be scoped themselves (a district admin managing only their own district)? | N | 3 |
-
-### 7.2 Row-level data scoping — the hard part
-
-A district officer must see only their district; a taluka officer only their
-taluka. **This has to be enforced in the emitted SQL, server-side.** Filtering in
-the UI is not enforcement — anyone who can call the API bypasses it.
-
-The engine needs to know, for each registered table, which column carries the
-district, which carries the taluka, and so on. That is a per-table scope binding
-held in the operational database — structurally similar to the field mapping
-that was removed at the fork, for a different purpose.
-
-| # | Activity | Type | Est |
-|---|---|---|---|
-| 7.2.1 | Scope-binding model: per registered table, which column holds each hierarchy level | N | 4 |
-| 7.2.2 | Admin UI to define scope bindings, plus the explicit shared-reference-data flag (A4) | N | 3 |
-| 7.2.2a | Deny-by-default enforcement: an unbound, unflagged table is invisible to scoped users on every path, including browse and column listing | N | 3 |
-| 7.2.3 | Inject the scope predicate into **every** emitted query | N | 8 |
-| 7.2.4 | Cover every path that touches data — match, multi-target, comparison summary, CSV and other exports, SQL preview, suggest-keys probe, fan-out guard, column value lists | N | 6 |
-| 7.2.5 | Join policy: a scoped table joined to an unscoped one | N | 3 |
-| 7.2.6 | Group By and aggregates filter before aggregating | N | 2 |
-| 7.2.7 | Show the injected predicate in the SQL preview — a preview that hides it is misleading | N | 1 |
-| 7.2.8 | Adjust fan-out estimates for the scope filter, or it will refuse queries that would have run | N | 2 |
-| 7.2.9 | Negative tests: prove a scoped user cannot reach another district through *any* endpoint | N | 5 |
-
-**Note on 7.2.9.** This is the test suite that matters most. Every other feature
-fails visibly; this one fails silently and looks like working software.
-
-### 7.3 Audit log
-
-| # | Activity | Type | Est |
-|---|---|---|---|
-| 7.3.1 | Capture: user, action, tables and columns touched, timestamp, source IP | N | 4 |
-| 7.3.2 | Storage, indexing and retention — this grows with every query run | N | 3 |
-| 7.3.3 | Append-only / tamper-evident storage if audit rules require it | N | ? |
-| 7.3.4 | Log viewer with filters, granted to officers as an RBAC permission | N | 5 |
-| 7.3.5 | Export the log, and audit that export too | N | 2 |
-| 7.3.6 | Store the query shape with placeholders; strip bound values before writing (A6) | N | 2 |
-| 7.3.7 | Access control and retention on the log. Lighter than it would have been: with values stripped it is not a personal-data store, but it still shows who looked at what | N | 2 |
-| 7.3.8 | Scope the log viewer to the requesting officer's subtree (A10) | N | 3 |
-
----
-
 ### 7.1b Bootstrapping the first SuperAdmin (decision A13)
 
 **Settled:** the SuperAdmin's password is **supplied at configuration time**,
@@ -324,6 +282,46 @@ audit access to the requesting officer's own subtree, but a deactivated user may
 have been in a part of the hierarchy the current reader cannot see. Assumed
 **SuperAdmin only**, since a scoped reader would otherwise gain visibility
 through an archive that they never had while the user was active.
+
+### 7.2 Row-level data scoping — the hard part
+
+A district officer must see only their district; a taluka officer only their
+taluka. **This has to be enforced in the emitted SQL, server-side.** Filtering in
+the UI is not enforcement — anyone who can call the API bypasses it.
+
+The engine needs to know, for each registered table, which column carries the
+district, which carries the taluka, and so on. That is a per-table scope binding
+held in the operational database — structurally similar to the field mapping
+that was removed at the fork, for a different purpose.
+
+| # | Activity | Type | Est |
+|---|---|---|---|
+| 7.2.1 | Scope-binding model: per registered table, which column holds each hierarchy level | N | 4 |
+| 7.2.2 | Admin UI to define scope bindings, plus the explicit shared-reference-data flag (A4) | N | 3 |
+| 7.2.2a | Deny-by-default enforcement: an unbound, unflagged table is invisible to scoped users on every path, including browse and column listing | N | 3 |
+| 7.2.3 | Inject the scope predicate into **every** emitted query | N | 8 |
+| 7.2.4 | Cover every path that touches data — match, multi-target, comparison summary, CSV and other exports, SQL preview, suggest-keys probe, fan-out guard, column value lists | N | 6 |
+| 7.2.5 | Join policy: a scoped table joined to an unscoped one | N | 3 |
+| 7.2.6 | Group By and aggregates filter before aggregating | N | 2 |
+| 7.2.7 | Show the injected predicate in the SQL preview — a preview that hides it is misleading | N | 1 |
+| 7.2.8 | Adjust fan-out estimates for the scope filter, or it will refuse queries that would have run | N | 2 |
+| 7.2.9 | Negative tests: prove a scoped user cannot reach another district through *any* endpoint | N | 5 |
+
+**Note on 7.2.9.** This is the test suite that matters most. Every other feature
+fails visibly; this one fails silently and looks like working software.
+
+### 7.3 Audit log
+
+| # | Activity | Type | Est |
+|---|---|---|---|
+| 7.3.1 | Capture: user, action, tables and columns touched, timestamp, source IP | N | 4 |
+| 7.3.2 | Storage, indexing and retention — this grows with every query run | N | 3 |
+| 7.3.3 | Append-only / tamper-evident storage if audit rules require it | N | ? |
+| 7.3.4 | Log viewer with filters, granted to officers as an RBAC permission | N | 5 |
+| 7.3.5 | Export the log, and audit that export too | N | 2 |
+| 7.3.6 | Store the query shape with placeholders; strip bound values before writing (A6) | N | 2 |
+| 7.3.7 | Access control and retention on the log. Lighter than it would have been: with values stripped it is not a personal-data store, but it still shows who looked at what | N | 2 |
+| 7.3.8 | Scope the log viewer to the requesting officer's subtree (A10) | N | 3 |
 
 ---
 
