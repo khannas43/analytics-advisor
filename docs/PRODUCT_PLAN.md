@@ -11,26 +11,25 @@ logic, six rows per table). Treat it as a picture of the destination, not a spec
 
 ## Status at 2026-09-25
 
-**Built and verified against a running stack:** the fork cleanup (§1 bar the
-package rename), the whole of user management and data scoping (§7.1, §7.1b,
-§7.1c.1–2, §7.2), and everything inherited from SRSE that survived the fork —
-the match engine, the lakehouse registry, connection management, exports.
+**Built and verified against a running stack.** §1 fork cleanup (bar the package
+rename), §3 labels and the Database Overview, §4 Extract Records, §5 Report
+Analysis including Group By, §7 in full — users, scoping and audit — and
+everything inherited from SRSE that survived the fork.
 
-**In flight:** §7.3 audit capture (brief AA-11, ready to hand over).
+Every product and audit decision is settled. `docs/OPEN_DECISIONS.md` and
+`docs/OPEN_DECISIONS_AUDIT.md` hold the reasoning.
 
-**Deferred by decision:** the SMS sender (7.1a.7). The seam and a loud
-placeholder are built; email delivers the OTP in the meantime. No longer counted
-as a blocker.
+**Deferred by decision, not blocked:**
 
-**Blocked on nobody.** Every product and audit decision is settled — see
-`docs/OPEN_DECISIONS.md` and `docs/OPEN_DECISIONS_AUDIT.md`. The SMS gateway is
-the one outstanding external dependency and it is deferred rather than blocking,
-since email carries the OTP without it.
+- **7.1a.7 SMS sender** — the seam and a loud placeholder exist; email carries
+  the OTP meanwhile.
+- **7.1d.3 idle timeout** — needs a choice between short-lived tokens with
+  refresh and server-side activity tracking. Not a config value.
 
-**Not started:** §2.3 source-system ops, §3 label vocabulary and the Database
-Overview page, §4 Extract Records, §5 Report Analysis (5.5 Group By is the
-largest single item left), §6.4–6.8 exports and saved queries, §7.3 audit log,
-§8 UX shell, §9.3/9.5.
+**Remaining work, all of it unblocked:** §6.4–6.8 exports and saved queries, §8
+the UX shell (8.3 English/Hindi is the largest single item left at 10 days),
+§9.3 performance testing at realistic volumes, §9.5 backup and restore, and
+§2.3 source-system operations.
 
 Legend in the tables below: ✅ done · ◐ partly done · ⏸ waiting on something else.
 
@@ -139,11 +138,11 @@ works exactly this way in SRSE.
 
 | # | Activity | Type | Est |
 |---|---|---|---|
-| 3.1.1 | Extend registration with source-system and table-group labels | R+ | 2 |
-| 3.1.2 | Admin UI to manage the label vocabulary | N | 2 |
-| 3.1.3 | Browse hierarchy driven by labels, addresses unchanged underneath | R+ | 2 |
-| 3.1.4 | Database Overview page — drill down to attributes and data types | N | 3 |
-| 3.1.5 | Column metadata: business name, hide, fuzzy flag, comparison mode | R | 0 |
+| 3.1.1 | ✅ (AA-15) Extend registration with source-system and table-group labels | R+ | 2 |
+| 3.1.2 | ✅ (AA-15) Admin UI to manage the label vocabulary | N | 2 |
+| 3.1.3 | ✅ (AA-15) Browse hierarchy driven by labels, addresses unchanged underneath | R+ | 2 |
+| 3.1.4 | ✅ (AA-15) Database Overview page — drill down to attributes and data types | N | 3 |
+| 3.1.5 | ✅ Column metadata: business name, hide, fuzzy flag, comparison mode | R | 0 |
 
 ---
 
@@ -151,14 +150,14 @@ works exactly this way in SRSE.
 
 | # | Activity | Type | Est |
 |---|---|---|---|
-| 4.1 | Source / destination table pickers through the hierarchy | R+ | 1 |
-| 4.2 | Multi-select attributes per side | R+ | 2 |
-| 4.3 | Primary key selection (this is the join key) | R | 0 |
-| 4.4 | Single-source mode (one table, no join) | N | 2 |
-| 4.5 | **Rules on source and destination** — operators, AND-combined | R+ | 4 |
-| 4.6 | Live SQL preview before execution | R | 0 |
-| 4.7 | Run, stream results, progress | R | 0 |
-| 4.8 | Fan-out guard — refuse an unrunnable query with an estimate, not a timeout | R | 0 |
+| 4.1 | ✅ (AA-13) Source / destination table pickers through the hierarchy | R+ | 1 |
+| 4.2 | ✅ (AA-13) Multi-select attributes per side | R+ | 2 |
+| 4.3 | ✅ Primary key selection (this is the join key) | R | 0 |
+| 4.4 | ✅ (AA-13) Single-source mode (one table, no join) | N | 2 |
+| 4.5 | ✅ (AA-13) **Rules on source and destination** — operators, AND-combined | R+ | 4 |
+| 4.6 | ✅ Live SQL preview before execution | R | 0 |
+| 4.7 | ✅ Run, stream results, progress | R | 0 |
+| 4.8 | ✅ Fan-out guard — refuse an unrunnable query with an estimate, not a timeout | R | 0 |
 
 ---
 
@@ -166,13 +165,13 @@ works exactly this way in SRSE.
 
 | # | Activity | Type | Est |
 |---|---|---|---|
-| 5.1 | Value filter — pick attribute, keep selected values (server-side) | N | 3 |
-| 5.2 | Fuzzy matching, Levenshtein, threshold % | R | 0 |
-| 5.3 | Fuzzy options: case-sensitive, ignore spaces | N | 1 |
-| 5.4 | Fuzzy against typed text rather than a second column | N | 2 |
-| 5.5 | **Group By + aggregators (SUM/COUNT/AVG/MIN/MAX)** — server-side SQL, interacts with guardrails | N | 8 |
-| 5.6 | Column comparison with match/mismatch verdicts and no-counterpart handling | R | 0 |
-| 5.7 | Show mismatches only | R | 0 |
+| 5.1 | ✅ (AA-16) Value filter — pick attribute, keep selected values (server-side) | N | 3 |
+| 5.2 | ✅ Fuzzy matching, Levenshtein, threshold % | R | 0 |
+| 5.3 | ✅ (AA-16) Fuzzy options: case-sensitive, ignore spaces | N | 1 |
+| 5.4 | ✅ (AA-16) Fuzzy against typed text rather than a second column | N | 2 |
+| 5.5 | ✅ (AA-14) **Group By + aggregators (SUM/COUNT/AVG/MIN/MAX)** — server-side SQL, interacts with guardrails | N | 8 |
+| 5.6 | ✅ Column comparison with match/mismatch verdicts and no-counterpart handling | R | 0 |
+| 5.7 | ✅ Show mismatches only | R | 0 |
 
 ---
 
@@ -180,9 +179,9 @@ works exactly this way in SRSE.
 
 | # | Activity | Type | Est |
 |---|---|---|---|
-| 6.1 | Results grid: sort, per-column filter, column visibility, paging | R | 0 |
-| 6.2 | Large-result behaviour: stop rendering past a threshold, offer the complete file instead | R | 0 |
-| 6.3 | CSV export — complete result, streamed, not a re-serialisation of the screen | R | 0 |
+| 6.1 | ✅ Results grid: sort, per-column filter, column visibility, paging | R | 0 |
+| 6.2 | ✅ Large-result behaviour: stop rendering past a threshold, offer the complete file instead | R | 0 |
+| 6.3 | ✅ CSV export — complete result, streamed, not a re-serialisation of the screen | R | 0 |
 | 6.4 | Excel export | N | 3 |
 | 6.5 | JSON export | N | 1 |
 | 6.6 | XML export | N | 1 |
@@ -424,14 +423,14 @@ before 7.3.2 is built.
 
 | # | Activity | Type | Est |
 |---|---|---|---|
-| 7.3.1 | Capture: user, action, tables and columns touched, timestamp, source IP. **Exports are the entry not to compromise on** — a download is the moment data leaves the system. | N | 4 |
-| 7.3.2 | Storage and indexing, sized for the A7 event set; retention setting present but defaulted to never-purge | N | 3 |
-| 7.3.3 | Append-only / tamper-evident storage if audit rules require it | N | ? |
-| 7.3.4 | Log viewer with filters, granted to officers as an RBAC permission | N | 5 |
-| 7.3.5 | Export the log, and audit that export too | N | 2 |
-| 7.3.6 | Store the query shape with placeholders; strip bound values before writing (A6) | N | 2 |
-| 7.3.7 | Access control and retention on the log. Lighter than it would have been: with values stripped it is not a personal-data store, but it still shows who looked at what | N | 2 |
-| 7.3.8 | Scope the log viewer to the requesting officer's subtree (A10) | N | 3 |
+| 7.3.1 | ✅ (AA-11) Capture: user, action, tables and columns touched, timestamp, source IP. **Exports are the entry not to compromise on** — a download is the moment data leaves the system. | N | 4 |
+| 7.3.2 | ✅ (AA-12) Storage and indexing, sized for the A7 event set; retention setting present but defaulted to never-purge | N | 3 |
+| 7.3.3 | ✅ (AA-11) Append-only, structurally — A9 settled as application-layer append-only, no hash chain. The repository extends Spring Data's bare `Repository` so no delete is inherited, guarded by a test. | N | ? |
+| 7.3.4 | ✅ (AA-12) Log viewer with filters, granted to officers as an RBAC permission | N | 5 |
+| 7.3.5 | ✅ (AA-12) Export the log, and audit that export too | N | 2 |
+| 7.3.6 | ✅ (AA-11) Store the query shape with placeholders; strip bound values before writing (A6) | N | 2 |
+| 7.3.7 | ✅ (AA-12) Access control and retention on the log. Lighter than it would have been: with values stripped it is not a personal-data store, but it still shows who looked at what | N | 2 |
+| 7.3.8 | ✅ (AA-12) Scope the log viewer to the requesting officer's subtree (A10) | N | 3 |
 
 ---
 
@@ -469,10 +468,10 @@ Two rules carry over with it:
 
 | # | Activity | Type | Est |
 |---|---|---|---|
-| 9.1 | Query timeouts, row caps, fan-out ceiling — all configurable | R | 0 |
-| 9.2 | SQL emission validated against the engine's own analyzer, not just a parser | R | 0 |
+| 9.1 | ✅ Query timeouts, row caps, fan-out ceiling — all configurable | R | 0 |
+| 9.2 | ✅ SQL emission validated against the engine's own analyzer, not just a parser | R | 0 |
 | 9.3 | Performance testing at realistic volumes (not 200k synthetic rows) | N | 5 |
-| 9.4 | Containerised deployment, environment configuration | R | 0 |
+| 9.4 | ✅ Containerised deployment, environment configuration | R | 0 |
 | 9.5 | Backup and restore of the operational database | N | 2 |
 
 ---
