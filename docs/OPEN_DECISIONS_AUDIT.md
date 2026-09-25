@@ -3,8 +3,11 @@
 > **Q1 and Q2 answered 2026-09-25.** Log everything except metadata browsing;
 > keep everything. Recorded in `PRODUCT_PLAN.md` §7.3.
 >
+> **Q6 answered 2026-09-25:** refuse for admin actions and exports, proceed for
+> queries.
+>
 > **Still open: Q3 (tamper-evidence), Q4 (sessions), Q5 (archived log
-> readership), Q6 (does a failed audit write fail the action).** Q3 is the one to raise with DoIT&C, and the one that must be
+> readership).** Q3 is the one to raise with DoIT&C, and the one that must be
 > settled before 7.3.2 is built.
 
 `PRODUCT_PLAN.md` §7.3 is the last blocked section. Five questions, each with
@@ -114,7 +117,10 @@ is worth confirming rather than assuming.
 
 ---
 
-## Q6 — If the audit write fails, does the action fail? *(new, raised by AA-11)*
+## Q6 — If the audit write fails, does the action fail? *(ANSWERED 2026-09-25)*
+
+> **Answer: refuse for admin actions and exports; proceed for queries.**
+> Recorded in `PRODUCT_PLAN.md` §7.3 and specified in brief AA-11.
 
 An audit row is written on the same request as the action it records. If that
 write fails — the operational database is briefly unavailable, a constraint

@@ -108,6 +108,29 @@ load balancer, or every entry will name the balancer.
 - **Never log the OTP digits, a password, or a password hash.** AA-10 restricts
   digits to the log-only sender; the audit log must not become a second route.
 
+## Part 4a — When the audit write fails (Q6, settled)
+
+**Refuse for admin actions and exports. Proceed for queries.**
+
+| Action group | Behaviour |
+|---|---|
+| Admin actions — user create/update/deactivate, password reset, role and scope grants, contact changes, scope bindings, registration | Write the audit row **in the same transaction as the mutation**. If the write fails the whole thing rolls back, so nothing happens that was not recorded. |
+| **Export** | Write and commit the audit row **before the first byte is streamed**, and refuse the download if it fails. |
+| Query execution and preview | Write; on failure **proceed** and raise an alarm. |
+
+**The export case is the one to get right, because a stream cannot be rolled
+back.** By the time rows are going out it is too late to refuse, and an
+after-the-fact write that fails leaves data gone and unrecorded — the exact case
+Q6 exists to prevent. So the row is committed first and the download only starts
+once it is safely there.
+
+**"Proceed" must not mean "proceed quietly."** A silent fallback is
+indistinguishable from a working audit log, which is worse than no log because
+it is trusted. On a failed query-audit write: log at ERROR with a distinctive
+marker, and surface it in the health endpoint so a deployment can alert on it.
+An operator must be able to answer "was the log complete over this period?"
+without reading application logs line by line.
+
 ## Part 5 — Leave A9 cheap to answer
 
 A9 (tamper-evidence) is open and may require a hash chain. Retrofitting one onto

@@ -377,6 +377,12 @@ which needs no archival strategy. **Build the retention setting anyway**, even
 defaulted to never-purge: adding deletion to a table that is append-only by
 design is far harder than enabling it later.
 
+**Audit write failure (Q6, settled):** an action whose audit row cannot be
+written is **refused** when it is an admin action or an export, and **proceeds
+with a loud alarm** when it is a query. An unrecorded export is the case the log
+exists for; an unrecorded query is a gap in a record of intent, and refusing it
+would turn a logging fault into an outage on the product's main path.
+
 **Still open: A9 (tamper-evidence), A14 (sessions), and who may read an archived
 log.** See `docs/OPEN_DECISIONS_AUDIT.md`. A9 is the one that must be settled
 before 7.3.2 is built.
