@@ -32,33 +32,42 @@ public class LakehouseCatalogController {
         return registry.listLayers();
     }
 
+    @GetMapping("/source-systems")
+    public List<String> sourceSystems() {
+        return registry.listSourceSystems();
+    }
+
+    @GetMapping("/table-groups")
+    public List<String> tableGroups(@RequestParam(required = false) String sourceSystem) {
+        return registry.listTableGroups(sourceSystem);
+    }
+
     @GetMapping("/catalogs")
-    public List<String> catalogs(@RequestParam(required = false) String layer) {
-        String filter = LakehouseLayers.parseFilterParam(layer);
-        if (filter == null) {
-            return registry.listCatalogs();
-        }
-        return registry.listCatalogs(filter);
+    public List<String> catalogs(
+            @RequestParam(required = false) String layer,
+            @RequestParam(required = false) String sourceSystem,
+            @RequestParam(required = false) String tableGroup) {
+        return registry.listCatalogs(RegistryBrowseFilter.parse(layer, sourceSystem, tableGroup));
     }
 
     @GetMapping("/catalogs/{catalog}/schemas")
-    public List<String> schemas(@PathVariable String catalog,
-                                @RequestParam(required = false) String layer) {
-        String filter = LakehouseLayers.parseFilterParam(layer);
-        if (filter == null) {
-            return registry.listSchemas(catalog);
-        }
-        return registry.listSchemas(catalog, filter);
+    public List<String> schemas(
+            @PathVariable String catalog,
+            @RequestParam(required = false) String layer,
+            @RequestParam(required = false) String sourceSystem,
+            @RequestParam(required = false) String tableGroup) {
+        return registry.listSchemas(catalog, RegistryBrowseFilter.parse(layer, sourceSystem, tableGroup));
     }
 
     @GetMapping("/catalogs/{catalog}/schemas/{schema}/tables")
-    public List<TableResponse> tables(@PathVariable String catalog,
-                                      @PathVariable String schema,
-                                      @RequestParam(required = false) String layer) {
-        String filter = LakehouseLayers.parseFilterParam(layer);
-        List<RegisteredTable> rows = filter == null
-                ? registry.listTables(catalog, schema)
-                : registry.listTables(catalog, schema, filter);
+    public List<TableResponse> tables(
+            @PathVariable String catalog,
+            @PathVariable String schema,
+            @RequestParam(required = false) String layer,
+            @RequestParam(required = false) String sourceSystem,
+            @RequestParam(required = false) String tableGroup) {
+        List<RegisteredTable> rows = registry.listTables(
+                catalog, schema, RegistryBrowseFilter.parse(layer, sourceSystem, tableGroup));
         return rows.stream().map(TableResponse::from).toList();
     }
 
@@ -69,10 +78,18 @@ public class LakehouseCatalogController {
         return registry.listColumns(catalog, schema, table);
     }
 
-    /** {@code layer} travels to the officer UI so Silver/Gold can be shown as a badge on the picker. */
-    public record TableResponse(String name, String layer) {
+    /** Display tags only — never part of match / extract request payloads. */
+    public record TableResponse(
+            String name,
+            String layer,
+            String sourceSystem,
+            String tableGroup) {
         static TableResponse from(RegisteredTable entity) {
-            return new TableResponse(entity.getTableName(), entity.getLayer());
+            return new TableResponse(
+                    entity.getTableName(),
+                    entity.getLayer(),
+                    entity.getSourceSystem(),
+                    entity.getTableGroup());
         }
     }
 }

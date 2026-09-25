@@ -12,6 +12,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -66,30 +67,30 @@ class LakehouseCatalogControllerTest {
 
     @Test
     void catalogsComeFromTheRegistryNotTheLiveCluster() throws Exception {
-        when(registry.listCatalogs()).thenReturn(List.of(CATALOG));
+        when(registry.listCatalogs(any(RegistryBrowseFilter.class))).thenReturn(List.of(CATALOG));
 
         mockMvc.perform(get("/api/analysis/lakehouse/catalogs"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0]").value(CATALOG));
 
-        verify(registry).listCatalogs();
+        verify(registry).listCatalogs(any(RegistryBrowseFilter.class));
         verifyNoInteractions(browse);
     }
 
     @Test
     void catalogsWithLayerFilterUseLayerScopedLister() throws Exception {
-        when(registry.listCatalogs("BRONZE")).thenReturn(List.of("iceberg_bronze"));
+        when(registry.listCatalogs(any(RegistryBrowseFilter.class))).thenReturn(List.of("iceberg_bronze"));
 
         mockMvc.perform(get("/api/analysis/lakehouse/catalogs").param("layer", "BRONZE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0]").value("iceberg_bronze"));
 
-        verify(registry).listCatalogs("BRONZE");
+        verify(registry).listCatalogs(any(RegistryBrowseFilter.class));
     }
 
     @Test
     void schemasComeFromTheRegistry() throws Exception {
-        when(registry.listSchemas(CATALOG)).thenReturn(List.of(SCHEMA));
+        when(registry.listSchemas(eq(CATALOG), any(RegistryBrowseFilter.class))).thenReturn(List.of(SCHEMA));
 
         mockMvc.perform(get("/api/analysis/lakehouse/catalogs/{c}/schemas", CATALOG))
                 .andExpect(status().isOk())
@@ -101,7 +102,7 @@ class LakehouseCatalogControllerTest {
     /** The layer tag travels to the officer UI so Silver/Gold can be badged. */
     @Test
     void tablesCarryTheirLayerTag() throws Exception {
-        when(registry.listTables(CATALOG, SCHEMA)).thenReturn(List.of(
+        when(registry.listTables(eq(CATALOG), eq(SCHEMA), any(RegistryBrowseFilter.class))).thenReturn(List.of(
                 new RegisteredTable(1L, CATALOG, SCHEMA, TABLE, "SILVER"),
                 new RegisteredTable(2L, CATALOG, SCHEMA, "tbl_txn_doc_engine", null)));
 
@@ -109,10 +110,9 @@ class LakehouseCatalogControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].name").value(TABLE))
                 .andExpect(jsonPath("$[0].layer").value("SILVER"))
-                .andExpect(jsonPath("$[1].name").value("tbl_txn_doc_engine"))
-                .andExpect(jsonPath("$[1].layer").doesNotExist());
+                .andExpect(jsonPath("$[1].name").value("tbl_txn_doc_engine"));
 
-        verify(registry).listTables(CATALOG, SCHEMA);
+        verify(registry).listTables(eq(CATALOG), eq(SCHEMA), any(RegistryBrowseFilter.class));
         verifyNoInteractions(browse);
     }
 

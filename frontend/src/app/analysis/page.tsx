@@ -9,6 +9,8 @@ import {
   fetchMatchSql,
   listAnalysisCatalogs,
   listAnalysisLayers,
+  listAnalysisSourceSystems,
+  listAnalysisTableGroups,
   listAnalysisColumns,
   listAnalysisSchemas,
   listAnalysisTables,
@@ -75,6 +77,8 @@ const JOIN_TYPE_OPTIONS: { value: JoinType; label: string; hint: string }[] = [
 ];
 
 const REGISTRY_FETCHERS: CascadeFetchers = {
+  listSourceSystems: listAnalysisSourceSystems,
+  listTableGroups: listAnalysisTableGroups,
   listLayers: listAnalysisLayers,
   listCatalogs: listAnalysisCatalogs,
   listSchemas: listAnalysisSchemas,

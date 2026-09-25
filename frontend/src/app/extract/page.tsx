@@ -14,6 +14,8 @@ import {
   listAnalysisCatalogs,
   listAnalysisColumns,
   listAnalysisLayers,
+  listAnalysisSourceSystems,
+  listAnalysisTableGroups,
   listAnalysisSchemas,
   listAnalysisTables,
   fetchAnalysisLimits,
@@ -31,6 +33,8 @@ import {
 } from "@/lib/analysisApi";
 
 const REGISTRY_FETCHERS: CascadeFetchers = {
+  listSourceSystems: listAnalysisSourceSystems,
+  listTableGroups: listAnalysisTableGroups,
   listLayers: listAnalysisLayers,
   listCatalogs: listAnalysisCatalogs,
   listSchemas: listAnalysisSchemas,

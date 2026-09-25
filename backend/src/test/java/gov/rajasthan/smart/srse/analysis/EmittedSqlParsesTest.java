@@ -487,4 +487,16 @@ class EmittedSqlParsesTest {
         assertParsesWithBindableParams(req);
         assertTrue(service.planMatch(req).sql().contains(" GROUP BY "));
     }
+
+    /** AA-15 — registry display labels are filters only; they must never reach emitted SQL. */
+    @Test
+    void plannedMatchSqlNeverContainsRegistryDisplayLabelTokens() {
+        String sql = sqlFor(
+                List.of(group(List.of(col("beneficiary", "m_id")), List.of(col("beneficiary", "m_id")), GroupMode.COMBINE, null)),
+                false,
+                null);
+        assertFalse(sql.contains("sourceSystem"));
+        assertFalse(sql.contains("tableGroup"));
+        assertFalse(sql.contains("UNTAGGED"));
+    }
 }

@@ -23,5 +23,7 @@ public enum AuditActionType {
     SCOPE_BINDING_CHANGED,
     SHARED_REFERENCE_SET,
     TABLE_REGISTERED,
-    TABLE_UNREGISTERED
+    TABLE_UNREGISTERED,
+    /** Bulk rename of a registry display label (source system or table group). */
+    REGISTRY_LABEL_RENAMED
 }

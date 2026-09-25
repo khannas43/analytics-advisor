@@ -13,7 +13,9 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -124,7 +126,7 @@ class LakehouseAdminControllerTest {
 
     @Test
     void registersATable() throws Exception {
-        when(registry.register(CATALOG, SCHEMA, TABLE, "silver"))
+        when(registry.register(CATALOG, SCHEMA, TABLE, "silver", null, null))
                 .thenReturn(new RegisteredTable(3L, CATALOG, SCHEMA, TABLE, "SILVER"));
 
         mockMvc.perform(post("/api/admin/lakehouse/registrations")
@@ -139,7 +141,7 @@ class LakehouseAdminControllerTest {
     @Test
     void registerRejectsATableThatIsNotInTheLiveLakehouse() throws Exception {
         doThrow(new IllegalArgumentException("Unknown table: " + CATALOG + "." + SCHEMA + ".tbl_typo"))
-                .when(registry).register(eq(CATALOG), eq(SCHEMA), eq("tbl_typo"), eq("GOLD"));
+                .when(registry).register(eq(CATALOG), eq(SCHEMA), eq("tbl_typo"), eq("GOLD"), isNull(), isNull());
 
         mockMvc.perform(post("/api/admin/lakehouse/registrations")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -151,7 +153,7 @@ class LakehouseAdminControllerTest {
     @Test
     void registerRejectsBlankLayer() throws Exception {
         doThrow(new IllegalArgumentException("Layer is required"))
-                .when(registry).register(eq(CATALOG), eq(SCHEMA), eq(TABLE), eq(""));
+                .when(registry).register(eq(CATALOG), eq(SCHEMA), eq(TABLE), eq(""), isNull(), isNull());
 
         mockMvc.perform(post("/api/admin/lakehouse/registrations")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -175,7 +177,7 @@ class LakehouseAdminControllerTest {
 
     @Test
     void editsTheLayerOfAnExistingRegistration() throws Exception {
-        when(registry.updateLayer(5L, "gold"))
+        when(registry.updateRegistrationTags(5L, "gold", null, null))
                 .thenReturn(new RegisteredTable(5L, CATALOG, SCHEMA, TABLE, "GOLD"));
 
         mockMvc.perform(put("/api/admin/lakehouse/registrations/{id}", 5)
@@ -190,7 +192,7 @@ class LakehouseAdminControllerTest {
     @Test
     void editRejectsBlankLayer() throws Exception {
         doThrow(new IllegalArgumentException("Layer is required"))
-                .when(registry).updateLayer(5L, "");
+                .when(registry).updateRegistrationTags(5L, "", null, null);
 
         mockMvc.perform(put("/api/admin/lakehouse/registrations/{id}", 5)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -200,7 +202,7 @@ class LakehouseAdminControllerTest {
 
     @Test
     void editOfAnUnknownRegistrationIsABadRequest() throws Exception {
-        when(registry.updateLayer(404L, "GOLD"))
+        when(registry.updateRegistrationTags(404L, "GOLD", null, null))
                 .thenThrow(new IllegalArgumentException("No such registration: 404"));
 
         mockMvc.perform(put("/api/admin/lakehouse/registrations/{id}", 404)

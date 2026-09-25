@@ -236,36 +236,97 @@ async function analysisGet<T>(path: string): Promise<T> {
 
 const e = encodeURIComponent;
 
-// ---- officer-facing cascade: Layer → Catalog → Schema → Table → Column ----
-// Layer is a registry filter only — never part of TableRef or match payloads.
+// ---- officer-facing cascade: optional registry filters → Catalog → Schema → Table → Column ----
+// Layer, source system and table group are registry filters only — never part of TableRef or match payloads.
 // Every level is answered from the admin's registry, NOT the live cluster.
 
-function layerQuery(layer?: string): string {
-  if (!layer) return "";
-  return `?layer=${e(layer)}`;
+/** Must stay in lockstep with {@code RegistryBrowseFilter} on the backend. */
+export type RegistryBrowseFilter = {
+  layer?: string;
+  sourceSystem?: string;
+  tableGroup?: string;
+};
+
+function registryBrowseQuery(filter?: RegistryBrowseFilter): string {
+  if (!filter) return "";
+  const params = new URLSearchParams();
+  if (filter.layer) params.set("layer", filter.layer);
+  if (filter.sourceSystem) params.set("sourceSystem", filter.sourceSystem);
+  if (filter.tableGroup) params.set("tableGroup", filter.tableGroup);
+  const q = params.toString();
+  return q ? `?${q}` : "";
 }
 
 export function listAnalysisLayers(): Promise<string[]> {
   return analysisGet<string[]>(`/api/analysis/lakehouse/layers`);
 }
 
-export function listAnalysisCatalogs(layer?: string): Promise<string[]> {
-  return analysisGet<string[]>(`/api/analysis/lakehouse/catalogs${layerQuery(layer)}`);
+export function listAnalysisSourceSystems(): Promise<string[]> {
+  return analysisGet<string[]>(`/api/analysis/lakehouse/source-systems`);
 }
 
-export function listAnalysisSchemas(catalog: string, layer?: string): Promise<string[]> {
+export function listAnalysisTableGroups(sourceSystem?: string): Promise<string[]> {
+  const q = sourceSystem ? `?sourceSystem=${e(sourceSystem)}` : "";
+  return analysisGet<string[]>(`/api/analysis/lakehouse/table-groups${q}`);
+}
+
+export function listAnalysisCatalogs(filter?: RegistryBrowseFilter): Promise<string[]> {
+  return analysisGet<string[]>(`/api/analysis/lakehouse/catalogs${registryBrowseQuery(filter)}`);
+}
+
+export function listAnalysisSchemas(catalog: string, filter?: RegistryBrowseFilter): Promise<string[]> {
   return analysisGet<string[]>(
-    `/api/analysis/lakehouse/catalogs/${e(catalog)}/schemas${layerQuery(layer)}`,
+    `/api/analysis/lakehouse/catalogs/${e(catalog)}/schemas${registryBrowseQuery(filter)}`,
   );
 }
 
 export function listAnalysisTables(
   catalog: string,
   schema: string,
-  layer?: string,
+  filter?: RegistryBrowseFilter,
 ): Promise<RegisteredTable[]> {
   return analysisGet<RegisteredTable[]>(
-    `/api/analysis/lakehouse/catalogs/${e(catalog)}/schemas/${e(schema)}/tables${layerQuery(layer)}`,
+    `/api/analysis/lakehouse/catalogs/${e(catalog)}/schemas/${e(schema)}/tables${registryBrowseQuery(filter)}`,
+  );
+}
+
+// ---- Database Overview (§3.1.4) — read-only; browsing is not audited ----
+
+export type OverviewTableSummary = {
+  catalog: string;
+  schema: string;
+  table: string;
+  qualifiedName: string;
+  layer: string | null;
+  sourceSystem: string | null;
+  tableGroup: string | null;
+  sharedReference: boolean;
+};
+
+export function listOverviewSourceSystems(): Promise<string[]> {
+  return analysisGet<string[]>(`/api/analysis/database-overview/source-systems`);
+}
+
+export function listOverviewTableGroups(sourceSystem?: string): Promise<string[]> {
+  const q = sourceSystem ? `?sourceSystem=${e(sourceSystem)}` : "";
+  return analysisGet<string[]>(`/api/analysis/database-overview/table-groups${q}`);
+}
+
+export function listOverviewTables(
+  sourceSystem?: string,
+  tableGroup?: string,
+): Promise<OverviewTableSummary[]> {
+  const params = new URLSearchParams();
+  if (sourceSystem) params.set("sourceSystem", sourceSystem);
+  if (tableGroup) params.set("tableGroup", tableGroup);
+  const q = params.toString();
+  return analysisGet<OverviewTableSummary[]>(`/api/analysis/database-overview/tables${q ? `?${q}` : ""}`);
+}
+
+export function listOverviewColumns(ref: TableRef): Promise<RegisteredColumn[]> {
+  return analysisGet<RegisteredColumn[]>(
+    `/api/analysis/database-overview/catalogs/${e(ref.catalog)}/schemas/${e(ref.schema)}` +
+      `/tables/${e(ref.table)}/columns`,
   );
 }
 

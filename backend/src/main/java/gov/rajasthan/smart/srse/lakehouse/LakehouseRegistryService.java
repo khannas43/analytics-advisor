@@ -88,22 +88,37 @@ public class LakehouseRegistryService {
      */
     @Transactional
     public RegisteredTable register(String catalog, String schema, String table, String layer) {
+        return register(catalog, schema, table, layer, null, null);
+    }
+
+    @Transactional
+    public RegisteredTable register(
+            String catalog,
+            String schema,
+            String table,
+            String layer,
+            String sourceSystem,
+            String tableGroup) {
         browse.validateTable(catalog, schema, table);
+        String source = RegistryDisplayTags.normaliseOptional(sourceSystem);
+        String group = RegistryDisplayTags.normaliseOptional(tableGroup);
         RegisteredTable existing = registrations
                 .findByCatalogNameAndSchemaNameAndTableName(catalog, schema, table)
                 .orElse(null);
         if (existing != null) {
             existing.setLayer(LakehouseLayers.normalise(layer));
+            existing.setSourceSystem(source);
+            existing.setTableGroup(group);
             RegisteredTable saved = registrations.save(existing);
             auditService.recordRegistryEvent(
                     AuditActionType.TABLE_REGISTERED,
                     authenticatedUserService.requireCurrentUser(),
                     saved.toQualifiedTable().qualifiedName(),
-                    "layer updated");
+                    "registration updated");
             return saved;
         }
-        RegisteredTable saved = registrations.save(
-                new RegisteredTable(null, catalog, schema, table, LakehouseLayers.normalise(layer)));
+        RegisteredTable saved = registrations.save(new RegisteredTable(
+                null, catalog, schema, table, LakehouseLayers.normalise(layer), false, source, group));
         auditService.recordRegistryEvent(
                 AuditActionType.TABLE_REGISTERED,
                 authenticatedUserService.requireCurrentUser(),
@@ -127,6 +142,60 @@ public class LakehouseRegistryService {
                 .orElseThrow(() -> new IllegalArgumentException("No such registration: " + id));
         existing.setLayer(LakehouseLayers.normalise(layer));
         return registrations.save(existing);
+    }
+
+    /** Updates display tags; address fields are not editable. */
+    @Transactional
+    public RegisteredTable updateRegistrationTags(
+            long id, String layer, String sourceSystem, String tableGroup) {
+        RegisteredTable existing = registrations.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("No such registration: " + id));
+        existing.setLayer(LakehouseLayers.normalise(layer));
+        existing.setSourceSystem(RegistryDisplayTags.normaliseOptional(sourceSystem));
+        existing.setTableGroup(RegistryDisplayTags.normaliseOptional(tableGroup));
+        return registrations.save(existing);
+    }
+
+    @Transactional
+    public int renameSourceSystemLabel(String fromLabel, String toLabel) {
+        String from = RegistryDisplayTags.normaliseOptional(fromLabel);
+        String to = RegistryDisplayTags.normaliseOptional(toLabel);
+        if (from == null || to == null) {
+            throw new IllegalArgumentException("Both labels are required for rename");
+        }
+        if (from.equals(to)) {
+            return 0;
+        }
+        int updated = registrations.bulkRenameSourceSystem(from, to);
+        if (updated > 0) {
+            auditService.recordRegistryEvent(
+                    AuditActionType.REGISTRY_LABEL_RENAMED,
+                    authenticatedUserService.requireCurrentUser(),
+                    "sourceSystem",
+                    from + " → " + to + " (" + updated + " tables)");
+        }
+        return updated;
+    }
+
+    @Transactional
+    public int renameTableGroupLabel(String fromLabel, String toLabel) {
+        String from = RegistryDisplayTags.normaliseOptional(fromLabel);
+        String to = RegistryDisplayTags.normaliseOptional(toLabel);
+        if (from == null || to == null) {
+            throw new IllegalArgumentException("Both labels are required for rename");
+        }
+        if (from.equals(to)) {
+            return 0;
+        }
+        int updated = registrations.bulkRenameTableGroup(from, to);
+        if (updated > 0) {
+            auditService.recordRegistryEvent(
+                    AuditActionType.REGISTRY_LABEL_RENAMED,
+                    authenticatedUserService.requireCurrentUser(),
+                    "tableGroup",
+                    from + " → " + to + " (" + updated + " tables)");
+        }
+        return updated;
     }
 
     @Transactional
@@ -170,15 +239,30 @@ public class LakehouseRegistryService {
         return registrations.findAllByOrderByCatalogNameAscSchemaNameAscTableNameAsc();
     }
 
+    List<RegisteredTable> filtered(RegistryBrowseFilter filter) {
+        List<RegisteredTable> rows = allOrdered();
+        rows = filterByTag(rows, filter.layer(), RegisteredTable::getLayer, LakehouseLayers.UNTAGGED);
+        rows = filterByTag(rows, filter.sourceSystem(), RegisteredTable::getSourceSystem, RegistryDisplayTags.UNTAGGED);
+        rows = filterByTag(rows, filter.tableGroup(), RegisteredTable::getTableGroup, RegistryDisplayTags.UNTAGGED);
+        return rows;
+    }
+
+    private static List<RegisteredTable> filterByTag(
+            List<RegisteredTable> rows,
+            String filter,
+            java.util.function.Function<RegisteredTable, String> getter,
+            String untaggedSentinel) {
+        if (filter == null) {
+            return rows;
+        }
+        if (untaggedSentinel.equals(filter)) {
+            return rows.stream().filter(r -> getter.apply(r) == null).toList();
+        }
+        return rows.stream().filter(r -> filter.equals(getter.apply(r))).toList();
+    }
+
     private List<RegisteredTable> filteredByLayer(String layerFilter) {
-        List<RegisteredTable> all = allOrdered();
-        if (layerFilter == null) {
-            return all;
-        }
-        if (LakehouseLayers.UNTAGGED.equals(layerFilter)) {
-            return all.stream().filter(r -> r.getLayer() == null).toList();
-        }
-        return all.stream().filter(r -> layerFilter.equals(r.getLayer())).toList();
+        return filtered(new RegistryBrowseFilter(layerFilter, null, null));
     }
 
     /**
@@ -202,21 +286,96 @@ public class LakehouseRegistryService {
         return List.copyOf(out);
     }
 
+    /** Distinct source-system labels for officers (§3.1.2 / 3.1.4). */
+    public List<String> listSourceSystems() {
+        return distinctOptionalTags(officerVisible(allOrdered()), RegisteredTable::getSourceSystem);
+    }
+
+    /** Distinct table-group labels within an optional source-system filter. */
+    public List<String> listTableGroups(String sourceSystemFilter) {
+        RegistryBrowseFilter filter = new RegistryBrowseFilter(
+                null, RegistryDisplayTags.parseFilterParam(sourceSystemFilter), null);
+        return distinctOptionalTags(officerVisible(filtered(filter)), RegisteredTable::getTableGroup);
+    }
+
+    /**
+     * Database Overview table list — same visibility as the Analysis cascade (§3.1.4).
+     * Column lists are loaded lazily via {@link #listColumns}.
+     */
+    public List<OverviewTableSummary> listOverviewTables(String sourceSystem, String tableGroup) {
+        RegistryBrowseFilter filter = RegistryBrowseFilter.parse(null, sourceSystem, tableGroup);
+        return officerVisible(filtered(filter)).stream().map(OverviewTableSummary::from).toList();
+    }
+
+    /** Admin vocabulary autocomplete — all registrations, not scope-filtered. */
+    public List<String> listAllSourceSystemLabels() {
+        return distinctOptionalTags(allOrdered(), RegisteredTable::getSourceSystem).stream()
+                .filter(l -> !RegistryDisplayTags.UNTAGGED.equals(l))
+                .toList();
+    }
+
+    public List<String> listAllTableGroupLabels() {
+        return distinctOptionalTags(allOrdered(), RegisteredTable::getTableGroup).stream()
+                .filter(l -> !RegistryDisplayTags.UNTAGGED.equals(l))
+                .toList();
+    }
+
+    private static List<String> distinctOptionalTags(
+            List<RegisteredTable> rows, java.util.function.Function<RegisteredTable, String> getter) {
+        TreeSet<String> distinct = new TreeSet<>();
+        boolean hasUntagged = false;
+        for (RegisteredTable row : rows) {
+            String tag = getter.apply(row);
+            if (tag == null || tag.isBlank()) {
+                hasUntagged = true;
+            } else {
+                distinct.add(tag);
+            }
+        }
+        LinkedHashSet<String> out = new LinkedHashSet<>(distinct);
+        if (hasUntagged) {
+            out.add(RegistryDisplayTags.UNTAGGED);
+        }
+        return List.copyOf(out);
+    }
+
+    public record OverviewTableSummary(
+            String catalog,
+            String schema,
+            String table,
+            String qualifiedName,
+            String layer,
+            String sourceSystem,
+            String tableGroup,
+            boolean sharedReference) {
+        static OverviewTableSummary from(RegisteredTable entity) {
+            return new OverviewTableSummary(
+                    entity.getCatalogName(),
+                    entity.getSchemaName(),
+                    entity.getTableName(),
+                    entity.toQualifiedTable().qualifiedName(),
+                    entity.getLayer(),
+                    entity.getSourceSystem(),
+                    entity.getTableGroup(),
+                    entity.isSharedReference());
+        }
+    }
+
     // ---- officer-facing cascade: registered AND scope-visible (§7.2.2a) ----
     //
     // Do NOT audit metadata browsing here — every dropdown open would fire
     // cascade calls and outnumber real query/export events by orders of magnitude (§7.3 A7).
 
     public List<String> listCatalogs() {
-        return officerVisible(allOrdered()).stream()
-                .map(RegisteredTable::getCatalogName)
-                .distinct()
-                .sorted()
-                .toList();
+        return listCatalogs(RegistryBrowseFilter.none());
     }
 
     public List<String> listCatalogs(String layerFilter) {
-        return officerVisible(filteredByLayer(layerFilter)).stream()
+        return listCatalogs(new RegistryBrowseFilter(layerFilter, null, null));
+    }
+
+    public List<String> listCatalogs(RegistryBrowseFilter filter) {
+        return officerVisible(filtered(filter)).stream()
                 .map(RegisteredTable::getCatalogName)
                 .distinct()
                 .sorted()
@@ -224,16 +383,15 @@ public class LakehouseRegistryService {
     }
 
     public List<String> listSchemas(String catalog) {
-        return officerVisible(allOrdered()).stream()
-                .filter(r -> catalog.equals(r.getCatalogName()))
-                .map(RegisteredTable::getSchemaName)
-                .distinct()
-                .sorted()
-                .toList();
+        return listSchemas(catalog, RegistryBrowseFilter.none());
     }
 
     public List<String> listSchemas(String catalog, String layerFilter) {
-        return officerVisible(filteredByLayer(layerFilter)).stream()
+        return listSchemas(catalog, new RegistryBrowseFilter(layerFilter, null, null));
+    }
+
+    public List<String> listSchemas(String catalog, RegistryBrowseFilter filter) {
+        return officerVisible(filtered(filter)).stream()
                 .filter(r -> catalog.equals(r.getCatalogName()))
                 .map(RegisteredTable::getSchemaName)
                 .distinct()
@@ -242,14 +400,21 @@ public class LakehouseRegistryService {
     }
 
     public List<RegisteredTable> listTables(String catalog, String schema) {
-        return officerVisible(registrations.findByCatalogNameAndSchemaNameOrderByTableName(catalog, schema));
+        return listTables(catalog, schema, RegistryBrowseFilter.none());
     }
 
     public List<RegisteredTable> listTables(String catalog, String schema, String layerFilter) {
-        return officerVisible(filteredByLayer(layerFilter)).stream()
-                .filter(r -> catalog.equals(r.getCatalogName()) && schema.equals(r.getSchemaName()))
-                .sorted(java.util.Comparator.comparing(RegisteredTable::getTableName))
-                .toList();
+        return listTables(catalog, schema, new RegistryBrowseFilter(layerFilter, null, null));
+    }
+
+    public List<RegisteredTable> listTables(String catalog, String schema, RegistryBrowseFilter filter) {
+        List<RegisteredTable> candidates = filter.hasAnyTagFilter()
+                ? filtered(filter).stream()
+                        .filter(r -> catalog.equals(r.getCatalogName()) && schema.equals(r.getSchemaName()))
+                        .sorted(java.util.Comparator.comparing(RegisteredTable::getTableName))
+                        .toList()
+                : registrations.findByCatalogNameAndSchemaNameOrderByTableName(catalog, schema);
+        return officerVisible(candidates);
     }
 
     /**

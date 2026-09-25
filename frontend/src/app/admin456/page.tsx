@@ -8,6 +8,10 @@ import {
   browseTables,
   getConnections,
   listLakehouseLayers,
+  listAdminSourceSystems,
+  listAdminTableGroups,
+  renameSourceSystemLabel,
+  renameTableGroupLabel,
   listRegistrations,
   exportAdminConfig,
   importAdminConfig,
@@ -789,21 +793,29 @@ function RegistrationRow({
   registration,
   curatedColumnCount,
   layerOptions,
+  sourceSystemSuggestions,
+  tableGroupSuggestions,
   onChanged,
   onError,
 }: Readonly<{
   registration: TableRegistration;
   curatedColumnCount: number;
   layerOptions: string[];
+  sourceSystemSuggestions: string[];
+  tableGroupSuggestions: string[];
   onChanged: () => void;
   onError: (message: string) => void;
 }>) {
   const [editing, setEditing] = useState(false);
   const [layer, setLayer] = useState(registration.layer ?? "");
+  const [sourceSystem, setSourceSystem] = useState(registration.sourceSystem ?? "");
+  const [tableGroup, setTableGroup] = useState(registration.tableGroup ?? "");
   const [saving, setSaving] = useState(false);
 
   function startEditing() {
     setLayer(registration.layer ?? "");
+    setSourceSystem(registration.sourceSystem ?? "");
+    setTableGroup(registration.tableGroup ?? "");
     setEditing(true);
   }
 
@@ -811,7 +823,11 @@ function RegistrationRow({
     if (!layer.trim()) return;
     setSaving(true);
     try {
-      await updateTableRegistration(registration.id, layer.trim());
+      await updateTableRegistration(registration.id, {
+        layer: layer.trim(),
+        sourceSystem: sourceSystem.trim() || null,
+        tableGroup: tableGroup.trim() || null,
+      });
       setEditing(false);
       onChanged();
     } catch (err: unknown) {
@@ -852,6 +868,48 @@ function RegistrationRow({
           </>
         )}
       </td>
+      <td style={{ fontSize: "0.82rem" }}>
+        {editing ? (
+          <>
+            <input
+              list={`${registration.id}-ss-suggest`}
+              className="srse-input"
+              style={{ width: 140 }}
+              value={sourceSystem}
+              onChange={(e) => setSourceSystem(e.target.value)}
+              placeholder="Optional"
+            />
+            <datalist id={`${registration.id}-ss-suggest`}>
+              {sourceSystemSuggestions.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
+          </>
+        ) : (
+          registration.sourceSystem ?? <span className="srse-text-muted">—</span>
+        )}
+      </td>
+      <td style={{ fontSize: "0.82rem" }}>
+        {editing ? (
+          <>
+            <input
+              list={`${registration.id}-tg-suggest`}
+              className="srse-input"
+              style={{ width: 140 }}
+              value={tableGroup}
+              onChange={(e) => setTableGroup(e.target.value)}
+              placeholder="Optional"
+            />
+            <datalist id={`${registration.id}-tg-suggest`}>
+              {tableGroupSuggestions.map((g) => (
+                <option key={g} value={g} />
+              ))}
+            </datalist>
+          </>
+        ) : (
+          registration.tableGroup ?? <span className="srse-text-muted">—</span>
+        )}
+      </td>
       <td>
         <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
           {editing ? (
@@ -879,7 +937,7 @@ function RegistrationRow({
                 type="button"
                 className="srse-btn srse-btn-ghost srse-btn-sm"
                 onClick={startEditing}
-                title="Re-tag this table's layer. The catalog/schema/table address itself cannot be edited — delete and register the other table instead."
+                title="Edit display tags (layer, source system, table group). The catalog/schema/table address cannot be edited — delete and register the other table instead."
               >
                 Edit
               </button>
@@ -901,6 +959,101 @@ function RegistrationRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+function RegistryLabelRenamePanel({
+  sourceSystemSuggestions,
+  tableGroupSuggestions,
+  onRenamed,
+  onError,
+}: Readonly<{
+  sourceSystemSuggestions: string[];
+  tableGroupSuggestions: string[];
+  onRenamed: () => void;
+  onError: (message: string) => void;
+}>) {
+  const [ssFrom, setSsFrom] = useState("");
+  const [ssTo, setSsTo] = useState("");
+  const [tgFrom, setTgFrom] = useState("");
+  const [tgTo, setTgTo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function onRenameSourceSystem() {
+    if (!ssFrom.trim() || !ssTo.trim()) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const { tablesUpdated } = await renameSourceSystemLabel(ssFrom.trim(), ssTo.trim());
+      setSsFrom("");
+      setSsTo("");
+      onRenamed();
+      setNotice(`Renamed source system on ${tablesUpdated} table(s).`);
+    } catch (err: unknown) {
+      onError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRenameTableGroup() {
+    if (!tgFrom.trim() || !tgTo.trim()) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const { tablesUpdated } = await renameTableGroupLabel(tgFrom.trim(), tgTo.trim());
+      setTgFrom("");
+      setTgTo("");
+      onRenamed();
+      setNotice(`Renamed table group on ${tablesUpdated} table(s).`);
+    } catch (err: unknown) {
+      onError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ marginTop: "1.25rem", paddingTop: "1rem", borderTop: "1px solid var(--srse-border)" }}>
+      <h3 className="srse-card-title" style={{ fontSize: "1rem" }}>Bulk rename display labels</h3>
+      <p className="srse-text-muted" style={{ fontSize: "0.78rem", maxWidth: "none" }}>
+        Updates every registration carrying the old label. Audited once per rename.
+      </p>
+      {notice && <p className="srse-text-muted" style={{ fontSize: "0.78rem" }}>{notice}</p>}
+      <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
+        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div>
+            <label className="srse-text-muted" style={{ fontSize: "0.72rem", display: "block" }}>Source system from</label>
+            <input list="rename-ss-from" className="srse-input" value={ssFrom} onChange={(e) => setSsFrom(e.target.value)} />
+            <datalist id="rename-ss-from">{sourceSystemSuggestions.map((s) => <option key={s} value={s} />)}</datalist>
+          </div>
+          <div>
+            <label className="srse-text-muted" style={{ fontSize: "0.72rem", display: "block" }}>to</label>
+            <input list="rename-ss-to" className="srse-input" value={ssTo} onChange={(e) => setSsTo(e.target.value)} />
+            <datalist id="rename-ss-to">{sourceSystemSuggestions.map((s) => <option key={s} value={s} />)}</datalist>
+          </div>
+          <button type="button" className="srse-btn srse-btn-sm" disabled={busy || !ssFrom.trim() || !ssTo.trim()} onClick={onRenameSourceSystem}>
+            Rename source systems
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "flex-end" }}>
+          <div>
+            <label className="srse-text-muted" style={{ fontSize: "0.72rem", display: "block" }}>Table group from</label>
+            <input list="rename-tg-from" className="srse-input" value={tgFrom} onChange={(e) => setTgFrom(e.target.value)} />
+            <datalist id="rename-tg-from">{tableGroupSuggestions.map((g) => <option key={g} value={g} />)}</datalist>
+          </div>
+          <div>
+            <label className="srse-text-muted" style={{ fontSize: "0.72rem", display: "block" }}>to</label>
+            <input list="rename-tg-to" className="srse-input" value={tgTo} onChange={(e) => setTgTo(e.target.value)} />
+            <datalist id="rename-tg-to">{tableGroupSuggestions.map((g) => <option key={g} value={g} />)}</datalist>
+          </div>
+          <button type="button" className="srse-btn srse-btn-sm" disabled={busy || !tgFrom.trim() || !tgTo.trim()} onClick={onRenameTableGroup}>
+            Rename table groups
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -929,17 +1082,31 @@ function LakehouseRegistryPanel({
 }>) {
   const [cascade, setCascade] = useState<CascadeValue>(EMPTY_CASCADE);
   const [layer, setLayer] = useState("");
+  const [sourceSystem, setSourceSystem] = useState("");
+  const [tableGroup, setTableGroup] = useState("");
   const [layerOptions, setLayerOptions] = useState<string[]>([]);
+  const [sourceSystemSuggestions, setSourceSystemSuggestions] = useState<string[]>([]);
+  const [tableGroupSuggestions, setTableGroupSuggestions] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const onCascadeError = useCallback((message: string) => setFormError(message), []);
 
-  useEffect(() => {
+  const reloadLabelVocabulary = useCallback(() => {
     listLakehouseLayers()
       .then(setLayerOptions)
       .catch((err: unknown) => setFormError(errorMessage(err)));
+    listAdminSourceSystems()
+      .then(setSourceSystemSuggestions)
+      .catch((err: unknown) => setFormError(errorMessage(err)));
+    listAdminTableGroups()
+      .then(setTableGroupSuggestions)
+      .catch((err: unknown) => setFormError(errorMessage(err)));
   }, []);
+
+  useEffect(() => {
+    reloadLabelVocabulary();
+  }, [reloadLabelVocabulary]);
 
   // How many column settings each table carries, so unregistering says what
   // curation it is putting out of reach (the rows are kept, not deleted).
@@ -964,9 +1131,17 @@ function LakehouseRegistryPanel({
     setSaving(true);
     setFormError(null);
     try {
-      await registerTable({ ...cascade, layer: layer.trim() });
+      await registerTable({
+        ...cascade,
+        layer: layer.trim(),
+        sourceSystem: sourceSystem.trim() || null,
+        tableGroup: tableGroup.trim() || null,
+      });
       setCascade(EMPTY_CASCADE);
       setLayer("");
+      setSourceSystem("");
+      setTableGroup("");
+      reloadLabelVocabulary();
       onChanged();
     } catch (err: unknown) {
       setFormError(errorMessage(err));
@@ -1021,6 +1196,44 @@ function LakehouseRegistryPanel({
             ))}
           </select>
         </div>
+        <div>
+          <label htmlFor="register-source-system" className="srse-text-muted" style={{ fontSize: "0.72rem", display: "block" }}>
+            Source system
+          </label>
+          <input
+            id="register-source-system"
+            list="register-source-system-suggest"
+            className="srse-input"
+            style={{ width: 160 }}
+            value={sourceSystem}
+            onChange={(e) => setSourceSystem(e.target.value)}
+            placeholder="Optional"
+          />
+          <datalist id="register-source-system-suggest">
+            {sourceSystemSuggestions.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
+        </div>
+        <div>
+          <label htmlFor="register-table-group" className="srse-text-muted" style={{ fontSize: "0.72rem", display: "block" }}>
+            Table group
+          </label>
+          <input
+            id="register-table-group"
+            list="register-table-group-suggest"
+            className="srse-input"
+            style={{ width: 160 }}
+            value={tableGroup}
+            onChange={(e) => setTableGroup(e.target.value)}
+            placeholder="Optional"
+          />
+          <datalist id="register-table-group-suggest">
+            {tableGroupSuggestions.map((g) => (
+              <option key={g} value={g} />
+            ))}
+          </datalist>
+        </div>
         <button
           type="button"
           className="srse-btn srse-btn-primary"
@@ -1046,6 +1259,16 @@ function LakehouseRegistryPanel({
         </p>
       )}
 
+      <RegistryLabelRenamePanel
+        sourceSystemSuggestions={sourceSystemSuggestions}
+        tableGroupSuggestions={tableGroupSuggestions}
+        onRenamed={() => {
+          reloadLabelVocabulary();
+          onChanged();
+        }}
+        onError={setFormError}
+      />
+
       {registrations.length > 0 && (
         <div style={{ overflowX: "auto" }}>
           <table className="srse-table">
@@ -1055,6 +1278,8 @@ function LakehouseRegistryPanel({
                 <th>Schema</th>
                 <th>Table</th>
                 <th>Layer</th>
+                <th>Source system</th>
+                <th>Table group</th>
                 <th />
               </tr>
             </thead>
@@ -1065,7 +1290,12 @@ function LakehouseRegistryPanel({
                   registration={r}
                   curatedColumnCount={curatedByTable.get(r.qualifiedName) ?? 0}
                   layerOptions={layerOptions}
-                  onChanged={onChanged}
+                  sourceSystemSuggestions={sourceSystemSuggestions}
+                  tableGroupSuggestions={tableGroupSuggestions}
+                  onChanged={() => {
+                    reloadLabelVocabulary();
+                    onChanged();
+                  }}
                   onError={setFormError}
                 />
               ))}

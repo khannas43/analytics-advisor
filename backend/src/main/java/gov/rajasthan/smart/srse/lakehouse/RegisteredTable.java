@@ -61,6 +61,14 @@ public class RegisteredTable {
     @Column(name = "layer")
     private String layer;
 
+    /** Display label only — never part of the lakehouse address (§3.1.1). */
+    @Column(name = "source_system")
+    private String sourceSystem;
+
+    /** Display label only — never part of the lakehouse address (§3.1.1). */
+    @Column(name = "table_group")
+    private String tableGroup;
+
     /** A4 — visible to all officers regardless of scope bindings. */
     @Column(name = "shared_reference", nullable = false)
     private boolean sharedReference = false;
@@ -74,12 +82,26 @@ public class RegisteredTable {
 
     public RegisteredTable(
             Long id, String catalogName, String schemaName, String tableName, String layer, boolean sharedReference) {
+        this(id, catalogName, schemaName, tableName, layer, sharedReference, null, null);
+    }
+
+    public RegisteredTable(
+            Long id,
+            String catalogName,
+            String schemaName,
+            String tableName,
+            String layer,
+            boolean sharedReference,
+            String sourceSystem,
+            String tableGroup) {
         this.id = id;
         this.catalogName = catalogName;
         this.schemaName = schemaName;
         this.tableName = tableName;
         this.layer = layer;
         this.sharedReference = sharedReference;
+        this.sourceSystem = sourceSystem;
+        this.tableGroup = tableGroup;
     }
 
     public Long getId() {
@@ -112,6 +134,22 @@ public class RegisteredTable {
 
     public void setSharedReference(boolean sharedReference) {
         this.sharedReference = sharedReference;
+    }
+
+    public String getSourceSystem() {
+        return sourceSystem;
+    }
+
+    public void setSourceSystem(String sourceSystem) {
+        this.sourceSystem = sourceSystem;
+    }
+
+    public String getTableGroup() {
+        return tableGroup;
+    }
+
+    public void setTableGroup(String tableGroup) {
+        this.tableGroup = tableGroup;
     }
 
     /** The address form used everywhere downstream; re-validates the identifiers. */

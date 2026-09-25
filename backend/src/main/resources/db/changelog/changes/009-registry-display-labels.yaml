@@ -1,0 +1,18 @@
+databaseChangeLog:
+  - changeSet:
+      id: 009-registry-display-labels
+      author: srse
+      changes:
+        - addColumn:
+            tableName: registered_table
+            columns:
+              - column:
+                  name: source_system
+                  type: varchar(256)
+                  constraints:
+                    nullable: true
+              - column:
+                  name: table_group
+                  type: varchar(256)
+                  constraints:
+                    nullable: true

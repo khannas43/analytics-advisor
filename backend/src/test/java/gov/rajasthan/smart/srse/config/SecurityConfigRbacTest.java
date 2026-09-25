@@ -111,8 +111,8 @@ class SecurityConfigRbacTest {
         when(browse.listCatalogs()).thenReturn(List.of("iceberg"));
         when(registry.listCatalogs()).thenReturn(List.of("iceberg"));
         when(registry.listRegistrations()).thenReturn(List.of());
-        when(registry.register(anyString(), anyString(), anyString(), anyString()))
-                .thenReturn(new RegisteredTable(1L, "c", "s", "t", "GOLD"));
+        when(registry.register(anyString(), anyString(), anyString(), anyString(), any(), any()))
+                .thenReturn(new RegisteredTable(1L, "c", "s", "t", "GOLD", false, null, null));
         when(analysisColumnMetadataRepository.findAllByOrderByCatalogNameAscSchemaNameAscTableNameAscColumnNameAsc())
                 .thenReturn(List.of());
         when(analysisColumnMetadataRepository.findByCatalogNameAndSchemaNameAndTableNameAndColumnName(

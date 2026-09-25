@@ -75,6 +75,26 @@ public class LakehouseAdminController {
         return List.copyOf(merged);
     }
 
+    @GetMapping("/source-systems")
+    public List<String> sourceSystems() {
+        return registry.listAllSourceSystemLabels();
+    }
+
+    @GetMapping("/table-groups")
+    public List<String> tableGroups() {
+        return registry.listAllTableGroupLabels();
+    }
+
+    @PostMapping("/rename-source-system")
+    public RenameLabelResponse renameSourceSystem(@RequestBody RenameLabelRequest req) {
+        return new RenameLabelResponse(registry.renameSourceSystemLabel(req.from(), req.to()));
+    }
+
+    @PostMapping("/rename-table-group")
+    public RenameLabelResponse renameTableGroup(@RequestBody RenameLabelRequest req) {
+        return new RenameLabelResponse(registry.renameTableGroupLabel(req.from(), req.to()));
+    }
+
     @GetMapping("/registrations")
     public List<RegistrationResponse> registrations() {
         return registry.listRegistrations().stream().map(RegistrationResponse::from).toList();
@@ -82,19 +102,20 @@ public class LakehouseAdminController {
 
     @PostMapping("/registrations")
     public RegistrationResponse register(@RequestBody RegisterTableRequest req) {
-        return RegistrationResponse.from(
-                registry.register(req.catalog(), req.schema(), req.table(), req.layer()));
+        return RegistrationResponse.from(registry.register(
+                req.catalog(), req.schema(), req.table(), req.layer(),
+                req.sourceSystem(), req.tableGroup()));
     }
 
     /**
-     * Edits a registration in place. Only the layer tag is editable — see
-     * {@link LakehouseRegistryService#updateLayer} for why the address itself
-     * is not.
+     * Edits display tags in place. The catalog/schema/table triple is not editable — see
+     * {@link LakehouseRegistryService#updateRegistrationTags}.
      */
     @PutMapping("/registrations/{id}")
     public RegistrationResponse updateRegistration(@PathVariable long id,
                                                    @RequestBody UpdateRegistrationRequest req) {
-        return RegistrationResponse.from(registry.updateLayer(id, req.layer()));
+        return RegistrationResponse.from(registry.updateRegistrationTags(
+                id, req.layer(), req.sourceSystem(), req.tableGroup()));
     }
 
     @DeleteMapping("/registrations/{id}")
@@ -114,10 +135,17 @@ public class LakehouseAdminController {
         return tableScopeRegistrationService.replaceConfig(id, request);
     }
 
-    public record RegisterTableRequest(String catalog, String schema, String table, String layer) {
+    public record RegisterTableRequest(
+            String catalog, String schema, String table, String layer, String sourceSystem, String tableGroup) {
     }
 
-    public record UpdateRegistrationRequest(String layer) {
+    public record UpdateRegistrationRequest(String layer, String sourceSystem, String tableGroup) {
+    }
+
+    public record RenameLabelRequest(String from, String to) {
+    }
+
+    public record RenameLabelResponse(int tablesUpdated) {
     }
 
     public record RegistrationResponse(
@@ -126,6 +154,8 @@ public class LakehouseAdminController {
             String schema,
             String table,
             String layer,
+            String sourceSystem,
+            String tableGroup,
             String qualifiedName,
             boolean sharedReference) {
         static RegistrationResponse from(RegisteredTable entity) {
@@ -135,6 +165,8 @@ public class LakehouseAdminController {
                     entity.getSchemaName(),
                     entity.getTableName(),
                     entity.getLayer(),
+                    entity.getSourceSystem(),
+                    entity.getTableGroup(),
                     entity.toQualifiedTable().qualifiedName(),
                     entity.isSharedReference());
         }

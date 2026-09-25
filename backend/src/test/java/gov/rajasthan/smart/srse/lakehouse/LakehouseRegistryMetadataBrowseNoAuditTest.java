@@ -67,6 +67,9 @@ class LakehouseRegistryMetadataBrowseNoAuditTest {
         service.listSchemas("c");
         service.listTables("c", "s");
         service.listLayers();
+        service.listSourceSystems();
+        service.listTableGroups(null);
+        service.listOverviewTables(null, null);
 
         verify(auditService, never()).recordRegistryEvent(
                 org.mockito.ArgumentMatchers.any(),

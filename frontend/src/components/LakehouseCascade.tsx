@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { RegistryBrowseFilter } from "@/lib/analysisApi";
 
 /**
  * The Catalog → Schema → Table cascade, shared by every place an admin or
@@ -13,10 +14,10 @@ import { useCallback, useEffect, useState } from "react";
  * same table name exists under more than one catalog, so a leftover value
  * would silently point at the wrong layer rather than failing loudly.
  *
- * When {@link CascadeFetchers.listLayers} is supplied (Analysis registry
- * cascade), a Layer rung appears first. Layer is component-internal state
- * only — it is never part of {@link CascadeValue}, so it cannot ride into
- * match payloads via spread.
+ * When registry filter fetchers are supplied (Analysis registry cascade),
+ * optional Source system / Table group / Layer rungs appear first. Those
+ * values are component-internal state only — they are never part of
+ * {@link CascadeValue}, so they cannot ride into match payloads via spread.
  *
  * Deliberately source-agnostic — the caller supplies the fetchers. The
  * Admin page passes the live-browse endpoints (everything the Presto
@@ -40,10 +41,16 @@ export function isCascadeComplete(v: CascadeValue): boolean {
 export type TableOption = { name: string; layer?: string | null };
 
 export type CascadeFetchers = {
+  listSourceSystems?: () => Promise<string[]>;
+  listTableGroups?: (sourceSystem?: string) => Promise<string[]>;
   listLayers?: () => Promise<string[]>;
-  listCatalogs: (layer?: string) => Promise<string[]>;
-  listSchemas: (catalog: string, layer?: string) => Promise<string[]>;
-  listTables: (catalog: string, schema: string, layer?: string) => Promise<TableOption[]>;
+  listCatalogs: (filter?: RegistryBrowseFilter) => Promise<string[]>;
+  listSchemas: (catalog: string, filter?: RegistryBrowseFilter) => Promise<string[]>;
+  listTables: (
+    catalog: string,
+    schema: string,
+    filter?: RegistryBrowseFilter,
+  ) => Promise<TableOption[]>;
 };
 
 type Props = Readonly<{
@@ -61,9 +68,9 @@ type Props = Readonly<{
 
 const selectStyle = { minWidth: 150 } as const;
 
-/** Must stay in lockstep with {@code LakehouseLayers.UNTAGGED} on the backend. */
-function layerOptionLabel(layer: string): string {
-  return layer === "UNTAGGED" ? "Untagged (legacy)" : layer;
+/** Must stay in lockstep with {@code RegistryDisplayTags.UNTAGGED} on the backend. */
+function tagOptionLabel(tag: string): string {
+  return tag === "UNTAGGED" ? "Untagged (legacy)" : tag;
 }
 
 export default function LakehouseCascade({
@@ -76,7 +83,11 @@ export default function LakehouseCascade({
   compact = false,
   onError,
 }: Props) {
+  const [sourceSystems, setSourceSystems] = useState<string[]>([]);
+  const [tableGroups, setTableGroups] = useState<string[]>([]);
   const [layers, setLayers] = useState<string[]>([]);
+  const [selectedSourceSystem, setSelectedSourceSystem] = useState("");
+  const [selectedTableGroup, setSelectedTableGroup] = useState("");
   const [selectedLayer, setSelectedLayer] = useState("");
   const [catalogs, setCatalogs] = useState<string[]>([]);
   const [schemas, setSchemas] = useState<string[]>([]);
@@ -84,7 +95,14 @@ export default function LakehouseCascade({
   const [loading, setLoading] = useState(false);
 
   const layerRequired = fetchers.listLayers != null;
-  const layerArg = selectedLayer || undefined;
+  const browseFilter = useMemo((): RegistryBrowseFilter => {
+    const f: RegistryBrowseFilter = {};
+    if (selectedLayer) f.layer = selectedLayer;
+    if (selectedSourceSystem) f.sourceSystem = selectedSourceSystem;
+    if (selectedTableGroup) f.tableGroup = selectedTableGroup;
+    return f;
+  }, [selectedLayer, selectedSourceSystem, selectedTableGroup]);
+
   const canFetchCatalogs =
     !layerRequired || Boolean(selectedLayer) || Boolean(value.catalog);
   const catalogDisabled =
@@ -95,7 +113,39 @@ export default function LakehouseCascade({
     [onError],
   );
 
-  const { listLayers, listCatalogs, listSchemas, listTables } = fetchers;
+  const { listSourceSystems, listTableGroups, listLayers, listCatalogs, listSchemas, listTables } =
+    fetchers;
+
+  useEffect(() => {
+    if (!listSourceSystems) {
+      return undefined;
+    }
+    let cancelled = false;
+    listSourceSystems()
+      .then((s) => {
+        if (!cancelled) setSourceSystems(s);
+      })
+      .catch(report);
+    return () => {
+      cancelled = true;
+    };
+  }, [listSourceSystems, report]);
+
+  useEffect(() => {
+    if (!listTableGroups) {
+      return undefined;
+    }
+    let cancelled = false;
+    const sourceArg = selectedSourceSystem || undefined;
+    listTableGroups(sourceArg)
+      .then((g) => {
+        if (!cancelled) setTableGroups(g);
+      })
+      .catch(report);
+    return () => {
+      cancelled = true;
+    };
+  }, [listTableGroups, selectedSourceSystem, report]);
 
   useEffect(() => {
     if (!listLayers) {
@@ -118,7 +168,7 @@ export default function LakehouseCascade({
       return undefined;
     }
     setLoading(true);
-    listCatalogs(layerArg)
+    listCatalogs(browseFilter)
       .then((c) => {
         if (!cancelled) setCatalogs(c);
       })
@@ -129,8 +179,10 @@ export default function LakehouseCascade({
     return () => {
       cancelled = true;
     };
-  }, [canFetchCatalogs, layerArg, listCatalogs, report]);
+  }, [canFetchCatalogs, browseFilter, listCatalogs, report]);
 
+  const sourceSystemOptions = listSourceSystems ? sourceSystems : [];
+  const tableGroupOptions = listTableGroups ? tableGroups : [];
   const layerOptions = listLayers ? layers : [];
   const catalogOptions = canFetchCatalogs ? catalogs : [];
 
@@ -140,7 +192,7 @@ export default function LakehouseCascade({
       setSchemas([]);
       return undefined;
     }
-    listSchemas(value.catalog, layerArg)
+    listSchemas(value.catalog, browseFilter)
       .then((s) => {
         if (!cancelled) setSchemas(s);
       })
@@ -148,7 +200,7 @@ export default function LakehouseCascade({
     return () => {
       cancelled = true;
     };
-  }, [value.catalog, layerArg, listSchemas, report]);
+  }, [value.catalog, browseFilter, listSchemas, report]);
 
   useEffect(() => {
     let cancelled = false;
@@ -156,7 +208,7 @@ export default function LakehouseCascade({
       setTables([]);
       return undefined;
     }
-    listTables(value.catalog, value.schema, layerArg)
+    listTables(value.catalog, value.schema, browseFilter)
       .then((t) => {
         if (!cancelled) setTables(t);
       })
@@ -164,11 +216,26 @@ export default function LakehouseCascade({
     return () => {
       cancelled = true;
     };
-  }, [value.catalog, value.schema, layerArg, listTables, report]);
+  }, [value.catalog, value.schema, browseFilter, listTables, report]);
+
+  function clearCascade() {
+    onChange({ catalog: "", schema: "", table: "" });
+  }
+
+  function pickSourceSystem(sourceSystem: string) {
+    setSelectedSourceSystem(sourceSystem);
+    setSelectedTableGroup("");
+    clearCascade();
+  }
+
+  function pickTableGroup(tableGroup: string) {
+    setSelectedTableGroup(tableGroup);
+    clearCascade();
+  }
 
   function pickLayer(layer: string) {
     setSelectedLayer(layer);
-    onChange({ catalog: "", schema: "", table: "" });
+    clearCascade();
   }
 
   function pickCatalog(catalog: string) {
@@ -200,6 +267,48 @@ export default function LakehouseCascade({
         </div>
       )}
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end" }}>
+        {listSourceSystems && (
+          <div>
+            {caption("Source system", `${idPrefix}-source-system`)}
+            <select
+              id={`${idPrefix}-source-system`}
+              className="srse-select"
+              style={selectStyle}
+              value={selectedSourceSystem}
+              disabled={disabled}
+              onChange={(e) => pickSourceSystem(e.target.value)}
+            >
+              <option value="">— any —</option>
+              {sourceSystemOptions.map((s) => (
+                <option key={s} value={s}>
+                  {tagOptionLabel(s)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {listTableGroups && (
+          <div>
+            {caption("Table group", `${idPrefix}-table-group`)}
+            <select
+              id={`${idPrefix}-table-group`}
+              className="srse-select"
+              style={selectStyle}
+              value={selectedTableGroup}
+              disabled={disabled}
+              onChange={(e) => pickTableGroup(e.target.value)}
+            >
+              <option value="">— any —</option>
+              {tableGroupOptions.map((g) => (
+                <option key={g} value={g}>
+                  {tagOptionLabel(g)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {layerRequired && (
           <div>
             {caption("Layer", `${idPrefix}-layer`)}
@@ -214,7 +323,7 @@ export default function LakehouseCascade({
               <option value="">— layer —</option>
               {layerOptions.map((l) => (
                 <option key={l} value={l}>
-                  {layerOptionLabel(l)}
+                  {tagOptionLabel(l)}
                 </option>
               ))}
             </select>

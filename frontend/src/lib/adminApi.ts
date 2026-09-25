@@ -85,6 +85,8 @@ export type TableRegistration = {
   table: string;
   /** SILVER / GOLD / null — a display tag, not a level of the hierarchy. */
   layer: string | null;
+  sourceSystem: string | null;
+  tableGroup: string | null;
   qualifiedName: string;
   sharedReference: boolean;
 };
@@ -146,11 +148,47 @@ export function listLakehouseLayers(): Promise<string[]> {
   return adminGet<string[]>(`/api/admin/lakehouse/layers`);
 }
 
+export function listAdminSourceSystems(): Promise<string[]> {
+  return adminGet<string[]>(`/api/admin/lakehouse/source-systems`);
+}
+
+export function listAdminTableGroups(): Promise<string[]> {
+  return adminGet<string[]>(`/api/admin/lakehouse/table-groups`);
+}
+
+export async function renameSourceSystemLabel(from: string, to: string): Promise<{ tablesUpdated: number }> {
+  const res = await authorizedFetch(`${API_BASE}/api/admin/lakehouse/rename-source-system`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ from, to }),
+  }, "admin");
+  if (!res.ok) {
+    throw new Error(`Admin service error ${res.status}: ${await res.text()}`);
+  }
+  return res.json();
+}
+
+export async function renameTableGroupLabel(from: string, to: string): Promise<{ tablesUpdated: number }> {
+  const res = await authorizedFetch(`${API_BASE}/api/admin/lakehouse/rename-table-group`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ from, to }),
+  }, "admin");
+  if (!res.ok) {
+    throw new Error(`Admin service error ${res.status}: ${await res.text()}`);
+  }
+  return res.json();
+}
+
 export async function registerTable(req: {
   catalog: string;
   schema: string;
   table: string;
   layer: string;
+  sourceSystem?: string | null;
+  tableGroup?: string | null;
 }): Promise<TableRegistration> {
   const res = await authorizedFetch(`${API_BASE}/api/admin/lakehouse/registrations`, {
     method: "POST",
@@ -164,12 +202,15 @@ export async function registerTable(req: {
   return res.json();
 }
 
-export async function updateTableRegistration(id: number, layer: string): Promise<TableRegistration> {
+export async function updateTableRegistration(
+  id: number,
+  tags: { layer: string; sourceSystem?: string | null; tableGroup?: string | null },
+): Promise<TableRegistration> {
   const res = await authorizedFetch(`${API_BASE}/api/admin/lakehouse/registrations/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ layer }),
+    body: JSON.stringify(tags),
   }, "admin");
   if (!res.ok) {
     throw new Error(`Admin service error ${res.status}: ${await res.text()}`);
