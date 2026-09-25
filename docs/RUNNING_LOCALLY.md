@@ -90,3 +90,33 @@ request.
   **district**, so that table is correctly invisible to them: the rows carry no
   taluka value, so no filter could be exact. That is deny-by-default working,
   not a fault.
+
+## Before deploying: prove the app boots
+
+`OperationalSchemaMatchesEntitiesTest` starts the real Spring context against the
+local operational database with `ddl-auto: validate`, so a Liquibase changeset
+that disagrees with a JPA entity fails the build rather than the deploy. It runs
+in the ordinary suite and takes about four seconds.
+
+It **skips** when no database is listening on 5433, printing why. So the one
+command that matters before a deploy is:
+
+```bash
+docker compose up -d postgres
+JAVA_HOME=$(/usr/libexec/java_home -v 17) mvn -f backend/pom.xml test
+```
+
+A green suite with that database up means the schema and the entities agree. A
+green suite **without** it does not — the check silently skipped.
+
+### On the `*IT` tests
+
+`OperationalStoreLiquibaseIT`, `OperationalStoreLiquibaseDb2IT` and
+`AnalysisEmittedSqlPrestoValidateIT` never run under `mvn test`. Surefire's
+default includes are `*Test`, `Test*`, `*Tests` and `*TestCase`; nothing named
+`*IT` matches, so their environment-variable guards are never even consulted.
+They run only when named explicitly with `-Dtest=`, and the Testcontainers ones
+additionally need a Docker socket the JVM can reach, which Docker Desktop on
+macOS does not always provide.
+
+Treat them as tools to reach for deliberately, not as coverage.
