@@ -18,10 +18,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * OPERATIONAL PLANE — DB2 via IBM JCC + Spring Data JPA.
+ * OPERATIONAL PLANE — PostgreSQL or DB2 via JDBC + Spring Data JPA.
  *
- * Holds SRSE's own data: field catalogue, field->column mappings, rulesets
- * (AST as JSON), and scenario snapshots. This is the PRIMARY datasource.
+ * Holds the product's own configuration: lakehouse registrations and analysis
+ * column metadata. Schema is owned by Liquibase; Hibernate validates at boot.
+ * This is the PRIMARY datasource.
  *
  * The analytical plane (Presto) is deliberately a SEPARATE, non-JPA datasource
  * — see {@link AnalyticalDataSourceConfig}. Never conflate the two.
@@ -35,8 +36,6 @@ import java.util.Map;
         // on the operational plane like the rest of the metadata.
         basePackages = {
                 "gov.rajasthan.smart.srse.metadata",
-                "gov.rajasthan.smart.srse.scenario",
-                "gov.rajasthan.smart.srse.scheme",
                 "gov.rajasthan.smart.srse.lakehouse"
         },
         entityManagerFactoryRef = "operationalEmf",
@@ -62,8 +61,6 @@ public class OperationalDataSourceConfig {
      */
     static final String[] OPERATIONAL_PACKAGES = {
             "gov.rajasthan.smart.srse.metadata",
-            "gov.rajasthan.smart.srse.scenario",
-            "gov.rajasthan.smart.srse.scheme",
             "gov.rajasthan.smart.srse.lakehouse"
     };
 
@@ -78,13 +75,17 @@ public class OperationalDataSourceConfig {
     @Primary
     public LocalContainerEntityManagerFactoryBean operationalEmf(
             EntityManagerFactoryBuilder builder,
-            @org.springframework.beans.factory.annotation.Value("${spring.jpa.hibernate.ddl-auto:none}")
+            @org.springframework.beans.factory.annotation.Value("${spring.jpa.hibernate.ddl-auto:validate}")
             String ddlAuto) {
         Map<String, Object> props = new HashMap<>();
-        // Manually-constructed EMF via EntityManagerFactoryBuilder does not inherit
-        // spring.jpa.hibernate.ddl-auto the way Boot's auto-configured EMF would —
-        // read and set hibernate.hbm2ddl.auto explicitly (default "none" = safe).
+        // Manually-constructed EMF does not inherit spring.jpa.hibernate.ddl-auto —
+        // set hibernate.hbm2ddl.auto explicitly (Liquibase owns the schema; validate
+        // catches entity/changelog drift at boot).
         props.put("hibernate.hbm2ddl.auto", ddlAuto);
+        // Manual EMF does not inherit Boot's naming strategy — without this,
+        // validate looks for camelCase column names Liquibase never created.
+        props.put("hibernate.physical_naming_strategy",
+                "org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy");
         return builder
                 .dataSource(operationalDataSource())
                 .packages(OPERATIONAL_PACKAGES)

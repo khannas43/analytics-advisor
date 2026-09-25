@@ -74,18 +74,17 @@ before §7.1.
 
 ### What 0.1 requires of new code
 
-The operational schema must run on **PostgreSQL and DB2 both**. Today it does
-not: `application.yml` pins `org.hibernate.dialect.DB2Dialect` and builds the
-schema with `ddl-auto: update`, and `docs/migrations/*.sql` are hand-run files
-rather than a managed baseline. `PRODUCT_PLAN.md` 1.7 fixes this and **must land
-before §7 creates any table.**
+The operational schema runs on **PostgreSQL and DB2 both** (decision 0.1, AA-05):
+Liquibase owns the schema (`db/changelog/`), Hibernate **`validate`** at boot,
+PostgreSQL is the local default; DB2 remains supported via JDBC URL/driver
+override. Legacy hand-run scripts live under `docs/migrations/` as history only.
 
 ## The two data planes (critical — never conflate)
 
-- **Operational plane** → currently **DB2** via **IBM JCC 11.5.8** + **Spring
-  Data JPA**. The product's own data: registered tables, column metadata, and
-  (to come) users, scope assignments, saved queries, audit log. Small,
-  transactional, entity-shaped. ORM is right here. *Subject to decision 0.1.*
+- **Operational plane** → **PostgreSQL (default) or DB2** + **Spring Data JPA**
+  + **Liquibase**. The product's own data: registered tables, column metadata,
+  and (to come) users, scope assignments, saved queries, audit log. Small,
+  transactional, entity-shaped. ORM is right here.
 - **Analytical plane** → **PrestoDB 0.297** over **Iceberg** via
   **`com.facebook.presto:presto-jdbc`** + **JdbcTemplate** (raw SQL). The data
   being analysed. Set-based. **NO ORM** — Hibernate has no Presto dialect, and

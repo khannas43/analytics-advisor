@@ -1,4 +1,10 @@
 -- ============================================================================
+-- SUPERSEDED for new deployments — operational schema is now owned by Liquibase:
+--   backend/src/main/resources/db/changelog/changes/001-baseline.yaml
+-- Keep this file as the historical record (especially the ddl-auto silent-failure
+-- explanation below). Upgrading an OLD database still uses this script once;
+-- then mark the Liquibase baseline applied via changelogSync (see CONFIGURATION_GUIDE).
+-- ============================================================================
 -- SRSE migration 001 — qualify analysis_column_metadata by catalog + schema
 -- Target: DB2 (operational plane).  Run ONCE per environment that already has
 -- an analysis_column_metadata table.  Safe to skip on a brand-new database:

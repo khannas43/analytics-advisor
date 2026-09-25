@@ -1,4 +1,7 @@
 -- ============================================================================
+-- SUPERSEDED for new deployments — see Liquibase 001-baseline.yaml.
+-- Historical record only; compare_as is in the baseline changelog.
+-- ============================================================================
 -- SRSE migration 002 — per-column comparison override (compare_as)
 -- Target: DB2 (operational plane).  Run ONCE per environment that already has
 -- an analysis_column_metadata table AND does not run ddl-auto — i.e. client

@@ -1,0 +1,106 @@
+# Baseline operational schema (Analytics Advisor).
+# Final shape after docs/migrations/001–003 on DB2, minus removed SRSE tables
+# (field_catalog, scheme, scenario, etc.). Derived from JPA entities +
+# those migration files — not from ddl-auto output.
+databaseChangeLog:
+  - changeSet:
+      id: 001-registered-table
+      author: analytics-advisor
+      comment: Lakehouse table registrations (admin456 registry).
+      changes:
+        - createTable:
+            tableName: registered_table
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_registered_table
+                    nullable: false
+              - column:
+                  name: catalog_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: schema_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: table_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: layer
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: true
+        - addUniqueConstraint:
+            tableName: registered_table
+            constraintName: uq_registered_table
+            columnNames: catalog_name, schema_name, table_name
+
+  - changeSet:
+      id: 001-analysis-column-metadata
+      author: analytics-advisor
+      comment: Per-column Analysis overrides (business name, fuzzy, visibility, compare_as).
+      changes:
+        - createTable:
+            tableName: analysis_column_metadata
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: pk_analysis_column_metadata
+                    nullable: false
+              - column:
+                  name: catalog_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: schema_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: table_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: column_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: business_name
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: true
+              - column:
+                  name: fuzzy_matchable
+                  type: BOOLEAN
+                  constraints:
+                    nullable: true
+              - column:
+                  name: visible
+                  type: BOOLEAN
+                  constraints:
+                    nullable: true
+              - column:
+                  name: compare_as
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: true
+        - addUniqueConstraint:
+            tableName: analysis_column_metadata
+            constraintName: uq_analysis_column_metadata
+            columnNames: catalog_name, schema_name, table_name, column_name

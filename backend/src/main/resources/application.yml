@@ -6,15 +6,21 @@ spring:
     name: srse-backend
   # NOTE: two datasources are defined in code (Operational/Analytical
   # DataSourceConfig). Spring Boot auto-datasource is bypassed intentionally.
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
 
-# ---- Operational plane: DB2 (JPA) ----
+# ---- Operational plane: PostgreSQL or DB2 (JPA) — decision 0.1 ----
 srse:
   datasource:
     operational:
-      jdbc-url: ${SRSE_DB2_URL:jdbc:db2://localhost:50000/SRSEDB}
-      username: ${SRSE_DB2_USER:db2inst1}
-      password: ${SRSE_DB2_PASSWORD:srse_local_pw}
-      driver-class-name: com.ibm.db2.jcc.DB2Driver
+      jdbc-url: ${SRSE_OPERATIONAL_JDBC_URL:${SRSE_DB2_URL:jdbc:postgresql://localhost:5433/srse}}
+      username: ${SRSE_OPERATIONAL_USER:${SRSE_DB2_USER:srse}}
+      password: ${SRSE_OPERATIONAL_PASSWORD:${SRSE_DB2_PASSWORD:srse_local_pw}}
+      driver-class-name: ${SRSE_OPERATIONAL_DRIVER:${SRSE_DB2_DRIVER:org.postgresql.Driver}}
     # ---- Analytical plane: PrestoDB (JDBC) ----
     analytical:
       jdbc-url: ${SRSE_PRESTO_URL:jdbc:presto://localhost:8081/iceberg/srse}
@@ -35,7 +41,7 @@ srse:
       trust-store-password: ${SRSE_PRESTO_TRUSTSTORE_PASSWORD:}
   data-mode: ${DATA_MODE:synthetic}
   # Optional display name for the running deployment (UAT, Staging, etc.).
-  # Does not change DATA_MODE or field_column_mapping keys — UI only.
+  # Does not change DATA_MODE — UI only.
   environment-label: ${SRSE_ENV_LABEL:}
   auth-mode: ${SRSE_AUTH_MODE:mock}
   # Comma-separated list of origins the browser loads the frontend from —
@@ -56,10 +62,6 @@ srse:
     max-estimated-rows: ${SRSE_ANALYSIS_MAX_ESTIMATED_ROWS:50000000}
     join-key-distinctness-timeout-seconds: ${SRSE_ANALYSIS_JOIN_KEY_DISTINCTNESS_TIMEOUT_SECONDS:10}
   breakdown:
-    # age_band has no field-catalogue entry (never officer-selectable as a
-    # rule filter, only a fixed breakdown dimension per ExecutionService's
-    # contract) so it can't resolve through FieldResolver like district/gender
-    # do — this is the one physical column name left as a plain property.
     age-band-column: ${SRSE_AGE_BAND_COLUMN:age_band}
 
 springdoc:
@@ -71,15 +73,7 @@ spring:
   config:
     activate:
       on-profile: local
-  jpa:
-    hibernate:
-      ddl-auto: update      # local convenience only; use migrations in Dev
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.DB2Dialect
-    show-sql: false
-
-# Local dev without live DB2/Presto — allow Hikari pools to start even if DBs are down,
+# Local dev without live Presto — allow Hikari pools to start even if DBs are down,
 # and fail connection attempts fast (3s) instead of Hikari's 30s default.
 srse:
   datasource:

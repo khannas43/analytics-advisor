@@ -1,0 +1,35 @@
+# DB2 volumes created under ddl-auto without Spring's physical naming strategy
+# stored BUSINESSNAME / FUZZYMATCHABLE instead of business_name / fuzzy_matchable.
+# PostgreSQL baselines from 001 already use snake_case — preConditions skip this there.
+databaseChangeLog:
+  - changeSet:
+      id: 002-db2-rename-businessname
+      author: analytics-advisor
+      dbms: db2
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            tableName: analysis_column_metadata
+            columnName: BUSINESSNAME
+      changes:
+        - renameColumn:
+            tableName: analysis_column_metadata
+            oldColumnName: BUSINESSNAME
+            newColumnName: business_name
+            columnDataType: VARCHAR(255)
+
+  - changeSet:
+      id: 002-db2-rename-fuzzymatchable
+      author: analytics-advisor
+      dbms: db2
+      preConditions:
+        - onFail: MARK_RAN
+        - columnExists:
+            tableName: analysis_column_metadata
+            columnName: FUZZYMATCHABLE
+      changes:
+        - renameColumn:
+            tableName: analysis_column_metadata
+            oldColumnName: FUZZYMATCHABLE
+            newColumnName: fuzzy_matchable
+            columnDataType: BOOLEAN

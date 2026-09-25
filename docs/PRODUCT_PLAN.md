@@ -41,7 +41,7 @@ Full framing and the reasoning behind each in `docs/OPEN_DECISIONS.md`.
 | 1.4 | Rewrite `CLAUDE.md` for this product | N | 1 |
 | 1.5 | Strip SRSE screens from the frontend (Rule Engine page, scheme panels, field-mapping editor) | N | 2 |
 | 1.6 | Rename package root once both repos stop trading fixes | N | 1 |
-| 1.7 | **Make the operational store portable** (decision 0.1): drop the hardcoded `DB2Dialect`, add the PostgreSQL driver, replace `ddl-auto` with a real migration tool, fold `docs/migrations/*.sql` into a baseline. **Must land before §7 creates tables.** | N | 3 |
+| 1.7 | ~~**Make the operational store portable**~~ Done (AA-05): Liquibase baseline, PostgreSQL default, `ddl-auto: validate`, DB2 still supported. | Y | 3 |
 
 ---
 

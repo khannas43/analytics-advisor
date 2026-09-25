@@ -1,4 +1,7 @@
 -- ============================================================================
+-- SRSE-only (scheme table removed in Analytics Advisor fork). Not in Liquibase.
+-- Kept for SRSE history / client DB2 stacks that still carry scheme.
+-- ============================================================================
 -- SRSE migration 003 — scheme.template_scenario_id (official criteria pointer)
 -- Target: DB2 (operational plane).  Run ONCE per environment that already has
 -- a scheme table.  Safe to skip on a brand-new database: Hibernate adds the

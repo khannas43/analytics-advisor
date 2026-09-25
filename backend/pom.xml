@@ -45,11 +45,20 @@
             <artifactId>spring-boot-starter-jdbc</artifactId>
         </dependency>
 
-        <!-- DB2 driver (operational plane) -->
+        <!-- Operational plane: PostgreSQL (default) + DB2 (supported) -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <dependency>
             <groupId>com.ibm.db2</groupId>
             <artifactId>jcc</artifactId>
             <version>${db2.jcc.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.liquibase</groupId>
+            <artifactId>liquibase-core</artifactId>
         </dependency>
 
         <!-- Analytical plane: PrestoDB JDBC driver (NOT Trino) -->
@@ -127,6 +136,16 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -164,6 +183,20 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.liquibase</groupId>
+                <artifactId>liquibase-maven-plugin</artifactId>
+                <version>4.27.0</version>
+                <configuration>
+                    <!-- Must match runtime classpath:db/changelog/... or Spring will re-run baseline. -->
+                    <changeLogFile>db/changelog/db.changelog-master.yaml</changeLogFile>
+                    <searchPath>${project.basedir}/src/main/resources</searchPath>
+                    <url>${liquibase.url}</url>
+                    <username>${liquibase.username}</username>
+                    <password>${liquibase.password}</password>
+                    <driver>${liquibase.driver}</driver>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.jacoco</groupId>

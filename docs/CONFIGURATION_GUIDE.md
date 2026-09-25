@@ -32,7 +32,7 @@ SRSE is a two-container application plus supporting infrastructure:
 |-----------|------------|---------|
 | **Frontend** | Next.js 16 / React 19 | Officer UI — rule builder, simulation results, analysis tab |
 | **Backend** | Java 17 / Spring Boot 3.x | Rule compiler, execution engine, metadata store, REST API |
-| **Operational plane** | DB2 + JPA | Field catalogue, column mappings, saved scenarios |
+| **Operational plane** | PostgreSQL or DB2 + JPA + Liquibase | Lakehouse registrations, analysis column metadata |
 | **Analytical plane** | PrestoDB 0.297 + Iceberg | Beneficiary count / breakdown queries (push-down SQL) |
 
 Two **data modes** switch behaviour without code changes:
@@ -54,7 +54,7 @@ Two **data modes** switch behaviour without code changes:
 | **Docker Desktop** | 4.x+ | Recommended path for local stack |
 | **Docker Compose** | v2 (bundled with Docker Desktop) | `docker compose` command |
 
-Allocate at least **8 GB RAM** to Docker. DB2 and Presto are memory-heavy; first boot can take several minutes.
+Allocate at least **8 GB RAM** to Docker. Presto is memory-heavy; first boot can take several minutes. The default operational store is **PostgreSQL 16** (fast on Apple Silicon). Optional DB2 (`docker compose --profile db2`) runs under emulation on arm64 and is slow to first-boot.
 
 ### Required (native / IDE development only)
 
@@ -441,40 +441,56 @@ source .env.client-dev
 set +a
 ```
 
-### Step 3 — Prepare DB2 schema (one-time)
+### Step 3 — Operational schema (Liquibase)
 
-In client Dev, Hibernate `ddl-auto=update` is **disabled** (Spring profile `client-dev`). The DBA must create the operational tables before first boot:
+The operational schema is **two tables** — `registered_table` and `analysis_column_metadata` — owned by Liquibase, not Hibernate. On first boot against an **empty** database, the backend applies `backend/src/main/resources/db/changelog/` automatically and Hibernate **validates** the entities against the result (`ddl-auto: validate`).
 
-- `field_catalog`
-- `field_column_mapping`
-- `scenario`
-- `scenario_scheme_tag`
-- `analysis_column_metadata`
-- `registered_table`
+**Brand-new deployment (empty PostgreSQL or DB2):** no DBA step — start the backend.
 
-Table shapes match the JPA entities under `backend/src/main/java/gov/rajasthan/smart/srse/`.
+**Upgrading a database that already has these tables** (local DB2 volume, client Dev DB2, or any environment that ran the old hand migrations): the physical schema must already match the Liquibase baseline (`001-baseline.yaml`, equivalent to [`001`](migrations/001-qualify-analysis-column-metadata.sql) + [`002`](migrations/002-add-compare-as.sql) for Analytics Advisor). **Do not** let Liquibase re-run `CREATE TABLE` on a populated database. Mark the baseline as already applied once:
 
-> **Upgrading a database that already has these tables** — client Dev *and* any local
-> stack whose DB2 volume predates the change. Run the migrations it has not had yet,
-> in order:
->
-> | | | Needed on |
-> |---|---|---|
-> | [`001-qualify-analysis-column-metadata.sql`](migrations/001-qualify-analysis-column-metadata.sql) | Keys `analysis_column_metadata` by the full catalog/schema/table/column address, and adds `registered_table` | client Dev **and** local |
-> | [`002-add-compare-as.sql`](migrations/002-add-compare-as.sql) | Adds `analysis_column_metadata.compare_as`, the per-column override for comparing columns of different types | **client Dev only** — the column is nullable, so `ddl-auto: update` adds it on local |
->
-> Do not assume `ddl-auto: update` handles it — **it cannot, and it does not say so.**
-> It adds nullable columns happily (which is how `visible` appears on its own) but DB2
-> rejects `ADD COLUMN ... NOT NULL` on an existing table, so `catalog_name` and
-> `schema_name` are skipped in silence. The backend then starts perfectly cleanly and
-> every Analysis-tab query fails at runtime with `SQLCODE=-206` (undefined column).
-> This was hit for real on a local stack, not theorised.
->
-> Two details the script explains and that are easy to get wrong: the old unique
-> constraint has a Hibernate-generated name that **differs per environment** (look it up
-> in `SYSCAT.TABCONST`), and the identifier columns must be `VARCHAR(128)`, not 255 —
-> a four-column unique key over `VARCHAR(255)` exceeds DB2's index key limit and is
-> rejected with `SQL0613N`.
+> ⚠️ **Point this at a database dedicated to Analytics Advisor.** The changelog
+> includes `002-db2-legacy-column-names`, which **renames columns**. If a
+> developer machine also runs SRSE, that product uses `SRSEDB` in the same DB2
+> container, does not use Liquibase, and expects the pre-rename names — running
+> this against it renames columns out from under a live application, and every
+> SRSE read of `analysis_column_metadata` then fails with SQLCODE=-206. This has
+> happened once already. Use a separate database (`AADB` below).
+
+```bash
+cd backend
+mvn liquibase:changelogSync \
+  -Dliquibase.url="jdbc:db2://localhost:50000/AADB" \
+  -Dliquibase.username=db2inst1 \
+  -Dliquibase.password=<password> \
+  -Dliquibase.driver=com.ibm.db2.jcc.DB2Driver
+```
+
+The Maven plugin uses `searchPath=src/main/resources` and `changeLogFile=db/changelog/db.changelog-master.yaml` so filenames recorded in `DATABASECHANGELOG` match what the running app expects. Do not point the plugin at `src/main/resources/db/...` directly — that records a different path and Liquibase will try to re-run the baseline on startup.
+
+After `changelogSync`, start the backend once: changeset `002-db2-legacy-column-names` (DB2 only) renames Hibernate-era columns `BUSINESSNAME` / `FUZZYMATCHABLE` to `business_name` / `fuzzy_matchable` when present.
+
+Use your operational JDBC URL, user, password, and driver (`org.postgresql.Driver` for PostgreSQL). After `changelogSync`, start the backend; Liquibase will record the baseline in `DATABASECHANGELOG` and **validate** must pass.
+
+The legacy SQL files under [`docs/migrations/`](migrations/) remain the historical record (especially [001's silent ddl-auto failure explanation](migrations/001-qualify-analysis-column-metadata.sql)). New environments should rely on Liquibase only.
+
+**Verify schema portability (optional, CI/local):**
+
+```bash
+SRSE_OPERATIONAL_INTEGRATION=true mvn -f backend/pom.xml test -Dtest=OperationalStoreLiquibaseIT
+```
+
+**DB2 parity (manual, off by default):** after `changelogSync` on an existing DB2 volume:
+
+```bash
+SRSE_OPERATIONAL_DB2_INTEGRATION=true \
+SRSE_OPERATIONAL_JDBC_URL=jdbc:db2://localhost:50000/AADB \
+mvn -f backend/pom.xml test -Dtest=OperationalStoreLiquibaseDb2IT
+```
+
+`SRSE_OPERATIONAL_JDBC_URL` is **required** — the test has no default, and it
+refuses outright to run against `SRSEDB`. Both safeguards exist because it
+previously defaulted to that database and rewrote its schema.
 
 ### Step 4 — Update Golden Layer field mappings
 
@@ -808,8 +824,8 @@ Client Dev sets `SRSE_AUTH_MODE=rajsewadwar`. Real SSO integration is pending (A
 
 | Profile | Used when | Key behaviour |
 |---------|-----------|---------------|
-| `local` | Docker laptop stack | `ddl-auto=update`, fast-fail Hikari (3 s) |
-| `client-dev` | On-prem deployment | No auto DDL; real DB2 schema required |
+| `local` | Docker laptop stack | Liquibase migrate + Hibernate validate; fast-fail Hikari (3 s) |
+| `client-dev` | On-prem deployment | Liquibase migrate or `changelogSync` on existing DB |
 
 Resolver selection (synthetic stub vs JPA-backed metadata) is keyed off **`DATA_MODE`**, not Spring profile.
 
@@ -822,7 +838,8 @@ Swagger:      http://localhost:8080/swagger-ui.html
 Health:       http://localhost:8080/api/health/planes
 Presto UI:    http://localhost:8081
 MinIO console:http://localhost:9011  (minioadmin / minioadmin)
-DB2:          localhost:50000  (db2inst1 / srse_local_pw)
+PostgreSQL:   localhost:5433  (srse / srse_local_pw) — default operational store (host port; container is 5432)
+DB2 (opt.):   localhost:50000  (db2inst1 / srse_local_pw) — `docker compose --profile db2`
 ```
 
 ### Support contacts (open items)

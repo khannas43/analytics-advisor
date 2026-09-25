@@ -1,0 +1,7 @@
+databaseChangeLog:
+  - include:
+      file: changes/001-baseline.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: changes/002-db2-legacy-column-names.yaml
+      relativeToChangelogFile: true

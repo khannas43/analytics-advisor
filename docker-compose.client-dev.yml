@@ -15,16 +15,14 @@ services:
     # !reset required: Compose merges depends_on lists; plain [] does not clear base deps.
     depends_on: !reset []
     environment:
-      # NOT 'local': the 'local' profile's ddl-auto=update + 3s Hikari
-      # fail-fast timeout are dev-container conveniences that would be
-      # dangerous pointed at a real on-prem DB2 schema. Field bindings come
-      # from field_column_mapping keyed by DATA_MODE (not by Spring profile),
-      # so this resolves against the real Golden Layer columns.
+      # NOT 'local': the 'local' profile's fast-fail Hikari timeout is a
+      # laptop convenience only. Schema is owned by Liquibase (not Hibernate).
       - SPRING_PROFILES_ACTIVE=client-dev
       - DATA_MODE=live
-      - SRSE_DB2_URL=${CLIENT_DB2_URL}
-      - SRSE_DB2_USER=${CLIENT_DB2_USER}
-      - SRSE_DB2_PASSWORD=${CLIENT_DB2_PASSWORD}
+      - SRSE_OPERATIONAL_JDBC_URL=${CLIENT_OPERATIONAL_JDBC_URL}
+      - SRSE_OPERATIONAL_USER=${CLIENT_OPERATIONAL_USER}
+      - SRSE_OPERATIONAL_PASSWORD=${CLIENT_OPERATIONAL_PASSWORD}
+      - SRSE_OPERATIONAL_DRIVER=${CLIENT_OPERATIONAL_DRIVER:-com.ibm.db2.jcc.DB2Driver}
       - SRSE_PRESTO_URL=${CLIENT_PRESTO_URL}
       - SRSE_PRESTO_USER=${CLIENT_PRESTO_USER}
       - SRSE_PRESTO_PASSWORD=${CLIENT_PRESTO_PASSWORD:-}
