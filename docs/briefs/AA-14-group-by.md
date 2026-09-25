@@ -47,29 +47,47 @@ is its own brief.
 ## Part 1 — The trap: a silently wrong total
 
 `SUM` and `AVG` over a `varchar` column that happens to hold numbers is the case
-to get right, and the obvious fix is the wrong one.
+to get right, and the obvious implementation is the dangerous one.
 
-Reaching for `TRY_CAST` — as the match engine does — would make
-`sum(TRY_CAST(col AS DOUBLE))` **silently skip every unparseable row**. In a
-match, a `TRY_CAST` that fails costs a row that would not have matched anyway,
-and the officer sees fewer results. In a sum it changes the answer, and there is
-nothing on screen to suggest the total is missing anything.
+`sum(TRY_CAST(col AS DOUBLE))` alone **silently skips every unparseable row**. In
+a match, a failed `TRY_CAST` costs a row that would not have matched anyway and
+the officer sees fewer results. In a sum it changes the answer, with nothing on
+screen to suggest the total is missing anything.
 
-So:
+**Decision: allow it, and report what was skipped.** Golden Layer data really
+does carry numbers in text columns, so refusing would block ordinary work — but
+the total must never travel without the count of rows it could not include.
 
-- **`SUM` / `AVG` / `MIN` / `MAX` on a non-`NUMBER` column are refused**, with a
-  message naming the column and its type and suggesting `COUNT`, or fixing the
-  type upstream. `CLAUDE.md` already takes this line for boolean and temporal
-  coercion — *better to fail loudly than answer wrongly* — and a wrong total is
-  the strongest case for it.
-- Use `SqlTypeFamily` to decide, from the live column type. Do not guess from the
-  column name.
-- `MIN` / `MAX` on `TEXT` or `TEMPORAL` are meaningful and **allowed** — they are
-  orderings, not arithmetic. Only `SUM` and `AVG` require `NUMBER`.
-- `COUNT` works on anything, including `COUNT(DISTINCT col)`.
+For every `SUM` or `AVG` over a **TEXT** column, emit a companion column:
 
-If you find a case where refusing is genuinely unhelpful, say so in the report
-rather than adding a silent cast.
+```sql
+sum(TRY_CAST(src.annual_income_total AS DOUBLE))            AS "sum_income",
+count_if(src.annual_income_total IS NOT NULL
+         AND TRY_CAST(src.annual_income_total AS DOUBLE) IS NULL)
+                                                            AS "sum_income_unparseable"
+```
+
+- **Count non-null values that failed to cast, not NULLs.** `SUM` ignores NULLs
+  in ordinary SQL and always has; an absent value is not a lost one. The number
+  that matters is "rows that held something we could not add", because that is
+  the number that makes a total wrong.
+- The companion column travels **everywhere the aggregate does** — NDJSON, CSV,
+  the grid. A total that loses its caveat on the way to a spreadsheet is the
+  failure this design exists to prevent.
+- **The UI must make a non-zero count impossible to miss** — beside the total,
+  not as one more column to scroll past. Zero can be quiet.
+- Emit the companion **only for casts that actually happened**. A `SUM` over a
+  genuinely numeric column has nothing to report and should not grow a column of
+  zeroes.
+
+**Cast only where the operation is otherwise impossible.** `SUM` and `AVG` on
+text have no meaning without a cast, so casting is the only way to honour the
+request. `MIN` and `MAX` on text **do** have a meaning — lexicographic ordering —
+so they are left uncast and unchanged. Casting them would silently redefine
+`MIN`, and `MIN('100','99')` is `'100'` as text and `99` as a number; an officer
+who wants the numeric answer needs the column typed properly upstream.
+
+`COUNT` works on anything and needs none of this.
 
 ## Part 2 — The fan-out guard now measures the wrong thing
 
@@ -133,8 +151,12 @@ matched rows and grouping it is a separate question.
 
 - Scope holds through aggregation: officer's counts differ from SuperAdmin's,
   and agree on shared groups (7.2.6, the one that matters).
-- `SUM` on a text column is refused, with the type in the message.
-- `MIN`/`MAX` on text and dates are allowed.
+- `SUM` over a text column emits the companion count, and that count is
+  correct against data containing a known number of unparseable values.
+- The companion counts non-null failures only — a column of NULLs reports zero
+  unparseable, not one per NULL.
+- No companion column appears for a `SUM` over a genuinely numeric column.
+- `MIN`/`MAX` on text stay lexicographic and uncast.
 - Aggregate with no grouping column returns one row.
 - NULL group present and labelled.
 - Grouping column unregistered or hidden → refused.
@@ -152,11 +174,13 @@ matched rows and grouping it is a separate question.
   group `beneficiary` by `district` with `count(*)`. The officer must get **one
   row, Jaipur**, and its count must equal the Jaipur row in the SuperAdmin
   result. Report both.
-- Also report what a `SUM` on a text column does, in words.
+- Also run a `SUM` over a text column with at least one unparseable value and
+  report the total alongside the unparseable count.
 
 ## Do not
 
-- Do not `TRY_CAST` inside `SUM` or `AVG`.
+- Do not emit a cast aggregate without its unparseable count.
+- Do not cast `MIN` or `MAX` — they have a meaning already.
 - Do not substitute `approx_distinct` for `COUNT(DISTINCT)` without saying so.
 - Do not relax the fan-out ceiling for grouped queries.
 - Do not add `HAVING` or expression group keys — both are worth having, neither
