@@ -6,8 +6,9 @@
 > **Q6 answered 2026-09-25:** refuse for admin actions and exports, proceed for
 > queries.
 >
-> **Still open: Q3 (tamper-evidence), Q4 (sessions), Q5 (archived log
-> readership).** Q3 is the one to raise with DoIT&C, and the one that must be
+> **All answered as of 2026-09-25.** Q3 append-only, no hash chain · Q4
+> concurrent sessions, 30-minute idle, 8-hour absolute, admin force-logout ·
+> Q5 SuperAdmin only. Recorded in `PRODUCT_PLAN.md` §7.1d and §7.3. Q3 is the one to raise with DoIT&C, and the one that must be
 > settled before 7.3.2 is built.
 
 `PRODUCT_PLAN.md` §7.3 is the last blocked section. Five questions, each with

@@ -8,10 +8,9 @@
 Capture the settled A7 event set into the audit log, with the query recorded as
 a **shape** and never as values.
 
-**Out of scope, and why:** 7.3.2 (storage sizing and retention), 7.3.3
-(tamper-evidence), 7.3.4 (viewer), 7.3.5 (export), 7.3.8 (scoped viewing). All
-of those wait on **A9**, which is still open — see Part 5, which asks you to
-make that answer cheap to apply rather than to pre-empt it.
+**Out of scope:** 7.3.2 (storage sizing and retention), 7.3.4 (viewer), 7.3.5
+(log export), 7.3.8 (scoped viewing) — later briefs, now unblocked since A9 is
+settled. 7.3.3 is settled as append-only and is covered by Part 5 here.
 
 ## What already exists
 
@@ -131,18 +130,18 @@ marker, and surface it in the health endpoint so a deployment can alert on it.
 An operator must be able to answer "was the log complete over this period?"
 without reading application logs line by line.
 
-## Part 5 — Leave A9 cheap to answer
+## Part 5 — Append-only, structurally (A9, settled)
 
-A9 (tamper-evidence) is open and may require a hash chain. Retrofitting one onto
-a populated table means backfilling every row.
+A9 is answered: **append-only at the application layer, no hash chain.**
 
-Add `prev_hash` and `row_hash` as **nullable** columns now, unused. If A9 comes
-back as "ordinary table" they cost two unused columns; if it comes back as
-"hash chain", enabling it is a code change rather than a data migration.
-
-Do **not** implement chaining now. Do not add UPDATE or DELETE paths for
-`audit_event` in any case — application-level append-only is worth having
-whatever A9 says.
+- **No UPDATE or DELETE path for `audit_event`.** Not by convention — add a
+  structural guard test in the spirit of `DecisionScenarioRoutesGuardTest`, so a
+  future convenience method that "fixes up" a row fails the build.
+- **Do not add `prev_hash` / `row_hash`.** An earlier draft of this brief asked
+  for them as insurance; that was wrong. A chain applied retroactively proves
+  nothing, because it would hash rows that could already have been altered —
+  chaining can only start from a point in time. So if A9 is ever revisited it is
+  a clean addition then, not something to leave room for now.
 
 ## Part 6 — Tests
 
@@ -170,4 +169,4 @@ whatever A9 says.
 - Do not use `renderQueryForDisplay` for audit.
 - Do not log metadata browsing.
 - Do not add an update or delete path for audit rows.
-- Do not implement the hash chain — only leave room for it.
+- Do not add a hash chain, and do not add columns for one (A9 settled).

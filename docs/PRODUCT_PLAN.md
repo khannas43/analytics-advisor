@@ -328,6 +328,32 @@ have been in a part of the hierarchy the current reader cannot see. Assumed
 **SuperAdmin only**, since a scoped reader would otherwise gain visibility
 through an archive that they never had while the user was active.
 
+### 7.1d Session policy (decision A14)
+
+**Settled:** concurrent sessions allowed, **30-minute idle timeout**, **8-hour
+absolute lifetime**, admin forced logout.
+
+| # | Activity | Type | Est |
+|---|---|---|---|
+| 7.1d.1 | ✅ 8-hour absolute lifetime — already in `SessionTokenService` (`TOKEN_TTL`), though **hardcoded**; move it to configuration | R | 0 |
+| 7.1d.2 | ✅ Admin forced logout — already works via the session version, which deactivation bumps | R | 0 |
+| 7.1d.3 | **30-minute idle timeout** — see below, this is the real work | N | 3 |
+| 7.1d.4 | Make both timeouts configurable, since government deployments often mandate specific values | N | 1 |
+
+**The idle timeout is not a config value.** Sessions are stateless JWTs, and a
+JWT cannot express "expires 30 minutes after the last request" — the token is
+already issued and the server keeps nothing. Two ways to get one:
+
+- **Short-lived access tokens plus a refresh token.** Standard, but it is a
+  second token type and a refresh endpoint, and it interacts with the MFA
+  challenge flow AA-10 just built.
+- **Server-side last-activity tracking.** Simpler to reason about and it reuses
+  the session-version machinery already there, but it puts a write on every
+  authenticated request unless throttled.
+
+Pick one deliberately when 7.1d.3 is scheduled. Both are ordinary work; neither
+is a setting.
+
 ### 7.2 Row-level data scoping — the hard part
 
 A district officer must see only their district; a taluka officer only their
@@ -383,8 +409,17 @@ with a loud alarm** when it is a query. An unrecorded export is the case the log
 exists for; an unrecorded query is a gap in a record of intent, and refusing it
 would turn a logging fault into an outage on the product's main path.
 
-**Still open: A9 (tamper-evidence), A14 (sessions), and who may read an archived
-log.** See `docs/OPEN_DECISIONS_AUDIT.md`. A9 is the one that must be settled
+**Tamper-evidence (A9, settled): append-only at the application layer.** No
+UPDATE or DELETE path for `audit_event`, ever — enforce it structurally, not by
+convention. **No hash chain.** A chain applied retroactively would prove nothing
+anyway, since it would hash rows that could already have been altered; chaining
+can only ever start from a point in time, so it is a clean future addition
+rather than something to leave room for.
+
+**Archived logs (settled): SuperAdmin only.** A deactivated user may have sat
+somewhere the current reader cannot see, so scoping alone does not answer it —
+and an archive must not hand a reader visibility they never had while the user
+was active. See `docs/OPEN_DECISIONS_AUDIT.md`. A9 is the one that must be settled
 before 7.3.2 is built.
 
 | # | Activity | Type | Est |
@@ -495,7 +530,7 @@ data if left unanswered.**
 | A6 | **DECIDED (revised): store the query SHAPE, never the bound values.** The SQL is recorded with placeholders; Aadhaar numbers, names and other typed filter values are not stored. | Keeps personal data out of the audit log entirely, so the log never becomes a second copy of the data needing the same protection. The trade, accepted: you can see *what an officer did* structurally — which tables and columns, which operators — but not the exact value they searched for. |
 | A7 | **ANSWERED (as audit Q1): log everything except metadata browsing.** Authentication, queries, exports, refusals and admin actions. See §7.3. | Settled 2026-09-25. |
 | A8 | **ANSWERED (as audit Q2): keep everything.** ~2.5M rows/year at the A7 event set; retention setting present but defaulted to never-purge. See §7.3. | Settled 2026-09-25. |
-| A9 | Is tamper-evidence required (append-only, checksummed), or is a normal table acceptable? | Government audit rules often require the former; it is much harder. |
+| A9 | **ANSWERED: append-only at the application layer.** No UPDATE or DELETE path for audit rows, ever. **No hash chain** — revisit only if a rule later demands it. | Settled 2026-09-25. Unblocks 7.3.2 onward. |
 | A10 | **DECIDED: yes, the audit log is scoped.** A district officer with log access sees entries for users within their own subtree, not other districts'. | Without this the log leaks exactly what the scoping prevents. Open sub-question: an entry written by a *state-level* user who queried one district's data — does it appear to that district's log viewer? Simplest rule is to scope by the acting user's node, not by the data they touched. |
 
 ### D. Follow-on from A2
@@ -517,5 +552,5 @@ data if left unanswered.**
 | A11 | **ANSWERED: fully standalone local accounts.** No existing directory, no SSO at this stage, access limited to a small number of users. | Build password management, reset and lockout in-house. Keep the `AuthMode` seam so SSO can be added later without touching `SecurityConfig`. |
 | A12 | **ANSWERED: yes — OTP, required, with a per-user admin toggle.** See §7.1a. Channel still open (0.5c). | Adds an enrollment flow, a verification step at login, a recovery path, and possibly an external gateway. |
 | A13 | **ANSWERED: the SuperAdmin password is supplied when the app is configured**, not defaulted in code. See §7.1b. | Bootstrap runs once, on an empty user table. A shipped default password is the single worst thing this product could do, so there must not be one. |
-| A14 | Concurrent sessions, idle timeout, forced logout. | Usually mandated in government deployments. |
+| A14 | **ANSWERED: concurrent sessions allowed, 30-minute idle timeout, 8-hour absolute lifetime, admin forced logout.** The 8 hours and forced logout already exist; **the idle timeout does not and is not free** — see §7.1d. | Settled 2026-09-25. |
 | A15 | **ANSWERED: soft delete — deactivation only. A deactivated user's audit log is archived, never removed.** See §7.1c. | A user row is never physically deleted, so audit entries keep a real author forever. |
