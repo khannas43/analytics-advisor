@@ -58,7 +58,8 @@ class UserAdminGrantScopeTest {
                 scopeAssignmentRepository,
                 scopeNodeRepository,
                 passwordEncoder,
-                authorization);
+                authorization,
+                auditService);
         admin = user(1L, "admin");
         target = user(2L, "target");
         ScopeDimension geo = new ScopeDimension("GEO", "Geo", 1);

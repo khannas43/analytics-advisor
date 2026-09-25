@@ -38,7 +38,9 @@ import java.util.Map;
                 "gov.rajasthan.smart.srse.metadata",
                 "gov.rajasthan.smart.srse.lakehouse",
                 "gov.rajasthan.smart.srse.identity",
-                "gov.rajasthan.smart.srse.scope"
+                "gov.rajasthan.smart.srse.scope",
+                "gov.rajasthan.smart.srse.otp",
+                "gov.rajasthan.smart.srse.audit"
         },
         entityManagerFactoryRef = "operationalEmf",
         transactionManagerRef = "operationalTx"
@@ -65,7 +67,9 @@ public class OperationalDataSourceConfig {
             "gov.rajasthan.smart.srse.metadata",
             "gov.rajasthan.smart.srse.lakehouse",
             "gov.rajasthan.smart.srse.identity",
-            "gov.rajasthan.smart.srse.scope"
+            "gov.rajasthan.smart.srse.scope",
+            "gov.rajasthan.smart.srse.otp",
+            "gov.rajasthan.smart.srse.audit"
     };
 
     @Bean

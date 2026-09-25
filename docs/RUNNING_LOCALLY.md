@@ -64,13 +64,17 @@ The PostgreSQL volume already carries fixtures from verification runs:
 | Account | Password | What it shows |
 |---|---|---|
 | `superadmin` | `Restored$Sup1` | Unscoped — sees all 7 districts, 200,000 rows |
-| `jaipurofficer` | `JaiOffic$1x` | Scoped to Jaipur — sees 28,571 rows, that district only |
+| `jaipurofficer` | `JaiOffic$1x` | Scoped to Jaipur — 28,571 rows, that district only. **MFA is enabled on this account**, so login returns a challenge and you read the six-digit code from the backend log (`LoggingOtpSender`). Turn MFA off from the admin user screen if it is in the way. |
 | `jaipuradmin` | `JaipurNew$1` | A **scoped admin**: manages only users inside Jaipur |
 | `sanganeruser` | `Officer$New1` | Taluka scope, for the deny-by-default case |
 
 Plus a Geography dimension with District and Taluka levels, and
 `iceberg.srse.beneficiary` registered and bound at District to the `district`
 column.
+
+Run the backend with `--srse.otp.sender=log` to see MFA without a mail or SMS
+gateway. It is the default locally and the only place the digits are ever
+written.
 
 **The clearest single demonstration:** log in as `jaipurofficer`, run a match on
 `beneficiary` keyed on `id` with `district` as a display column, and note the row

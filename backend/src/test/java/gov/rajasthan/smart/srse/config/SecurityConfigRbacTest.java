@@ -37,6 +37,8 @@ import java.util.Optional;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import java.util.UUID;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -254,6 +256,13 @@ class SecurityConfigRbacTest {
         mockMvc.perform(get("/api/admin/connections")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void mfaChallengeUuidDoesNotAuthenticateOfficerEndpoint() throws Exception {
+        mockMvc.perform(get("/api/analysis/column-metadata")
+                        .header("Authorization", "Bearer " + UUID.randomUUID()))
+                .andExpect(status().isForbidden());
     }
 
     @Test

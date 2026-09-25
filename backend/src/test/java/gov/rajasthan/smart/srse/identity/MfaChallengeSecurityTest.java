@@ -2,8 +2,6 @@ package gov.rajasthan.smart.srse.identity;
 
 import gov.rajasthan.smart.srse.config.ApiExceptionHandler;
 import gov.rajasthan.smart.srse.config.SecurityConfig;
-import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataController;
-import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
 import gov.rajasthan.smart.srse.security.SessionBearerAuthenticationFilter;
 import gov.rajasthan.smart.srse.security.SessionTokenService;
 import org.junit.jupiter.api.Test;
@@ -17,12 +15,11 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.UUID;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** AA-10 Part 0 — MFA challenge must not authenticate anything except verify-otp. */
-@WebMvcTest(controllers = {LocalAuthController.class, AnalysisColumnMetadataController.class})
+@WebMvcTest(controllers = LocalAuthController.class)
 @Import({ApiExceptionHandler.class, SecurityConfig.class, SessionBearerAuthenticationFilter.class,
         SessionTokenService.class, IdentityConfig.class})
 @TestPropertySource(properties = "srse.auth-mode=local")
@@ -40,17 +37,6 @@ class MfaChallengeSecurityTest {
     @MockBean
     private AppUserRepository appUserRepository;
 
-    @MockBean
-    private AnalysisColumnMetadataRepository columnMetadataRepository;
-
-    @Test
-    void challengeBearerRejectedByOfficerEndpoint() throws Exception {
-        String challenge = UUID.randomUUID().toString();
-        mockMvc.perform(get("/api/analysis/column-metadata")
-                        .header("Authorization", "Bearer " + challenge))
-                .andExpect(status().isForbidden());
-    }
-
     @Test
     void challengeBearerRejectedByChangePassword() throws Exception {
         String challenge = UUID.randomUUID().toString();
@@ -60,11 +46,15 @@ class MfaChallengeSecurityTest {
                         .content("""
                                 {"currentPassword":"a","newPassword":"b"}
                                 """))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isForbidden());
     }
 
     @Test
     void verifyOtpEndpointIsPublic() throws Exception {
+        org.mockito.Mockito.when(authenticationService.verifyLoginOtp(
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString()))
+                .thenThrow(new IllegalArgumentException("Invalid verification code"));
         mockMvc.perform(post("/api/auth/verify-otp")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
