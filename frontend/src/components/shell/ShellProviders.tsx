@@ -28,34 +28,56 @@ const ShellContext = createContext<ShellContextValue | null>(null);
 
 const THEME_KEY = "aa-theme";
 const LANG_KEY = "aa-lang";
+const SIDEBAR_KEY = "aa-sidebar-collapsed";
+const MOBILE_BREAKPOINT_PX = 767;
+
+function readStoredTheme(): ThemeMode {
+  if (typeof window === "undefined") {
+    return "dark";
+  }
+  const stored = localStorage.getItem(THEME_KEY) as ThemeMode | null;
+  if (stored === "light" || stored === "dark") {
+    return stored;
+  }
+  return "dark";
+}
+
+function readStoredLang(): I18nLang {
+  if (typeof window === "undefined") {
+    return "en";
+  }
+  const stored = localStorage.getItem(LANG_KEY) as I18nLang | null;
+  if (stored === "en" || stored === "hi") {
+    return stored;
+  }
+  return "en";
+}
+
+function readInitialSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  if (window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT_PX}px)`).matches) {
+    return true;
+  }
+  return sessionStorage.getItem(SIDEBAR_KEY) === "1";
+}
 
 export function ShellProviders({ children }: Readonly<{ children: ReactNode }>) {
-  const [theme, setTheme] = useState<ThemeMode>("dark");
-  const [lang, setLang] = useState<I18nLang>("en");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
+  const [theme, setTheme] = useState<ThemeMode>(readStoredTheme);
+  const [lang, setLang] = useState<I18nLang>(readStoredLang);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialSidebarCollapsed);
 
   useEffect(() => {
-    const storedTheme = localStorage.getItem(THEME_KEY) as ThemeMode | null;
-    const storedLang = localStorage.getItem(LANG_KEY) as I18nLang | null;
-    if (storedTheme === "light" || storedTheme === "dark") {
-      setTheme(storedTheme);
-    }
-    if (storedLang === "en" || storedLang === "hi") {
-      setLang(storedLang);
-    }
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) {
-      return;
-    }
     document.documentElement.setAttribute("data-theme", theme);
     document.documentElement.setAttribute("data-lang", lang);
     localStorage.setItem(THEME_KEY, theme);
     localStorage.setItem(LANG_KEY, lang);
-  }, [theme, lang, hydrated]);
+  }, [theme, lang]);
+
+  useEffect(() => {
+    sessionStorage.setItem(SIDEBAR_KEY, sidebarCollapsed ? "1" : "0");
+  }, [sidebarCollapsed]);
 
   const toggleTheme = useCallback(() => {
     setTheme((t) => (t === "dark" ? "light" : "dark"));

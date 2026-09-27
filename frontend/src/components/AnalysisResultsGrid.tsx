@@ -14,6 +14,7 @@ import {
 } from "@tanstack/react-table";
 import { MultiSelectDropdown } from "@/components/MultiSelectDropdown";
 import { ChartsSection } from "@/components/ChartsSection";
+import { useShell } from "@/components/shell/ShellProviders";
 
 type Row = Record<string, unknown>;
 
@@ -81,16 +82,18 @@ function downloadCsv(rows: Row[], visibleIds: string[], labelFor: (id: string) =
   URL.revokeObjectURL(url);
 }
 
-const filterInputStyle: CSSProperties = {
-  width: "100%",
-  padding: "0.25rem 0.4rem",
-  fontSize: "0.78rem",
-  fontWeight: 400,
-  border: "1px solid var(--srse-border-strong)",
-  borderRadius: "var(--srse-radius-sm)",
-  background: "var(--srse-surface)",
-  marginTop: "0.35rem",
-};
+function filterInputStyle(proto: boolean): CSSProperties {
+  return {
+    width: "100%",
+    padding: "0.25rem 0.4rem",
+    fontSize: "0.78rem",
+    fontWeight: 400,
+    border: proto ? "1px solid var(--border-strong, var(--border))" : "1px solid var(--srse-border-strong)",
+    borderRadius: proto ? "var(--radius-sm, 6px)" : "var(--srse-radius-sm)",
+    background: proto ? "var(--surface)" : "var(--srse-surface)",
+    marginTop: "0.35rem",
+  };
+}
 
 type AnalysisResultsGridProps = Readonly<{
   columns: string[];
@@ -119,7 +122,12 @@ type AnalysisResultsGridProps = Readonly<{
   columnLabels?: Record<string, string>;
   /** Shown near full-result CSV download (e.g. multi-target all-or-nothing export). */
   fullCsvDownloadNote?: string;
+  appearance?: "legacy" | "prototype";
 }>;
+
+function uiClass(appearance: "legacy" | "prototype" | undefined, legacy: string, proto: string): string {
+  return appearance === "prototype" ? proto : legacy;
+}
 
 function sortIndicator(sorted: false | "asc" | "desc"): string {
   if (sorted === "asc") return "▲";
@@ -294,8 +302,14 @@ export function AnalysisResultsGrid({
   onDedupToggle,
   columnLabels,
   fullCsvDownloadNote,
+  appearance = "legacy",
 }: AnalysisResultsGridProps) {
+  const { t } = useShell();
+  const proto = appearance === "prototype";
   const labelFor = (id: string) => columnLabels?.[id] ?? prettify(id);
+  const muted = uiClass(appearance, "srse-text-muted", "text-muted");
+  const borderVar = proto ? "var(--border)" : "var(--srse-border)";
+  const radiusSm = proto ? "var(--radius-sm, 6px)" : "var(--srse-radius-sm)";
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [visibleColumnIds, setVisibleColumnIds] = useState<string[]>([]);
@@ -383,24 +397,35 @@ export function AnalysisResultsGrid({
   const pageCount = table.getPageCount();
   const { pageIndex, pageSize } = table.getState().pagination;
 
+  const titleLabel = proto ? t("lblQueryResults") : "Match results";
+
   return (
     <>
-    <section className="srse-card" style={{ width: "100%" }}>
-      <div
-        style={{
+    <section className={proto ? "section" : "srse-card"} style={{ width: "100%", marginBottom: proto ? 0 : undefined }}>
+      <div className={proto ? "results-toolbar row" : undefined} style={proto ? undefined : {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
           flexWrap: "wrap",
           gap: "0.75rem",
           marginBottom: "0.75rem",
-        }}
-      >
-        <div>
-          <h2 className="srse-card-title" style={{ margin: 0 }}>
-            Match results
-          </h2>
-          <span className="srse-text-muted" style={{ fontSize: "0.85rem" }}>
+        }}>
+        <div className={proto ? "row" : undefined} style={proto ? { gap: 10, alignItems: "center" } : undefined}>
+          <h4 style={{ margin: 0 }}>{titleLabel}{" "}
+            {(rows.length > 0 || totalRows != null) && (
+              <span className="badge">
+                <MatchRowCountCaption
+                  rowsLength={rows.length}
+                  streaming={!!streaming}
+                  totalRows={totalRows}
+                  totalRowsIsPartial={totalRowsIsPartial}
+                  tooManyToDisplay={tooManyToDisplay}
+                />
+              </span>
+            )}
+          </h4>
+          {!proto && (
+          <span className={muted} style={{ fontSize: "0.85rem", display: "block" }}>
             <MatchRowCountCaption
               rowsLength={rows.length}
               streaming={!!streaming}
@@ -409,12 +434,13 @@ export function AnalysisResultsGrid({
               tooManyToDisplay={tooManyToDisplay}
             />
           </span>
+          )}
         </div>
         {rows.length > 0 && !tooManyToDisplay && (
-          <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap" }}>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
             {dedupAvailable && (
               <label
-                className="srse-checkbox-label"
+                className={proto ? "checkbox-row" : "srse-checkbox-label"}
                 htmlFor="hide-duplicate-records"
                 title={
                   dedupDisabledReason
@@ -424,6 +450,7 @@ export function AnalysisResultsGrid({
                 <input
                   id="hide-duplicate-records"
                   type="checkbox"
+                  aria-label="Hide duplicate records"
                   checked={dedupEnabled && !dedupDisabledReason}
                   disabled={Boolean(dedupDisabledReason) || streaming}
                   onChange={(e) => onDedupToggle(e.target.checked)}
@@ -442,13 +469,20 @@ export function AnalysisResultsGrid({
             />
             <button
               type="button"
-              className="srse-btn srse-btn-sm"
+              className={proto ? "btn secondary sm" : "srse-btn srse-btn-sm"}
               onClick={() => downloadCsv(filteredSortedRows, [...effectiveVisibleIds], labelFor)}
               disabled={streaming}
               title={streaming ? "Wait for the match to finish loading before exporting" : undefined}
             >
-              ⬇ Download CSV
+              ⬇ CSV
             </button>
+            {onDownloadFullExport && proto && (
+              <>
+                <button type="button" className="btn sm" disabled={streaming} onClick={() => void onDownloadFullExport("xlsx")}>⬇ Excel</button>
+                <button type="button" className="btn secondary sm" disabled={streaming} onClick={() => void onDownloadFullExport("json")}>⬇ JSON</button>
+                <button type="button" className="btn secondary sm" disabled={streaming} onClick={() => void onDownloadFullExport("xml")}>⬇ XML</button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -466,13 +500,13 @@ export function AnalysisResultsGrid({
       )}
 
       {!tooManyToDisplay && rows.length === 0 ? (
-        <p className="srse-text-muted">No matching rows. Run a match to see results.</p>
+        <p className={muted}>{t("msgNoMatchRows")}</p>
       ) : null}
 
       {!tooManyToDisplay && rows.length > 0 && (
         <>
-          <div style={{ overflowX: "auto" }}>
-            <table className="srse-table">
+          <div className={proto ? "results-scroll" : undefined} style={proto ? undefined : { overflowX: "auto" }}>
+            <table className={proto ? "data-table" : "srse-table"}>
               <thead>
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
@@ -503,7 +537,7 @@ export function AnalysisResultsGrid({
                           value={(header.column.getFilterValue() as string) ?? ""}
                           onChange={(e) => header.column.setFilterValue(e.target.value)}
                           placeholder="filter…"
-                          style={filterInputStyle}
+                          style={filterInputStyle(proto)}
                           onClick={(e) => e.stopPropagation()}
                           aria-label={`Filter ${String(header.column.columnDef.header)}`}
                         />
@@ -525,7 +559,7 @@ export function AnalysisResultsGrid({
                 ))}
                 {table.getRowModel().rows.length === 0 && (
                   <tr>
-                    <td colSpan={table.getVisibleFlatColumns().length} className="srse-text-muted">
+                    <td colSpan={table.getVisibleFlatColumns().length} className={muted}>
                       No rows match the current filters.
                     </td>
                   </tr>
@@ -544,18 +578,16 @@ export function AnalysisResultsGrid({
               marginTop: "0.85rem",
             }}
           >
-            <span className="srse-text-muted">
-              {filteredSortedRows.length} row{filteredSortedRows.length === 1 ? "" : "s"}
-              {filteredSortedRows.length !== rows.length ? ` (of ${rows.length})` : ""}
+            <span className={muted}>
+              {t("lblShowing")} {filteredSortedRows.length} {t("lblOf")} {rows.length} {t("lblTotalRows")}
             </span>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-              <label htmlFor="rows-per-page" style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.85rem" }}>
-                <span>Rows per page</span>
+            <div className="row" style={{ gap: "0.6rem" }}>
+              <label htmlFor="rows-per-page" className="row" style={{ gap: "0.4rem", fontSize: "0.85rem" }}>
+                <span>{t("lblRowsPerPage")}</span>
                 <select
                   id="rows-per-page"
                   value={pageSize}
                   onChange={(e) => table.setPageSize(Number(e.target.value))}
-                  className="srse-select"
                 >
                   {PAGE_SIZE_OPTIONS.map((size) => (
                     <option key={size} value={size}>
@@ -566,38 +598,22 @@ export function AnalysisResultsGrid({
               </label>
               <button
                 type="button"
-                className="srse-btn srse-btn-ghost srse-btn-sm"
-                onClick={() => table.setPageIndex(0)}
-                disabled={!table.getCanPreviousPage()}
-              >
-                «
-              </button>
-              <button
-                type="button"
-                className="srse-btn srse-btn-ghost srse-btn-sm"
+                className={proto ? "btn secondary sm" : "srse-btn srse-btn-ghost srse-btn-sm"}
                 onClick={() => table.previousPage()}
                 disabled={!table.getCanPreviousPage()}
               >
-                ‹ Prev
+                {t("btnPrev")}
               </button>
-              <span className="srse-text-muted">
-                Page {pageCount === 0 ? 0 : pageIndex + 1} of {pageCount}
+              <span className={muted}>
+                {t("lblPage")} {pageCount === 0 ? 0 : pageIndex + 1} {t("lblOf")} {pageCount}
               </span>
               <button
                 type="button"
-                className="srse-btn srse-btn-ghost srse-btn-sm"
+                className={proto ? "btn secondary sm" : "srse-btn srse-btn-ghost srse-btn-sm"}
                 onClick={() => table.nextPage()}
                 disabled={!table.getCanNextPage()}
               >
-                Next ›
-              </button>
-              <button
-                type="button"
-                className="srse-btn srse-btn-ghost srse-btn-sm"
-                onClick={() => table.setPageIndex(pageCount - 1)}
-                disabled={!table.getCanNextPage()}
-              >
-                »
+                {t("btnNext")}
               </button>
             </div>
           </div>
@@ -605,6 +621,7 @@ export function AnalysisResultsGrid({
       )}
 
       <div style={{ marginTop: "1rem" }}>
+        {!proto && (
         <button
           type="button"
           className="srse-btn srse-btn-ghost srse-btn-sm"
@@ -612,14 +629,15 @@ export function AnalysisResultsGrid({
         >
           {showSql ? "▾" : "▸"} Show generated SQL
         </button>
-        {showSql && (
+        )}
+        {showSql && !proto && (
           <pre
             style={{
               marginTop: "0.5rem",
               padding: "0.75rem",
               background: "var(--srse-surface-muted, #f5f5f5)",
-              border: "1px solid var(--srse-border)",
-              borderRadius: "var(--srse-radius-sm)",
+              border: `1px solid ${borderVar}`,
+              borderRadius: radiusSm,
               fontSize: "0.8rem",
               overflowX: "auto",
               whiteSpace: "pre-wrap",
@@ -628,6 +646,12 @@ export function AnalysisResultsGrid({
           >
             {sql}
           </pre>
+        )}
+        {proto && sql && (
+          <p className="desc" style={{ fontFamily: "var(--font-mono)", fontSize: 12, marginTop: 8 }}>
+            {sql.slice(0, 240)}
+            {sql.length > 240 ? "…" : ""}
+          </p>
         )}
       </div>
     </section>

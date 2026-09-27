@@ -17,16 +17,29 @@ public final class LakehouseLayers {
     private LakehouseLayers() {
     }
 
-    /** Required layer for register / updateLayer — rejects null/blank. */
+    /** Nonblank layer tag for filters and explicit admin input — rejects null/blank. */
     public static String normalise(String layer) {
         if (layer == null || layer.isBlank()) {
             throw new IllegalArgumentException(
-                    "Layer is required (e.g. BRONZE, SILVER, GOLD, or another display tag)");
+                    "Layer tag cannot be blank when provided (e.g. BRONZE, SILVER, GOLD)");
         }
         String trimmed = layer.trim();
         if (UNTAGGED.equalsIgnoreCase(trimmed)) {
             throw new IllegalArgumentException(
                     UNTAGGED + " is reserved for legacy untagged registrations — choose another tag");
+        }
+        return trimmed.toUpperCase();
+    }
+
+    /** Blank → {@code null} stored tag; rejects reserved {@link #UNTAGGED}. */
+    public static String normaliseOptional(String layer) {
+        if (layer == null || layer.isBlank()) {
+            return null;
+        }
+        String trimmed = layer.trim();
+        if (UNTAGGED.equalsIgnoreCase(trimmed)) {
+            throw new IllegalArgumentException(
+                    UNTAGGED + " is reserved for untagged registrations — choose another tag");
         }
         return trimmed.toUpperCase();
     }

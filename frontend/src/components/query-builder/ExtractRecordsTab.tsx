@@ -19,13 +19,8 @@ import {
   listAnalysisTableGroups,
   listAnalysisSchemas,
   listAnalysisTables,
-  fetchAnalysisLimits,
   runRecordMatchStream,
-  type AggregateFunction,
-  type AggregateSpecWire,
-  type DisplayColumn,
   type JoinType,
-  type MatchCriterion,
   type PredicateSpecWire,
   type RecordMatchRequest,
   type RegisteredColumn,
@@ -33,6 +28,9 @@ import {
   type TableRef,
 } from "@/lib/analysisApi";
 import { useQueryResultsStore } from "@/lib/queryResultsStore";
+import { useShell } from "@/components/shell/ShellProviders";
+import { buildExtractRequest } from "@/lib/queryBuilderRequestBuild";
+import { useQueryBuilderPipeline } from "@/lib/queryBuilderPipelineStore";
 
 const REGISTRY_FETCHERS: CascadeFetchers = {
   listSourceSystems: listAnalysisSourceSystems,
@@ -64,84 +62,63 @@ const RULE_OPS: { value: RuleOperator; label: string; needsValue: boolean }[] = 
 const MAX_DISPLAYED_ROWS = 10000;
 const MAX_ROWS_TO_PARSE = 200000;
 
-function parseRuleValue(raw: string): string | number {
-  const trimmed = raw.trim();
-  if (trimmed === "") {
-    return trimmed;
-  }
-  const asNum = Number(trimmed);
-  if (!Number.isNaN(asNum) && /^-?\d+(\.\d+)?$/.test(trimmed)) {
-    return asNum;
-  }
-  return trimmed;
-}
-
-function buildRuleSpec(
-  ref: TableRef,
-  column: string,
-  operator: RuleOperator,
-  valueRaw: string,
-): PredicateSpecWire | null {
-  if (!column) {
-    return null;
-  }
-  const opMeta = RULE_OPS.find((o) => o.value === operator);
-  if (!opMeta) {
-    return null;
-  }
-  const node: PredicateSpecWire["root"] = {
-    type: "PREDICATE",
-    column: {
-      table: { catalog: ref.catalog, schema: ref.schema, table: ref.table },
-      column,
-    },
-    operator,
-  };
-  if (opMeta.needsValue) {
-    (node as { value?: unknown }).value = parseRuleValue(valueRaw);
-  }
-  return { root: node };
-}
-
 type ExtractRecordsTabProps = {
-  dualMode?: boolean;
-  onExtractComplete?: () => void;
   onGoReport?: () => void;
 };
 
-export default function ExtractRecordsTab({
-  dualMode = true,
-  onExtractComplete,
-  onGoReport,
-}: Readonly<ExtractRecordsTabProps>) {
+export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecordsTabProps>) {
+  const dualMode = useQueryBuilderPipeline((s) => s.dualMode);
+  const extract = useQueryBuilderPipeline((s) => s.extract);
+  const patchExtract = useQueryBuilderPipeline((s) => s.patchExtract);
+  const commitExtractSuccess = useQueryBuilderPipeline((s) => s.commitExtractSuccess);
   const mode: "single" | "join" = dualMode ? "join" : "single";
-  const [sourceRef, setSourceRef] = useState<CascadeValue>(EMPTY_CASCADE);
-  const [targetRef, setTargetRef] = useState<CascadeValue>(EMPTY_CASCADE);
+
+  const {
+    sourceRef,
+    targetRef,
+    displayCols,
+    joinKeySource,
+    joinKeyTarget,
+    joinType,
+    ruleColumn,
+    ruleOp,
+    ruleValue,
+    useValuePicker,
+    valuePickerSpec,
+    fuzzyRuleEnabled,
+    fuzzyRuleName,
+    fuzzyRuleThreshold,
+    fuzzyIgnoreSpaces,
+    fuzzyCaseSensitive,
+    targetRuleColumn,
+    targetRuleOp,
+    targetRuleValue,
+  } = extract;
+
+  const setSourceRef = (v: CascadeValue) => patchExtract({ sourceRef: v });
+  const setTargetRef = (v: CascadeValue) => patchExtract({ targetRef: v });
+  const setJoinKeySource = (v: string) => patchExtract({ joinKeySource: v });
+  const setJoinKeyTarget = (v: string) => patchExtract({ joinKeyTarget: v });
+  const setJoinType = (v: JoinType) => patchExtract({ joinType: v });
+  const setRuleColumn = (v: string) => patchExtract({ ruleColumn: v });
+  const setRuleOp = (v: RuleOperator) => patchExtract({ ruleOp: v });
+  const setRuleValue = (v: string) => patchExtract({ ruleValue: v });
+  const setUseValuePicker = (v: boolean) => patchExtract({ useValuePicker: v });
+  const setValuePickerSpec = useCallback(
+    (v: PredicateSpecWire | null) => patchExtract({ valuePickerSpec: v }),
+    [patchExtract],
+  );
+  const setFuzzyRuleEnabled = (v: boolean) => patchExtract({ fuzzyRuleEnabled: v });
+  const setFuzzyRuleName = (v: string) => patchExtract({ fuzzyRuleName: v });
+  const setFuzzyRuleThreshold = (v: number) => patchExtract({ fuzzyRuleThreshold: v });
+  const setFuzzyIgnoreSpaces = (v: boolean) => patchExtract({ fuzzyIgnoreSpaces: v });
+  const setFuzzyCaseSensitive = (v: boolean) => patchExtract({ fuzzyCaseSensitive: v });
+  const setTargetRuleColumn = (v: string) => patchExtract({ targetRuleColumn: v });
+  const setTargetRuleOp = (v: RuleOperator) => patchExtract({ targetRuleOp: v });
+  const setTargetRuleValue = (v: string) => patchExtract({ targetRuleValue: v });
+
   const [sourceColumns, setSourceColumns] = useState<RegisteredColumn[]>([]);
   const [targetColumns, setTargetColumns] = useState<RegisteredColumn[]>([]);
-  const [displayCols, setDisplayCols] = useState<string[]>([]);
-  const [joinKeySource, setJoinKeySource] = useState("");
-  const [joinKeyTarget, setJoinKeyTarget] = useState("");
-  const [joinType, setJoinType] = useState<JoinType>("INNER");
-  const [ruleColumn, setRuleColumn] = useState("");
-  const [ruleOp, setRuleOp] = useState<RuleOperator>("GT");
-  const [ruleValue, setRuleValue] = useState("");
-  const [useValuePicker, setUseValuePicker] = useState(false);
-  const [valuePickerSpec, setValuePickerSpec] = useState<PredicateSpecWire | null>(null);
-  const [fuzzyRuleEnabled, setFuzzyRuleEnabled] = useState(false);
-  const [fuzzyRuleName, setFuzzyRuleName] = useState("");
-  const [fuzzyRuleThreshold, setFuzzyRuleThreshold] = useState(80);
-  const [fuzzyIgnoreSpaces, setFuzzyIgnoreSpaces] = useState(false);
-  const [fuzzyCaseSensitive, setFuzzyCaseSensitive] = useState(false);
-  const [targetRuleColumn, setTargetRuleColumn] = useState("");
-  const [targetRuleOp, setTargetRuleOp] = useState<RuleOperator>("GT");
-  const [targetRuleValue, setTargetRuleValue] = useState("");
-  const [groupEnabled, setGroupEnabled] = useState(false);
-  const [groupByCol, setGroupByCol] = useState("");
-  const [aggregateFn, setAggregateFn] = useState<AggregateFunction>("COUNT");
-  const [aggregateCol, setAggregateCol] = useState("");
-  const [countDistinct, setCountDistinct] = useState(false);
-  const [maxAggregates, setMaxAggregates] = useState(4);
 
   const [sqlPreview, setSqlPreview] = useState<string | null>(null);
   const [sqlPreviewError, setSqlPreviewError] = useState<string | null>(null);
@@ -184,146 +161,81 @@ export default function ExtractRecordsTab({
   const pendingRowsRef = useRef<Record<string, unknown>[]>([]);
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rowsSeenRef = useRef(0);
+  const streamColumnsRef = useRef<string[]>([]);
+  const carriedRowsRef = useRef<Record<string, unknown>[]>([]);
+  const lastSqlRef = useRef("");
   const setLastResult = useQueryResultsStore((s) => s.setLastResult);
 
-  useEffect(() => {
-    if (matchStatus !== "ok" || matchColumns.length === 0 || matchRows.length === 0) {
+  function publishExtractResult(
+    columns: string[],
+    rows: Record<string, unknown>[],
+    totalRows: number | null,
+  ) {
+    if (columns.length === 0 || rows.length === 0) {
       return;
     }
-    setLastResult({
-      columns: matchColumns,
-      rows: matchRows,
-      totalRows: matchTotalRows,
-      source: "extract",
+    setLastResult({ columns, rows, totalRows, source: "extract" });
+  }
+
+  const sourceRefKey = `${sourceRef.catalog}.${sourceRef.schema}.${sourceRef.table}`;
+  const targetRefKey = `${targetRef.catalog}.${targetRef.schema}.${targetRef.table}`;
+
+  useEffect(() => {
+    if (!isCascadeComplete(sourceRef)) {
+      return undefined;
+    }
+    let cancelled = false;
+    listAnalysisColumns(sourceRef).then((cols) => {
+      if (!cancelled) setSourceColumns(cols);
     });
-    onExtractComplete?.();
-  }, [matchStatus, matchColumns, matchRows, matchTotalRows, setLastResult, onExtractComplete]);
-
-  const loadColumns = useCallback(async (ref: CascadeValue, which: "source" | "target") => {
-    if (!isCascadeComplete(ref)) {
-      if (which === "source") {
-        setSourceColumns([]);
-      } else {
-        setTargetColumns([]);
-      }
-      return;
-    }
-    const cols = await listAnalysisColumns(ref);
-    if (which === "source") {
-      setSourceColumns(cols);
-    } else {
-      setTargetColumns(cols);
-    }
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceRefKey, sourceRef]);
 
   useEffect(() => {
-    void loadColumns(sourceRef, "source");
-  }, [sourceRef, loadColumns]);
-
-  useEffect(() => {
-    fetchAnalysisLimits()
-      .then((l) => setMaxAggregates(l.maxAggregates))
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (mode === "join") {
-      void loadColumns(targetRef, "target");
+    if (mode !== "join" || !isCascadeComplete(targetRef)) {
+      return undefined;
     }
-  }, [targetRef, mode, loadColumns]);
+    let cancelled = false;
+    listAnalysisColumns(targetRef).then((cols) => {
+      if (!cancelled) setTargetColumns(cols);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, targetRefKey, targetRef]);
+
+  const sourceColumnsDisplay = isCascadeComplete(sourceRef) ? sourceColumns : [];
+
+  const valuePickerTable = useMemo(
+    (): TableRef => ({
+      catalog: sourceRef.catalog,
+      schema: sourceRef.schema,
+      table: sourceRef.table,
+    }),
+    [sourceRef.catalog, sourceRef.schema, sourceRef.table],
+  );
+  const targetColumnsDisplay = mode === "join" && isCascadeComplete(targetRef) ? targetColumns : [];
 
   function toggleDisplayColumn(name: string) {
-    setDisplayCols((prev) =>
-      prev.includes(name) ? prev.filter((c) => c !== name) : [...prev, name],
-    );
+    const next = displayCols.includes(name)
+      ? displayCols.filter((c) => c !== name)
+      : [...displayCols, name];
+    patchExtract({ displayCols: next });
   }
 
   function buildRequest(): RecordMatchRequest | null {
-    if (!isCascadeComplete(sourceRef)) {
-      return null;
-    }
-    const ref = sourceRef as TableRef;
-    const displays: DisplayColumn[] = displayCols.map((column) => ({ ...ref, column }));
-    let sourceRules = buildRuleSpec(ref, ruleColumn, ruleOp, ruleValue);
-    if (useValuePicker && valuePickerSpec) {
-      sourceRules = valuePickerSpec;
-    } else if (fuzzyRuleEnabled && ruleColumn && fuzzyRuleName.trim()) {
-      sourceRules = {
-        root: {
-          type: "PREDICATE",
-          column: {
-            table: { catalog: ref.catalog, schema: ref.schema, table: ref.table },
-            column: ruleColumn,
-          },
-          operator: "FUZZY_MATCH",
-          value: [
-            fuzzyRuleName.trim(),
-            fuzzyRuleThreshold,
-            { ignoreSpaces: fuzzyIgnoreSpaces, caseSensitive: fuzzyCaseSensitive },
-          ],
-        },
-      };
-    }
-    const groupByColumns: DisplayColumn[] =
-      groupEnabled && groupByCol ? [{ ...ref, column: groupByCol }] : [];
-    const aggregates: AggregateSpecWire[] = [];
-    if (groupEnabled) {
-      if (aggregateFn === "COUNT" && !aggregateCol) {
-        aggregates.push({ function: "COUNT", distinct: countDistinct });
-      } else if (aggregateCol) {
-        aggregates.push({
-          function: aggregateFn,
-          column: { ...ref, column: aggregateCol },
-          distinct: aggregateFn === "COUNT" ? countDistinct : false,
-        });
-      }
-    }
-    const grouped = groupByColumns.length > 0 || aggregates.length > 0;
-    if (!grouped && displays.length === 0) {
-      return null;
-    }
+    return buildExtractRequest(dualMode, extract);
+  }
 
-    if (mode === "single") {
-      return {
-        sourceCriteria: [],
-        targetCriteria: [],
-        sourceDisplayColumns: grouped ? [] : displays,
-        highlightDuplicates: false,
-        dedup: null,
-        sourceRules: sourceRules ?? undefined,
-        singleSource: true,
-        groupByColumns: grouped ? groupByColumns : undefined,
-        aggregates: grouped ? aggregates : undefined,
-      };
-    }
-
-    if (!isCascadeComplete(targetRef) || !joinKeySource || !joinKeyTarget) {
-      return null;
-    }
-    const tgt = targetRef as TableRef;
-    const sourceCriteria: MatchCriterion[] = [
-      { ...ref, column: joinKeySource, fuzzyThresholdPercent: null },
-    ];
-    const targetCriteria: MatchCriterion[] = [
-      { ...tgt, column: joinKeyTarget, fuzzyThresholdPercent: null },
-    ];
-    const targetRules = buildRuleSpec(tgt, targetRuleColumn, targetRuleOp, targetRuleValue);
-    const req: RecordMatchRequest = {
-      sourceCriteria,
-      targetCriteria,
-      sourceDisplayColumns: grouped ? [] : displays,
-      highlightDuplicates: false,
-      dedup: null,
-      sourceRules: sourceRules ?? undefined,
-      targetRules: targetRules ?? undefined,
-      singleSource: false,
-      groupByColumns: grouped ? groupByColumns : undefined,
-      aggregates: grouped ? aggregates : undefined,
-    };
-    if (joinType !== "INNER") {
-      req.joinType = joinType;
-    }
-    return req;
+  function commitSuccess(req: RecordMatchRequest, totalRows: number | null, sql: string) {
+    commitExtractSuccess(req, {
+      columns: streamColumnsRef.current,
+      rows: carriedRowsRef.current,
+      totalRows,
+      sql,
+    });
   }
 
   function flushPendingRows() {
@@ -346,6 +258,8 @@ export default function ExtractRecordsTab({
     }
     rowsSeenRef.current = 0;
     pendingRowsRef.current = [];
+    streamColumnsRef.current = [];
+    carriedRowsRef.current = [];
     setMatchStatus("loading");
     setMatchError(null);
     setMatchColumns([]);
@@ -364,13 +278,18 @@ export default function ExtractRecordsTab({
         req,
         {
           onMeta: ({ columns, sql }) => {
+            streamColumnsRef.current = columns;
             setMatchColumns(columns);
             setMatchSql(sql);
+            lastSqlRef.current = sql;
           },
           onRow: (row) => {
             rowsSeenRef.current += 1;
             if (rowsSeenRef.current <= MAX_ROWS_TO_PARSE) {
               pendingRowsRef.current.push(row);
+            }
+            if (carriedRowsRef.current.length < MAX_DISPLAYED_ROWS) {
+              carriedRowsRef.current.push(row);
             }
             if (rowsSeenRef.current === MAX_ROWS_TO_PARSE + 1) {
               setMatchCountIsPartial(true);
@@ -386,6 +305,8 @@ export default function ExtractRecordsTab({
             flushPendingRows();
             setMatchTotalRows(totalRows);
             setMatchStatus("ok");
+            publishExtractResult(streamColumnsRef.current, carriedRowsRef.current, totalRows);
+            commitSuccess(req, totalRows, lastSqlRef.current);
           },
           onError: (message) => {
             setMatchError(message);
@@ -402,6 +323,12 @@ export default function ExtractRecordsTab({
       if (controller.signal.aborted && rowsSeenRef.current > MAX_ROWS_TO_PARSE) {
         flushPendingRows();
         setMatchStatus("ok");
+        publishExtractResult(
+          streamColumnsRef.current,
+          carriedRowsRef.current,
+          rowsSeenRef.current,
+        );
+        commitSuccess(req, rowsSeenRef.current, lastSqlRef.current);
       } else {
         setMatchError(err instanceof Error ? err.message : String(err));
         setMatchStatus("error");
@@ -448,82 +375,57 @@ export default function ExtractRecordsTab({
 
   const ruleNeedsValue = RULE_OPS.find((o) => o.value === ruleOp)?.needsValue ?? true;
   const targetRuleNeedsValue = RULE_OPS.find((o) => o.value === targetRuleOp)?.needsValue ?? true;
+  const { t, modeKey } = useShell();
+  const dual = mode === "join";
+  const previewText =
+    sqlPreview ??
+    (matchSql ||
+      (isCascadeComplete(sourceRef)
+        ? "Ready to plan SQL — use Preview or Run Query."
+        : "Select attributes and tables to see the query preview."));
 
   return (
-    <div className="query-builder-embed">
-      <section className="section srse-card" style={{ marginBottom: "1rem" }}>
-        <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>{mode === "single" ? "Table" : "Source table"}</h2>
-        <LakehouseCascade idPrefix="extract-source" value={sourceRef} onChange={setSourceRef} fetchers={REGISTRY_FETCHERS} />
+    <div className="query-builder-embed" data-mode={dual ? "dual" : "single"}>
+      <section className="section">
+        <h4>
+          <span className="step-num">1</span>
+          {modeKey("secChooseTables", "secChooseTablesSingle", dual)}
+        </h4>
+        <p className="desc">{t("secChooseTablesDesc")}</p>
+        <div className="two-col">
+          <div className="pick">
+            <div className="ttl">{t("lblSourceTable")}</div>
+            <LakehouseCascade
+              idPrefix="extract-source"
+              value={sourceRef}
+              onChange={setSourceRef}
+              fetchers={REGISTRY_FETCHERS}
+              appearance="prototype"
+            />
+          </div>
+          <div className="pick dest-only">
+            <div className="ttl">{t("lblDestTable")}</div>
+            <LakehouseCascade
+              idPrefix="extract-target"
+              value={targetRef}
+              onChange={setTargetRef}
+              fetchers={REGISTRY_FETCHERS}
+              appearance="prototype"
+            />
+          </div>
+        </div>
       </section>
 
-      {mode === "join" && (
-        <section className="srse-card" style={{ marginBottom: "1rem" }}>
-          <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Target table</h2>
-          <LakehouseCascade idPrefix="extract-target" value={targetRef} onChange={setTargetRef} fetchers={REGISTRY_FETCHERS} />
-        </section>
-      )}
-
       {isCascadeComplete(sourceRef) && (
-        <section className="srse-card" style={{ marginBottom: "1rem" }}>
-          <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Group and aggregate</h2>
-          <label style={{ display: "block", marginBottom: "0.75rem" }}>
-            <input type="checkbox" checked={groupEnabled} onChange={(e) => setGroupEnabled(e.target.checked)} />{" "}
-            Return totals by group (not row-level rows)
-          </label>
-          {groupEnabled && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
-              <label>
-                Group by column
-                <select className="srse-select" style={{ width: "100%" }} value={groupByCol} onChange={(e) => setGroupByCol(e.target.value)}>
-                  <option value="">— none (single summary row) —</option>
-                  {sourceColumns.map((c) => (
-                    <option key={c.name} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Aggregate
-                <select className="srse-select" style={{ width: "100%" }} value={aggregateFn} onChange={(e) => setAggregateFn(e.target.value as AggregateFunction)}>
-                  <option value="COUNT">COUNT</option>
-                  <option value="SUM">SUM</option>
-                  <option value="AVG">AVG</option>
-                  <option value="MIN">MIN</option>
-                  <option value="MAX">MAX</option>
-                </select>
-              </label>
-              <label>
-                On column (leave blank for COUNT(*))
-                <select className="srse-select" style={{ width: "100%" }} value={aggregateCol} onChange={(e) => setAggregateCol(e.target.value)}>
-                  <option value="">— COUNT(*) —</option>
-                  {sourceColumns.map((c) => (
-                    <option key={c.name} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {aggregateFn === "COUNT" && aggregateCol && (
-                <label style={{ alignSelf: "end" }}>
-                  <input type="checkbox" checked={countDistinct} onChange={(e) => setCountDistinct(e.target.checked)} />{" "}
-                  COUNT(DISTINCT) — exact and costly at scale (never approximated)
-                </label>
-              )}
-            </div>
-          )}
-          <p className="srse-text-muted" style={{ fontSize: "0.82rem", marginBottom: 0 }}>
-            NULL group keys appear as &quot;(NULL)&quot; in results. Up to {maxAggregates} aggregates per request.
-          </p>
-        </section>
-      )}
-
-      {isCascadeComplete(sourceRef) && !groupEnabled && (
-        <section className="srse-card" style={{ marginBottom: "1rem" }}>
-          <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Output columns</h2>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem 1rem" }}>
-            {sourceColumns.map((c) => (
-              <label key={c.name} style={{ fontSize: "0.9rem" }}>
+        <section className="section">
+          <h4>
+            <span className="step-num">2</span>
+            {modeKey("secSelectAttrs", "secSelectAttrsSingle", dual)}
+          </h4>
+          <p className="desc">{t("secSelectAttrsDesc")}</p>
+          <div className="attr-grid">
+            {sourceColumnsDisplay.map((c) => (
+              <label key={c.name}>
                 <input
                   type="checkbox"
                   checked={displayCols.includes(c.name)}
@@ -536,197 +438,305 @@ export default function ExtractRecordsTab({
         </section>
       )}
 
-      {mode === "join" && isCascadeComplete(sourceRef) && isCascadeComplete(targetRef) && (
-        <section className="srse-card" style={{ marginBottom: "1rem" }}>
-          <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Join key</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-            <label>
-              Source column
-              <select className="srse-select" style={{ width: "100%" }} value={joinKeySource} onChange={(e) => setJoinKeySource(e.target.value)}>
-                <option value="">— select —</option>
-                {sourceColumns.map((c) => (
+      {dual && isCascadeComplete(sourceRef) && isCascadeComplete(targetRef) && (
+        <section className="section">
+          <h4>
+            <span className="step-num">3</span>
+            {modeKey("secPrimaryKeys", "secPrimaryKeysSingle", dual)}
+          </h4>
+          <p className="desc">{modeKey("secPrimaryKeysDesc", "secPrimaryKeysDescSingle", dual)}</p>
+          <div className="two-col">
+            <div className="field">
+              <label>{t("lblSourcePK")}</label>
+              <select
+                aria-label={t("lblSourcePK")}
+                value={joinKeySource}
+                onChange={(e) => setJoinKeySource(e.target.value)}
+              >
+                <option value="">{t("selPKPlaceholder")}</option>
+                {sourceColumnsDisplay.map((c) => (
                   <option key={c.name} value={c.name}>
                     {c.name}
                   </option>
                 ))}
               </select>
-            </label>
-            <label>
-              Target column
-              <select className="srse-select" style={{ width: "100%" }} value={joinKeyTarget} onChange={(e) => setJoinKeyTarget(e.target.value)}>
-                <option value="">— select —</option>
-                {targetColumns.map((c) => (
+            </div>
+            <div className="field dest-only">
+              <label>{t("lblDestPK")}</label>
+              <select
+                aria-label={t("lblDestPK")}
+                value={joinKeyTarget}
+                onChange={(e) => setJoinKeyTarget(e.target.value)}
+              >
+                <option value="">{t("selPKPlaceholder")}</option>
+                {targetColumnsDisplay.map((c) => (
                   <option key={c.name} value={c.name}>
                     {c.name}
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
           </div>
-          <label style={{ display: "block", marginTop: "0.75rem" }}>
-            Join type
-            <select className="srse-select" value={joinType} onChange={(e) => setJoinType(e.target.value as JoinType)}>
+          <div className="field" style={{ marginTop: 12, maxWidth: 360 }}>
+            <label>{t("qbJoinType")}</label>
+            <select
+              aria-label={t("qbJoinType")}
+              value={joinType}
+              onChange={(e) => setJoinType(e.target.value as JoinType)}
+            >
               {JOIN_TYPE_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
               ))}
             </select>
-          </label>
+          </div>
         </section>
       )}
 
-      <section className="srse-card" style={{ marginBottom: "1rem" }}>
-        <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Source filter rule</h2>
-        <label style={{ fontSize: "0.82rem", display: "block", marginBottom: "0.5rem" }}>
-          <input type="checkbox" checked={useValuePicker} onChange={(e) => setUseValuePicker(e.target.checked)} /> Pick
-          values from list (IN rule)
-        </label>
-        <label style={{ fontSize: "0.82rem", display: "block", marginBottom: "0.5rem" }}>
-          <input type="checkbox" checked={fuzzyRuleEnabled} onChange={(e) => setFuzzyRuleEnabled(e.target.checked)} />{" "}
-          Typed-text fuzzy match (inside scoped table)
-        </label>
-        {useValuePicker && isCascadeComplete(sourceRef) && ruleColumn && (
-          <ValueFilterPicker table={sourceRef} column={ruleColumn} onChange={setValuePickerSpec} />
-        )}
-        {fuzzyRuleEnabled && (
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
-            <label>
-              Name to match
-              <input className="srse-input" style={{ width: "100%" }} value={fuzzyRuleName} onChange={(e) => setFuzzyRuleName(e.target.value)} />
-            </label>
-            <label>
-              Threshold %
+      <section className="section">
+        <h4>
+          <span className="step-num">4</span>
+          {modeKey("secRules", "secRulesSingle", dual)}
+        </h4>
+        <p className="desc">{t("secRulesDesc")}</p>
+        <div className="two-col">
+          <div className="pick">
+            <div className="ttl">{t("lblRuleSource")}</div>
+            <label className="checkbox-row">
               <input
-                type="number"
-                className="srse-input"
-                style={{ width: "100%" }}
-                min={0}
-                max={100}
-                value={fuzzyRuleThreshold}
-                onChange={(e) => setFuzzyRuleThreshold(Number(e.target.value))}
+                type="checkbox"
+                aria-label="Pick values from list"
+                checked={useValuePicker}
+                onChange={(e) => {
+                  setUseValuePicker(e.target.checked);
+                  if (e.target.checked) setFuzzyRuleEnabled(false);
+                }}
               />
+              {t("qbValuePickerIn")}
             </label>
-            <div>
-              <label style={{ fontSize: "0.78rem", display: "block" }}>
-                <input type="checkbox" checked={fuzzyIgnoreSpaces} onChange={(e) => setFuzzyIgnoreSpaces(e.target.checked)} /> Ignore spaces
-              </label>
-              <label style={{ fontSize: "0.78rem", display: "block" }}>
-                <input type="checkbox" checked={fuzzyCaseSensitive} onChange={(e) => setFuzzyCaseSensitive(e.target.checked)} /> Case sensitive
-              </label>
-            </div>
-          </div>
-        )}
-        {!useValuePicker && !fuzzyRuleEnabled && (
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "0.75rem", alignItems: "end" }}>
-          <label>
-            Column
-            <select className="srse-select" style={{ width: "100%" }} value={ruleColumn} onChange={(e) => setRuleColumn(e.target.value)}>
-              <option value="">— none —</option>
-              {sourceColumns.map((c) => (
-                <option key={c.name} value={c.name}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Operator
-            <select className="srse-select" style={{ width: "100%" }} value={ruleOp} onChange={(e) => setRuleOp(e.target.value as RuleOperator)}>
-              {RULE_OPS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {ruleNeedsValue && (
-            <label>
-              Value
-              <input className="srse-input" style={{ width: "100%" }} value={ruleValue} onChange={(e) => setRuleValue(e.target.value)} />
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                aria-label="Typed-text fuzzy match"
+                checked={fuzzyRuleEnabled}
+                onChange={(e) => {
+                  setFuzzyRuleEnabled(e.target.checked);
+                  if (e.target.checked) setUseValuePicker(false);
+                }}
+              />
+              {t("qbFuzzyRuleScoped")}
             </label>
-          )}
-        </div>
-        )}
-      </section>
-
-      {mode === "join" && (
-        <section className="srse-card" style={{ marginBottom: "1rem" }}>
-          <h2 style={{ marginTop: 0, fontSize: "1.05rem" }}>Target filter rule</h2>
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr", gap: "0.75rem", alignItems: "end" }}>
-            <label>
-              Column
-              <select
-                className="srse-select"
-                style={{ width: "100%" }}
-                value={targetRuleColumn}
-                onChange={(e) => setTargetRuleColumn(e.target.value)}
-              >
-                <option value="">— none —</option>
-                {targetColumns.map((c) => (
-                  <option key={c.name} value={c.name}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Operator
-              <select
-                className="srse-select"
-                style={{ width: "100%" }}
-                value={targetRuleOp}
-                onChange={(e) => setTargetRuleOp(e.target.value as RuleOperator)}
-              >
-                {RULE_OPS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {targetRuleNeedsValue && (
-              <label>
-                Value
-                <input
-                  className="srse-input"
-                  style={{ width: "100%" }}
-                  value={targetRuleValue}
-                  onChange={(e) => setTargetRuleValue(e.target.value)}
-                />
-              </label>
+            {useValuePicker && isCascadeComplete(sourceRef) && (
+              <div className="field" style={{ marginTop: 8, maxWidth: 360 }}>
+                <label>{t("lblColumn")}</label>
+                <select
+                  aria-label="Source rule column"
+                  value={ruleColumn}
+                  onChange={(e) => setRuleColumn(e.target.value)}
+                >
+                  <option value="">{t("selNone")}</option>
+                  {sourceColumnsDisplay.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {useValuePicker && isCascadeComplete(sourceRef) && ruleColumn && (
+              <ValueFilterPicker
+                table={valuePickerTable}
+                column={ruleColumn}
+                hydratedSpec={valuePickerSpec}
+                onChange={setValuePickerSpec}
+              />
+            )}
+            {fuzzyRuleEnabled && isCascadeComplete(sourceRef) && (
+              <div className="field" style={{ marginTop: 8, maxWidth: 360 }}>
+                <label>{t("lblColumn")}</label>
+                <select
+                  aria-label="Source rule column"
+                  value={ruleColumn}
+                  onChange={(e) => setRuleColumn(e.target.value)}
+                >
+                  <option value="">{t("selNone")}</option>
+                  {sourceColumnsDisplay.map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {fuzzyRuleEnabled && (
+              <div className="row" style={{ flexWrap: "wrap", gap: 12 }}>
+                <div className="field" style={{ flex: "2 1 160px" }}>
+                  <label>{t("qbFuzzyName")}</label>
+                  <input
+                    aria-label="Name to match"
+                    value={fuzzyRuleName}
+                    onChange={(e) => setFuzzyRuleName(e.target.value)}
+                  />
+                </div>
+                <div className="field" style={{ flex: "1 1 100px" }}>
+                  <label>{t("qbFuzzyThreshold")}</label>
+                  <input
+                    aria-label="Threshold %"
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={fuzzyRuleThreshold}
+                    onChange={(e) => setFuzzyRuleThreshold(Number(e.target.value))}
+                  />
+                </div>
+                <div className="field" style={{ flex: "1 1 140px" }}>
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      aria-label="Ignore spaces"
+                      checked={fuzzyIgnoreSpaces}
+                      onChange={(e) => setFuzzyIgnoreSpaces(e.target.checked)}
+                    />
+                    {t("qbFuzzyIgnoreSpaces")}
+                  </label>
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      aria-label="Case sensitive"
+                      checked={fuzzyCaseSensitive}
+                      onChange={(e) => setFuzzyCaseSensitive(e.target.checked)}
+                    />
+                    {t("qbFuzzyCaseSensitive")}
+                  </label>
+                </div>
+              </div>
+            )}
+            {!useValuePicker && !fuzzyRuleEnabled && (
+              <div className="row" style={{ flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+                <div className="field" style={{ flex: "2 1 160px" }}>
+                  <label>{t("lblColumn")}</label>
+                  <select
+                    aria-label="Source rule column"
+                    value={ruleColumn}
+                    onChange={(e) => setRuleColumn(e.target.value)}
+                  >
+                    <option value="">{t("selNone")}</option>
+                    {sourceColumnsDisplay.map((c) => (
+                      <option key={c.name} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field" style={{ flex: "1 1 120px" }}>
+                  <label>{t("lblOperator")}</label>
+                  <select
+                    aria-label="Source rule operator"
+                    value={ruleOp}
+                    onChange={(e) => setRuleOp(e.target.value as RuleOperator)}
+                  >
+                    {RULE_OPS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {ruleNeedsValue && (
+                  <div className="field" style={{ flex: "1 1 120px" }}>
+                    <label>{t("lblValue")}</label>
+                    <input
+                      aria-label="Source rule value"
+                      value={ruleValue}
+                      onChange={(e) => setRuleValue(e.target.value)}
+                    />
+                  </div>
+                )}
+              </div>
             )}
           </div>
-        </section>
-      )}
+          <div className="pick dest-only">
+            <div className="ttl">{t("lblRuleDest")}</div>
+            {dual ? (
+              <div className="row" style={{ flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+                <div className="field" style={{ flex: "2 1 160px" }}>
+                  <label>{t("lblColumn")}</label>
+                  <select
+                    aria-label="Target rule column"
+                    value={targetRuleColumn}
+                    onChange={(e) => setTargetRuleColumn(e.target.value)}
+                  >
+                    <option value="">{t("selNone")}</option>
+                    {targetColumnsDisplay.map((c) => (
+                      <option key={c.name} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field" style={{ flex: "1 1 120px" }}>
+                  <label>{t("lblOperator")}</label>
+                  <select value={targetRuleOp} onChange={(e) => setTargetRuleOp(e.target.value as RuleOperator)}>
+                    {RULE_OPS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {targetRuleNeedsValue && (
+                  <div className="field" style={{ flex: "1 1 120px" }}>
+                    <label>{t("lblValue")}</label>
+                    <input value={targetRuleValue} onChange={(e) => setTargetRuleValue(e.target.value)} />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-muted" style={{ margin: 0 }}>
+                {t("secRulesDescSingle")}
+              </p>
+            )}
+          </div>
+        </div>
+      </section>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.6rem", flexWrap: "wrap" }}>
-        <button type="button" className="srse-btn srse-btn-ghost" disabled={sqlPreviewLoading || matchStatus === "loading"} onClick={() => void previewSql()}>
-          {sqlPreviewLoading ? "Planning…" : "Preview SQL"}
-        </button>
-        <button type="button" className="srse-btn srse-btn-primary" disabled={matchStatus === "loading"} onClick={() => void runExtract()}>
-          {matchStatus === "loading" ? "Running…" : "Run extract"}
-        </button>
-      </div>
-
-      {sqlPreviewError && <p className="srse-text-danger">{sqlPreviewError}</p>}
-      {sqlPreview && (
-        <pre className="srse-card" style={{ marginTop: "0.75rem", fontSize: "0.75rem", whiteSpace: "pre-wrap" }}>
-          {sqlPreview}
-        </pre>
-      )}
-      {matchError && <p className="srse-text-danger">{matchError}</p>}
+      <section className="section">
+        <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+          <div style={{ flex: "1 1 280px" }}>
+            <h4 style={{ margin: "0 0 8px" }}>{t("lblQueryPreview")}</h4>
+            <div className="query-box">{previewText}</div>
+          </div>
+          <div className="row" style={{ gap: 8, alignSelf: "flex-end" }}>
+            <button
+              type="button"
+              className="btn secondary"
+              disabled={sqlPreviewLoading || matchStatus === "loading"}
+              onClick={() => void previewSql()}
+            >
+              {sqlPreviewLoading ? t("btnPlanning") : t("btnPreviewSql")}
+            </button>
+            <button type="button" className="btn" disabled={matchStatus === "loading"} onClick={() => void runExtract()}>
+              {matchStatus === "loading" ? t("btnRunning") : t("btnRunQuery")}
+            </button>
+            {onGoReport && matchStatus === "ok" && matchColumns.length > 0 && (
+              <button
+                type="button"
+                className="btn secondary"
+                aria-label="Go to Report Analysis"
+                onClick={onGoReport}
+              >
+                {t("btnGoReport")}
+              </button>
+            )}
+          </div>
+        </div>
+        {sqlPreviewError && <p className="text-danger">{sqlPreviewError}</p>}
+        {matchError && <p className="text-danger">{matchError}</p>}
+      </section>
 
       {unparseableTotals.length > 0 && (
-        <div
-          className="srse-card"
-          role="alert"
-          style={{
-            marginTop: "1rem",
-            borderLeft: "4px solid #d97706",
-            background: "rgba(217, 119, 6, 0.08)",
-          }}
-        >
+        <div className="alert-warn" role="alert">
           <strong>Some values could not be added to these totals.</strong>
           <p style={{ margin: "0.4rem 0 0.2rem" }}>
             The column holds text, so each value was converted to a number before adding.
@@ -745,14 +755,8 @@ export default function ExtractRecordsTab({
 
       {matchColumns.length > 0 && (
         <div className="section" style={{ marginTop: "1.5rem" }}>
-          {onGoReport && (
-            <div className="row" style={{ justifyContent: "flex-end", marginBottom: 12 }}>
-              <button type="button" className="btn secondary sm" onClick={onGoReport}>
-                Report Analysis →
-              </button>
-            </div>
-          )}
           <AnalysisResultsGrid
+            appearance="prototype"
             columns={matchColumns}
             rows={matchRows}
             sql={matchSql}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   browseColumns,
   getTableScopeConfig,
@@ -27,34 +27,42 @@ export function TableScopeBindingEditor({
   const [superAdmin, setSuperAdmin] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setError(null);
-    const [cfg, dims, cols, session] = await Promise.all([
-      getTableScopeConfig(registration.id),
-      listDimensions(),
-      browseColumns(registration.catalog, registration.schema, registration.table).then((c) =>
-        c.map((x) => x.name),
-      ),
-      fetchAuthSession(),
-    ]);
-    setConfig(cfg);
-    setDimensions(dims);
-    setColumns(cols);
-    setExemptIds(cfg.exemptDimensionIds);
-    setShared(cfg.sharedReference);
-    setSuperAdmin(session?.superAdmin ?? false);
-    const levelMap: Record<number, LevelView[]> = {};
-    for (const d of dims) {
-      levelMap[d.id] = await listLevels(d.id);
-    }
-    setLevelsByDim(levelMap);
-  }, [registration]);
-
   useEffect(() => {
-    if (open) {
-      load().catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    if (!open) {
+      return undefined;
     }
-  }, [open, load]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const [cfg, dims, cols, session] = await Promise.all([
+          getTableScopeConfig(registration.id),
+          listDimensions(),
+          browseColumns(registration.catalog, registration.schema, registration.table).then((c) =>
+            c.map((x) => x.name),
+          ),
+          fetchAuthSession(),
+        ]);
+        if (cancelled) return;
+        setConfig(cfg);
+        setDimensions(dims);
+        setColumns(cols);
+        setExemptIds(cfg.exemptDimensionIds);
+        setShared(cfg.sharedReference);
+        setSuperAdmin(session?.superAdmin ?? false);
+        const levelMap: Record<number, LevelView[]> = {};
+        for (const d of dims) {
+          levelMap[d.id] = await listLevels(d.id);
+        }
+        if (cancelled) return;
+        setLevelsByDim(levelMap);
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, registration.id, registration.catalog, registration.schema, registration.table]);
 
   async function onSave() {
     if (!config) return;

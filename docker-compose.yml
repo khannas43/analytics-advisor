@@ -21,11 +21,12 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8080}
+        NEXT_PUBLIC_AUTH_MODE: ${NEXT_PUBLIC_AUTH_MODE:-mock}
     ports:
       - "3000:3000"
     environment:
       - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-http://localhost:8080}
-      - NEXT_PUBLIC_AUTH_MODE=mock
+      - NEXT_PUBLIC_AUTH_MODE=${NEXT_PUBLIC_AUTH_MODE:-mock}
     depends_on:
       - srse-backend
     restart: unless-stopped
@@ -53,7 +54,7 @@ services:
       - SRSE_PRESTO_TRUSTSTORE_PATH=${SRSE_PRESTO_TRUSTSTORE_PATH:-}
       - SRSE_PRESTO_TRUSTSTORE_PASSWORD=${SRSE_PRESTO_TRUSTSTORE_PASSWORD:-}
       # Auth
-      - SRSE_AUTH_MODE=mock
+      - SRSE_AUTH_MODE=${SRSE_AUTH_MODE:-mock}
       - SRSE_FRONTEND_ORIGINS=${SRSE_FRONTEND_ORIGINS:-http://localhost:3000}
       # Guardrails
       - SRSE_COHORT_CAP=1000

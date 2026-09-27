@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useShell } from "@/components/shell/ShellProviders";
 import { useQueryResultsStore } from "@/lib/queryResultsStore";
 import {
   downloadMultiTargetMatchCsv,
@@ -30,6 +31,7 @@ import {
   type ComparisonSummaryResponse,
   type HubSide,
   type JoinType,
+  type AggregateFunction,
   type MatchProgressEvent,
   type MultiTargetRecordMatchRequest,
   type RecordMatchRequest,
@@ -62,6 +64,14 @@ import {
   listSavedQueries,
   type SavedQuerySummary,
 } from "@/lib/savedQueryApi";
+import {
+  dualModeFromRequest,
+  hydrateReportStateFromSavedRequest,
+} from "@/lib/savedQueryHydrate";
+import { useQueryBuilderPipeline } from "@/lib/queryBuilderPipelineStore";
+import type { ReportConfig } from "@/lib/queryBuilderPipelineTypes";
+import { buildMergedRequest, preserveExtractDisplayColumnsOnSave } from "@/lib/queryBuilderRequestBuild";
+import { requestsEqual } from "@/lib/queryBuilderPipelineTypes";
 import { initTargetProgress, mergeTargetProgress, phaseLabel } from "@/lib/multiTargetProgress";
 import LakehouseCascade, {
   EMPTY_CASCADE,
@@ -188,6 +198,20 @@ function detectLastUpdatedColumn(columns: RegisteredColumn[]): string | null {
   return null;
 }
 
+/** Query Builder embed uses the same dedup column pick as {@link buildMergedRequest}. */
+function embeddedPipelineDedupColumn(extract: {
+  displayCols: string[];
+  joinKeySource: string;
+}): string | null {
+  if (extract.displayCols.includes("last_refreshed_at")) {
+    return "last_refreshed_at";
+  }
+  if (extract.joinKeySource) {
+    return extract.joinKeySource;
+  }
+  return null;
+}
+
 /**
  * Above this the grid is not rendered at all and the result is offered as a
  * CSV download instead. The rows already buffered are dropped at that point,
@@ -260,9 +284,14 @@ function mixedTypeHint(
   return `Types differ (${dataTypeOf(row)} vs ${dataTypeOf(paired)}) — compared as ${mode}.`;
 }
 
+function qbClass(proto: boolean | undefined, legacy: string, modern: string): string {
+  return proto ? modern : legacy;
+}
+
 type CriterionBoxProps = Readonly<{
   title: string;
   boxId: string;
+  prototypeUi?: boolean;
   rows: CriterionRow[];
   showFuzzy: boolean;
   pairedRows?: CriterionRow[];
@@ -462,11 +491,15 @@ function CriterionBox({
   onAdd,
   onError,
   displaySection,
+  prototypeUi = false,
 }: CriterionBoxProps & { displaySection?: React.ReactNode }) {
+  const muted = qbClass(prototypeUi, "srse-text-muted", "text-muted");
+  const btnSm = qbClass(prototypeUi, "srse-btn srse-btn-ghost srse-btn-sm", "btn secondary sm");
+  const rowBorder = prototypeUi ? "var(--border)" : "var(--srse-border)";
   return (
-    <section className="srse-card" style={{ flex: "1 1 380px" }}>
-      <h2 className="srse-card-title">{title}</h2>
-      <p className="srse-text-muted" style={{ fontSize: "0.82rem", marginTop: 0 }}>
+    <section className={qbClass(prototypeUi, "srse-card", "pick")} style={{ flex: "1 1 380px" }}>
+      <div className={prototypeUi ? "ttl" : "srse-card-title"}>{title}</div>
+      <p className={muted} style={{ fontSize: "0.82rem", marginTop: 0 }}>
         Catalog › Schema › Table › Column — registered lakehouse tables only
       </p>
 
@@ -480,7 +513,7 @@ function CriterionBox({
             flexWrap: "wrap",
             marginBottom: "0.6rem",
             paddingBottom: "0.6rem",
-            borderBottom: index === rows.length - 1 ? "none" : "1px solid var(--srse-border)",
+            borderBottom: index === rows.length - 1 ? "none" : `1px solid ${rowBorder}`,
           }}
         >
           <div style={{ flex: "1 1 100%" }}>
@@ -490,15 +523,16 @@ function CriterionBox({
               fetchers={REGISTRY_FETCHERS}
               idPrefix={`${boxId}-${row.id}`}
               onError={onError}
+              appearance={prototypeUi ? "prototype" : "legacy"}
             />
           </div>
           <div style={{ flex: "1 1 150px" }}>
-            <label htmlFor={`${boxId}-column-${row.id}`} className="srse-text-muted" style={fieldLabelStyle}>
+            <label htmlFor={`${boxId}-column-${row.id}`} className={muted} style={fieldLabelStyle}>
               Column
             </label>
             <select
               id={`${boxId}-column-${row.id}`}
-              className="srse-select"
+              className={prototypeUi ? undefined : "srse-select"}
               style={{ width: "100%" }}
               value={row.column}
               onChange={(e) => onColumnChange(row.id, e.target.value)}
@@ -512,7 +546,7 @@ function CriterionBox({
               ))}
             </select>
             {dataTypeOf(row) && (
-              <div className="srse-text-muted" style={{ fontSize: "0.7rem", marginTop: "0.2rem" }}>
+              <div className={muted} style={{ fontSize: "0.7rem", marginTop: "0.2rem" }}>
                 {dataTypeOf(row)}
               </div>
             )}
@@ -520,7 +554,7 @@ function CriterionBox({
               const hint = mixedTypeHint(row, pairedRows?.[index], compareAsFor);
               return hint ? (
                 <div
-                  style={{ fontSize: "0.7rem", marginTop: "0.15rem", color: "var(--srse-warning)" }}
+                  style={{ fontSize: "0.7rem", marginTop: "0.15rem", color: prototypeUi ? "var(--warn)" : "var(--srse-warning)" }}
                   title="SRSE casts the pair so the match can run at all. Set 'Compare as' on the Admin page to force the other reading."
                 >
                   {hint}
@@ -530,13 +564,13 @@ function CriterionBox({
           </div>
           {showFuzzy && rowShowsFuzzy(row, index, pairedRows, registeredFuzzyFor) && (
             <div style={{ flex: "0 1 100px" }}>
-              <label htmlFor={`${boxId}-fuzzy-${row.id}`} className="srse-text-muted" style={fieldLabelStyle}>
+              <label htmlFor={`${boxId}-fuzzy-${row.id}`} className={muted} style={fieldLabelStyle}>
                 Fuzzy %
               </label>
               <input
                 id={`${boxId}-fuzzy-${row.id}`}
                 type="number"
-                className="srse-input"
+                className={prototypeUi ? undefined : "srse-input"}
                 style={{ width: "100%" }}
                 min={0}
                 max={100}
@@ -564,7 +598,7 @@ function CriterionBox({
           {rows.length > 1 && (
             <button
               type="button"
-              className="srse-btn srse-btn-ghost srse-btn-sm"
+              className={btnSm}
               onClick={() => onRemove(row.id)}
               title="Remove this row"
             >
@@ -578,14 +612,14 @@ function CriterionBox({
               <div style={{ flex: "1 1 150px" }}>
                 <label
                   htmlFor={`${boxId}-extra-${row.id}-${extraIndex}`}
-                  className="srse-text-muted"
+                  className={muted}
                   style={fieldLabelStyle}
                 >
                   …and column {extraIndex + 2}
                 </label>
                 <select
                   id={`${boxId}-extra-${row.id}-${extraIndex}`}
-                  className="srse-select"
+                  className={prototypeUi ? undefined : "srse-select"}
                   style={{ width: "100%" }}
                   value={extra}
                   onChange={(e) =>
@@ -605,7 +639,7 @@ function CriterionBox({
               </div>
               <button
                 type="button"
-                className="srse-btn srse-btn-ghost srse-btn-sm"
+                className={btnSm}
                 onClick={() =>
                   onExtraColumnsChange(row.id, row.extraColumns.filter((_, k) => k !== extraIndex))
                 }
@@ -619,7 +653,7 @@ function CriterionBox({
           {isCascadeComplete(row.ref) && Boolean(row.column) && (
             <button
               type="button"
-              className="srse-btn srse-btn-ghost srse-btn-sm"
+              className={btnSm}
               style={{ flex: "0 0 auto" }}
               onClick={() => onExtraColumnsChange(row.id, [...row.extraColumns, ""])}
               title="Match this against more than one column on this side"
@@ -642,7 +676,7 @@ function CriterionBox({
         </div>
       ))}
 
-      <button type="button" className="srse-btn srse-btn-ghost srse-btn-sm" onClick={onAdd}>
+      <button type="button" className={btnSm} onClick={onAdd}>
         + Add more
       </button>
       {displaySection}
@@ -653,11 +687,20 @@ function CriterionBox({
 type ReportAnalysisTabProps = {
   embedded?: boolean;
   onRunComplete?: () => void;
+  onGoExtract?: () => void;
+  onSavedQueryLoaded?: () => void;
 };
 
-export default function ReportAnalysisTab({ embedded = false, onRunComplete }: Readonly<ReportAnalysisTabProps>) {
+export default function ReportAnalysisTab({
+  embedded = false,
+  onRunComplete,
+  onGoExtract,
+  onSavedQueryLoaded,
+}: Readonly<ReportAnalysisTabProps>) {
   const router = useRouter();
+  const { t } = useShell();
   const setLastResult = useQueryResultsStore((s) => s.setLastResult);
+  const [controlsPanelOpen, setControlsPanelOpen] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savedQueries, setSavedQueries] = useState<SavedQuerySummary[]>([]);
   const [saveQueryName, setSaveQueryName] = useState("");
@@ -685,6 +728,12 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
   const [multiUiMode, setMultiUiMode] = useState<"form" | "canvas">("form");
   const [joinCanvas, setJoinCanvas] = useState(createInitialJoinCanvas);
   const [targetRunStatus, setTargetRunStatus] = useState<ReturnType<typeof initTargetProgress>>([]);
+  const pipelineReport = useQueryBuilderPipeline((s) => s.report);
+  const patchPipelineReport = useQueryBuilderPipeline((s) => s.patchReport);
+  const commitReportSuccess = useQueryBuilderPipeline((s) => s.commitReportSuccess);
+  const pipelineDualMode = useQueryBuilderPipeline((s) => s.dualMode);
+  const pipelineExtract = useQueryBuilderPipeline((s) => s.extract);
+  const [maxAggregates, setMaxAggregates] = useState(4);
 
   const [joinType, setJoinType] = useState<JoinType>("INNER");
   const [keySuggestions, setKeySuggestions] = useState<JoinKeySuggestion[]>([]);
@@ -700,11 +749,7 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
   const dedupBlockedByJoin =
     multiDedupBlockedByJoin || (!multiMatchMode && (joinType === "RIGHT" || joinType === "FULL"));
 
-  useEffect(() => {
-    if (dedupBlockedByJoin) {
-      setDedupEnabled(false);
-    }
-  }, [dedupBlockedByJoin]);
+  const dedupActive = dedupEnabled && !dedupBlockedByJoin;
 
   useEffect(() => {
     listSavedQueries()
@@ -712,9 +757,12 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
       .catch(() => setSavedQueries([]));
   }, []);
 
-  const dedupColumn = detectLastUpdatedColumn(
-    (multiMatchMode ? sourceRows[0] : targetRows[0])?.columns ?? [],
-  );
+  const dedupColumn =
+    embedded && pipelineDualMode && !multiMatchMode
+      ? embeddedPipelineDedupColumn(pipelineExtract)
+      : detectLastUpdatedColumn(
+          (multiMatchMode ? sourceRows[0] : targetRows[0])?.columns ?? [],
+        );
 
   const [matchStatus, setMatchStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
   const [matchError, setMatchError] = useState<string | null>(null);
@@ -741,6 +789,9 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
   const matchStreaming = matchStatus === "loading";
 
   useEffect(() => {
+    if (embedded) {
+      return;
+    }
     if (matchStatus !== "ok" || matchColumns.length === 0 || matchRows.length === 0) {
       return;
     }
@@ -751,7 +802,7 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
       source: "report",
     });
     onRunComplete?.();
-  }, [matchStatus, matchColumns, matchRows, matchTotalRows, setLastResult, onRunComplete]);
+  }, [embedded, matchStatus, matchColumns, matchRows, matchTotalRows, setLastResult, onRunComplete]);
 
   // The request the displayed result actually came from. The CSV download must
   // use THIS, not a freshly built one: the officer may have edited the criteria
@@ -762,6 +813,12 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
   const pendingRowsRef = useRef<Record<string, unknown>[]>([]);
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rowsSeenRef = useRef(0);
+  const streamColumnsRef = useRef<string[]>([]);
+  const carriedRowsRef = useRef<Record<string, unknown>[]>([]);
+  const lastStreamSqlRef = useRef("");
+  const lastStreamTotalRowsRef = useRef<number | null>(null);
+  const embeddedHydratedRef = useRef(false);
+  const lastAppliedPipelineRequest = useQueryBuilderPipeline((s) => s.lastAppliedRequest);
 
   useEffect(() => {
     // The table list is no longer fetched here — each CriterionBox's cascade
@@ -770,11 +827,150 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
       .then((entries) => setColumnMetadata(new Map(entries.map((e) => [metadataKey(e, e.column), e]))))
       .catch((err: unknown) => setLoadError(err instanceof Error ? err.message : String(err)));
     fetchAnalysisLimits()
-      .then((limits) => setMaxTargetSets(limits.maxTargetSets))
+      .then((limits) => {
+        setMaxTargetSets(limits.maxTargetSets);
+        setMaxAggregates(limits.maxAggregates);
+      })
       .catch(() => {
         /* keep default */
       });
   }, []);
+
+  function syncComparisonPairsToPipeline(next: ComparisonPairRow[]) {
+    if (!embedded) {
+      return;
+    }
+    patchPipelineReport({
+      comparisonPairs: next.map((p) => ({
+        sourceColumn: p.sourceColumn,
+        targetColumn: p.targetColumn,
+        fuzzyThresholdPercent: p.fuzzyThresholdPercent,
+      })),
+    });
+  }
+
+  function embeddedReportPreview(withDedup: boolean): ReportConfig {
+    const { report } = useQueryBuilderPipeline.getState();
+    return {
+      ...report,
+      mismatchOnly,
+      highlightDuplicates,
+      dedupEnabled: withDedup && dedupEnabled,
+      joinType,
+      comparisonPairs: comparisonPairs.map((p) => ({
+        sourceColumn: p.sourceColumn,
+        targetColumn: p.targetColumn,
+        fuzzyThresholdPercent: p.fuzzyThresholdPercent,
+      })),
+      groupEnabled: pipelineReport.groupEnabled,
+      groupByCol: pipelineReport.groupByCol,
+      aggregateFn: pipelineReport.aggregateFn,
+      aggregateCol: pipelineReport.aggregateCol,
+      countDistinct: pipelineReport.countDistinct,
+      joinFuzzyThresholdPercent:
+        sourceRows.find(isRowFilled)?.fuzzyThresholdPercent ?? pipelineReport.joinFuzzyThresholdPercent,
+      joinFuzzyIgnoreSpaces: pipelineReport.joinFuzzyIgnoreSpaces,
+      joinFuzzyCaseSensitive: pipelineReport.joinFuzzyCaseSensitive,
+    };
+  }
+
+  function pushEmbeddedReportToPipeline() {
+    if (!embedded) {
+      return;
+    }
+    patchPipelineReport({
+      mismatchOnly,
+      highlightDuplicates,
+      dedupEnabled,
+      joinType,
+      comparisonPairs: comparisonPairs.map((p) => ({
+        sourceColumn: p.sourceColumn,
+        targetColumn: p.targetColumn,
+        fuzzyThresholdPercent: p.fuzzyThresholdPercent,
+      })),
+      groupEnabled: pipelineReport.groupEnabled,
+      groupByCol: pipelineReport.groupByCol,
+      aggregateFn: pipelineReport.aggregateFn,
+      aggregateCol: pipelineReport.aggregateCol,
+      countDistinct: pipelineReport.countDistinct,
+      joinFuzzyThresholdPercent:
+        sourceRows.find(isRowFilled)?.fuzzyThresholdPercent ?? pipelineReport.joinFuzzyThresholdPercent,
+    });
+  }
+
+  useEffect(() => {
+    if (!embedded || embeddedHydratedRef.current) {
+      return;
+    }
+    embeddedHydratedRef.current = true;
+    const { extract, report, extractResult, lastAppliedRequest, dualMode } =
+      useQueryBuilderPipeline.getState();
+    if (!extractResult) {
+      return;
+    }
+    queueMicrotask(() => {
+      setMismatchOnly(report.mismatchOnly);
+      setHighlightDuplicates(report.highlightDuplicates);
+      setDedupEnabled(report.dedupEnabled);
+      setJoinType(report.joinType);
+      setComparisonPairs(
+        report.comparisonPairs.map((p) => ({
+          id: crypto.randomUUID(),
+          sourceColumn: p.sourceColumn,
+          targetColumn: p.targetColumn,
+          fuzzyThresholdPercent: p.fuzzyThresholdPercent,
+        })),
+      );
+      setMatchColumns(extractResult.columns);
+      setMatchRows(extractResult.rows);
+      setMatchSql(extractResult.sql);
+      setMatchTotalRows(extractResult.totalRows);
+      setMatchStatus("ok");
+      lastRunRequestRef.current = lastAppliedRequest;
+      streamColumnsRef.current = extractResult.columns;
+      carriedRowsRef.current = extractResult.rows;
+      lastStreamSqlRef.current = extractResult.sql;
+    });
+
+    void (async () => {
+      const srcCols = isCascadeComplete(extract.sourceRef)
+        ? await listAnalysisColumns(extract.sourceRef)
+        : [];
+      const tgtCols =
+        dualMode && isCascadeComplete(extract.targetRef)
+          ? await listAnalysisColumns(extract.targetRef)
+          : [];
+      const srcRow = {
+        ...createEmptyRow(),
+        id: "embedded-source",
+        ref: extract.sourceRef,
+        column: extract.joinKeySource || extract.displayCols[0] || "",
+        columns: srcCols,
+        fuzzyThresholdPercent: report.joinFuzzyThresholdPercent,
+      };
+      setSourceRows([srcRow]);
+      if (dualMode && isCascadeComplete(extract.targetRef)) {
+        setTargetRows([
+          {
+            ...createEmptyRow(),
+            id: "embedded-target",
+            ref: extract.targetRef,
+            column: extract.joinKeyTarget,
+            columns: tgtCols,
+            fuzzyThresholdPercent: 80,
+          },
+        ]);
+      }
+      setSourceDisplayRows(
+        extract.displayCols.map((column) => ({
+          id: crypto.randomUUID(),
+          ref: extract.sourceRef,
+          column,
+          columns: srcCols,
+        })),
+      );
+    })();
+  }, [embedded]);
 
   const reportError = useCallback((message: string) => setLoadError(message), []);
 
@@ -853,6 +1049,73 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
     } finally {
       setKeySuggestLoading(false);
     }
+  }
+
+  async function attachColumnLists<T extends { ref: CascadeValue; columns: RegisteredColumn[] }>(
+    rows: T[],
+  ): Promise<T[]> {
+    return Promise.all(
+      rows.map(async (row) => {
+        if (!isCascadeComplete(row.ref)) {
+          return { ...row, columns: [] };
+        }
+        try {
+          const cols = await listAnalysisColumns(row.ref);
+          return { ...row, columns: cols };
+        } catch {
+          return { ...row, columns: [] };
+        }
+      }),
+    );
+  }
+
+  async function openSavedQuery(id: number) {
+    const detail = await getSavedQuery(id);
+    if (embedded) {
+      const dual = dualModeFromRequest(detail.request);
+      useQueryBuilderPipeline.getState().loadFromMergedRequest(dual, detail.request);
+      embeddedHydratedRef.current = false;
+      setSavedQueryMessage(
+        `Loaded “${detail.name}”. Review Extract, then run the query to refresh results.`,
+      );
+      onSavedQueryLoaded?.();
+      return;
+    }
+    const hydrated = hydrateReportStateFromSavedRequest(detail.request);
+    comparisonPrefilledKeysRef.current.clear();
+    const [sourceRows, targetRows] = await Promise.all([
+      attachColumnLists(
+        hydrated.sourceRows.length > 0
+          ? hydrated.sourceRows.map((r) => ({ ...r, columns: r.columns ?? [] }))
+          : [{ ...createEmptyRow() }],
+      ),
+      attachColumnLists(
+        hydrated.targetRows.length > 0
+          ? hydrated.targetRows.map((r) => ({ ...r, columns: r.columns ?? [] }))
+          : [{ ...createEmptyRow() }],
+      ),
+    ]);
+    setSourceRows(sourceRows);
+    setTargetRows(targetRows);
+    setSourceDisplayRows(
+      await attachColumnLists(
+        hydrated.sourceDisplayRows.map((r) => ({ ...r, columns: [] as RegisteredColumn[] })),
+      ),
+    );
+    setTargetDisplayRows(
+      await attachColumnLists(
+        hydrated.targetDisplayRows.map((r) => ({ ...r, columns: [] as RegisteredColumn[] })),
+      ),
+    );
+    setJoinType(hydrated.joinType ?? "INNER");
+    setComparisonPairs(hydrated.comparisonPairs);
+    setHighlightDuplicates(hydrated.highlightDuplicates);
+    setDedupEnabled(hydrated.dedupEnabled);
+    setMismatchOnly(hydrated.mismatchOnly);
+    lastRunRequestRef.current = detail.request;
+    setSavedQueryMessage(
+      `Loaded “${detail.name}”. Run match to execute under your scope (values from save are in the request payload).`,
+    );
   }
 
   async function applyKeySuggestion(s: JoinKeySuggestion) {
@@ -950,6 +1213,10 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
   }
 
   function buildRequest(withDedup: boolean): RecordMatchRequest | null {
+    if (embedded && !multiMatchMode) {
+      pushEmbeddedReportToPipeline();
+      return useQueryBuilderPipeline.getState().mergedRequestForApply(withDedup);
+    }
     const filledSource = sourceRows.filter(isRowFilled);
     const filledTarget = targetRows.filter(isRowFilled);
     const n = Math.min(filledSource.length, filledTarget.length);
@@ -1063,14 +1330,13 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
       .sort((a, b) => a.localeCompare(b));
     comparisonPrefilledKeysRef.current.add(key);
     if (intersection.length === 0) return;
-    setComparisonPairs(
-      intersection.map((name) => ({
-        id: crypto.randomUUID(),
-        sourceColumn: name,
-        targetColumn: name,
-        fuzzyThresholdPercent: src.fuzzyThresholdPercent,
-      })),
-    );
+    const pairs = intersection.map((name) => ({
+      id: crypto.randomUUID(),
+      sourceColumn: name,
+      targetColumn: name,
+      fuzzyThresholdPercent: src.fuzzyThresholdPercent,
+    }));
+    queueMicrotask(() => setComparisonPairs(pairs));
   }, [sourceRows, targetRows, multiMatchMode, comparisonPairs.length]);
 
   /**
@@ -1108,8 +1374,10 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
       );
     }
     if (fills.size === 0) return;
-    setTargetBlocks((blocks) =>
-      blocks.map((b) => (fills.has(b.id) ? { ...b, comparisonPairs: fills.get(b.id)! } : b)),
+    queueMicrotask(() =>
+      setTargetBlocks((blocks) =>
+        blocks.map((b) => (fills.has(b.id) ? { ...b, comparisonPairs: fills.get(b.id)! } : b)),
+      ),
     );
   }, [multiMatchMode, sourceRows, targetBlocks]);
 
@@ -1176,6 +1444,7 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
     rowsSeenRef.current += 1;
     if (rowsSeenRef.current <= MAX_DISPLAYED_ROWS) {
       pendingRowsRef.current.push(row);
+      carriedRowsRef.current.push(row);
     } else if (rowsSeenRef.current === MAX_DISPLAYED_ROWS + 1) {
       pendingRowsRef.current = [];
       setMatchTooManyToDisplay(true);
@@ -1308,23 +1577,38 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
       setMatchError("Pick at least one Source table + column and one matching Target table + column.");
       return;
     }
+    if (
+      embedded
+      && !multiMatchMode
+      && requestsEqual(req, useQueryBuilderPipeline.getState().lastAppliedRequest)
+    ) {
+      return;
+    }
     lastRunRequestRef.current = req;
     lastRunMultiRequestRef.current = null;
     beginMatchStream();
+    carriedRowsRef.current = [];
+    streamColumnsRef.current = [];
+    lastStreamSqlRef.current = "";
 
     const controller = new AbortController();
+    let streamSucceeded = false;
     try {
       await runRecordMatchStream(
         req,
         {
           onMeta: (meta) => {
+            streamColumnsRef.current = meta.columns;
             setMatchColumns(meta.columns);
             setMatchSql(meta.sql);
+            lastStreamSqlRef.current = meta.sql;
           },
           onRow: (row) => appendStreamRow(row, controller),
           onDone: (totalRows) => {
+            lastStreamTotalRowsRef.current = totalRows;
             setMatchTotalRows(totalRows);
             setMatchStatus("ok");
+            streamSucceeded = true;
             if (req.comparisonGroups && req.comparisonGroups.length > 0) {
               fetchComparisonSummary(req)
                 .then(setComparisonSummary)
@@ -1342,8 +1626,27 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
       );
     } catch (err: unknown) {
       handleStreamAbort(err, controller);
+      if (controller.signal.aborted && rowsSeenRef.current > 0) {
+        streamSucceeded = true;
+      }
     } finally {
       finishStreamFlush();
+      if (embedded && streamSucceeded && req) {
+        const snapshot = {
+          columns: streamColumnsRef.current,
+          rows: carriedRowsRef.current,
+          totalRows: lastStreamTotalRowsRef.current ?? rowsSeenRef.current,
+          sql: lastStreamSqlRef.current,
+        };
+        commitReportSuccess(req, snapshot);
+        setLastResult({
+          columns: snapshot.columns,
+          rows: snapshot.rows,
+          totalRows: snapshot.totalRows ?? rowsSeenRef.current,
+          source: "report",
+        });
+        onRunComplete?.();
+      }
     }
   }
 
@@ -1357,8 +1660,232 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
       ? matchRows.filter((row) => row.match_set_label === targetSetFilter)
       : matchRows;
 
+  const embeddedControlsPanel = embedded ? (
+    <aside className={`report-controls-panel${controlsPanelOpen ? "" : " collapsed"}`}>
+      <div className="report-panel-inner">
+        <div className="report-panel-header">
+          <h3>{t("panelControlsTitle")}</h3>
+          <button
+            type="button"
+            className="panel-toggle-btn"
+            onClick={() => setControlsPanelOpen((o) => !o)}
+            aria-expanded={controlsPanelOpen}
+            aria-label={controlsPanelOpen ? t("btnCollapseControls") : t("btnExpandControls")}
+            title={controlsPanelOpen ? t("btnCollapseControls") : t("btnExpandControls")}
+          >
+            ›
+          </button>
+        </div>
+        <div className="ctrl-card">
+          <h5>
+            <span className="step-num" style={{ width: 18, height: 18, fontSize: 10 }}>
+              5
+            </span>{" "}
+            {t("secFilter")}
+          </h5>
+          <div className="ctrl-sub">{t("secFilterDesc")}</div>
+          {!multiMatchMode && (
+            <label className="checkbox-row" htmlFor="mismatch-only-embed">
+              <input
+                id="mismatch-only-embed"
+                type="checkbox"
+                checked={mismatchOnly}
+                disabled={comparisonPairs.every((p) => !p.sourceColumn || !p.targetColumn)}
+                onChange={(e) => setMismatchOnly(e.target.checked)}
+              />
+              Show mismatches and unmatched records (server-side filter)
+            </label>
+          )}
+          {multiMatchMode && (
+            <label className="checkbox-row" htmlFor="multi-mismatch-only-embed">
+              <input
+                id="multi-mismatch-only-embed"
+                type="checkbox"
+                checked={mismatchOnly}
+                disabled={targetBlocks.every((b) =>
+                  b.comparisonPairs.every((c) => !c.sourceColumn || !c.targetColumn),
+                )}
+                onChange={(e) => setMismatchOnly(e.target.checked)}
+              />
+              Show mismatches and unmatched records (every target)
+            </label>
+          )}
+          <label className="checkbox-row" htmlFor="highlight-duplicates-embed" style={{ marginTop: 8 }}>
+            <input
+              id="highlight-duplicates-embed"
+              type="checkbox"
+              checked={highlightDuplicates}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setHighlightDuplicates(checked);
+                patchPipelineReport({ highlightDuplicates: checked });
+              }}
+            />
+            Highlight duplicate records
+          </label>
+          {pipelineDualMode && !multiMatchMode && (
+            <label
+              className="checkbox-row"
+              htmlFor="hide-duplicate-records-embed"
+              style={{ marginTop: 8 }}
+              title={
+                dedupBlockedByJoin
+                  ? "Dedup is not available with RIGHT or FULL joins."
+                  : !dedupColumn
+                    ? "Select a join key or include last_refreshed_at on Extract to enable dedup."
+                    : "Hides older duplicate rows, keeping the latest by last-updated date"
+              }
+            >
+              <input
+                id="hide-duplicate-records-embed"
+                type="checkbox"
+                aria-label="Hide duplicate records"
+                checked={dedupEnabled && !dedupBlockedByJoin}
+                disabled={!dedupColumn || dedupBlockedByJoin || matchStatus === "loading"}
+                onChange={(e) => {
+                  const enabled = e.target.checked;
+                  setDedupEnabled(enabled);
+                  patchPipelineReport({ dedupEnabled: enabled });
+                }}
+              />
+              Hide duplicate records
+            </label>
+          )}
+        </div>
+        <div className="ctrl-card">
+          <h5>
+            <span className="step-num" style={{ width: 18, height: 18, fontSize: 10 }}>
+              6
+            </span>{" "}
+            {t("secFuzzy")}
+          </h5>
+          <div className="ctrl-sub">{t("secFuzzyDesc")}</div>
+          <p className="text-muted" style={{ fontSize: 12, margin: "8px 0 0" }}>
+            Set fuzzy threshold per match row in the source criteria boxes. Admin column metadata and name heuristics
+            decide which pairs use Levenshtein similarity.
+          </p>
+          {!multiMatchMode && (
+            <div className="field" style={{ marginTop: 12 }}>
+              <label htmlFor="join-type-embed">{t("qbJoinType")}</label>
+              <select
+                id="join-type-embed"
+                value={joinType}
+                onChange={(e) => {
+                  const next = e.target.value as JoinType;
+                  setJoinType(next);
+                  patchPipelineReport({ joinType: next });
+                }}
+              >
+                {JOIN_TYPE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label} ({opt.hint})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+        <div className="ctrl-card">
+          <h5>
+            <span className="step-num" style={{ width: 18, height: 18, fontSize: 10 }}>
+              7
+            </span>{" "}
+            {t("secGroupBy")}
+          </h5>
+          <div className="ctrl-sub">{t("secGroupByDesc")}</div>
+          <label className="checkbox-row" htmlFor="report-group-enabled">
+            <input
+              id="report-group-enabled"
+              type="checkbox"
+              aria-label="Group by server-side totals"
+              checked={pipelineReport.groupEnabled}
+              onChange={(e) => patchPipelineReport({ groupEnabled: e.target.checked })}
+            />
+            {t("secGroupBy")} — server-side totals
+          </label>
+          {pipelineReport.groupEnabled && (
+            <div className="field-grid" style={{ marginTop: 12 }}>
+              <div className="field">
+                <label htmlFor="report-group-by-col">{t("lblGroupByCols")}</label>
+                <select
+                  id="report-group-by-col"
+                  value={pipelineReport.groupByCol}
+                  onChange={(e) => patchPipelineReport({ groupByCol: e.target.value })}
+                >
+                  <option value="">{t("selNone")}</option>
+                  {(embedded && pipelineExtract.displayCols.length > 0
+                    ? pipelineExtract.displayCols.map((name) => ({ name }))
+                    : (sourceRows.find(isRowFilled)?.columns ?? [])
+                  ).map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="report-aggregate-fn">{t("btnAddAgg")}</label>
+                <select
+                  id="report-aggregate-fn"
+                  value={pipelineReport.aggregateFn}
+                  onChange={(e) =>
+                    patchPipelineReport({ aggregateFn: e.target.value as AggregateFunction })
+                  }
+                >
+                  <option value="COUNT">COUNT</option>
+                  <option value="SUM">SUM</option>
+                  <option value="AVG">AVG</option>
+                  <option value="MIN">MIN</option>
+                  <option value="MAX">MAX</option>
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="report-aggregate-col">{t("lblDestAttr")}</label>
+                <select
+                  id="report-aggregate-col"
+                  value={pipelineReport.aggregateCol}
+                  onChange={(e) => patchPipelineReport({ aggregateCol: e.target.value })}
+                >
+                  <option value="">COUNT(*)</option>
+                  {(sourceRows.find(isRowFilled)?.columns ?? []).map((c) => (
+                    <option key={c.name} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+          <p className="text-muted" style={{ fontSize: 12, margin: "8px 0 0" }}>
+            Up to {maxAggregates} aggregates per request. Apply report options to rerun on the server.
+          </p>
+        </div>
+        {!multiMatchMode && (
+          <div className="ctrl-card">
+            <h5>Compare columns (after join)</h5>
+            <div className="ctrl-sub">Value checks on joined rows — they do not change the join.</div>
+            <ComparisonPairsEditor
+              pairs={comparisonPairs}
+              onChange={(next) => {
+                setComparisonPairs(next);
+                syncComparisonPairsToPipeline(next);
+              }}
+              sourceRef={hubRefOrUndefined()}
+              targetRef={filledRefOrUndefined(targetRows)}
+              sourceColumns={sourceRows.find(isRowFilled)?.columns ?? []}
+              targetColumns={targetRows.find(isRowFilled)?.columns ?? []}
+              registeredFuzzyFor={registeredFuzzyFor}
+              defaultThreshold={sourceRows.find(isRowFilled)?.fuzzyThresholdPercent ?? 80}
+            />
+          </div>
+        )}
+      </div>
+    </aside>
+  ) : null;
+
   return (
     <div className={embedded ? "query-builder-embed report-workspace" : "srse-page"}>
+      <div className={embedded ? "report-results-pane" : undefined} style={embedded ? undefined : { display: "contents" }}>
       {!embedded && (
         <>
           <h1 className="srse-page-title">Analysis</h1>
@@ -1369,11 +1896,12 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
         </>
       )}
 
-      {loadError && <p className="srse-text-danger">{loadError}</p>}
+      {loadError && <p className={embedded ? "text-danger" : "srse-text-danger"}>{loadError}</p>}
 
       <section
-        className="srse-panel"
-        style={{ marginBottom: "1rem", padding: "0.75rem 1rem" }}
+        role="region"
+        className={embedded ? "section" : "srse-panel"}
+        style={embedded ? undefined : { marginBottom: "1rem", padding: "0.75rem 1rem" }}
         aria-label="Saved queries"
       >
         <p className="srse-text-muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
@@ -1395,9 +1923,23 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
             className="srse-btn srse-btn-secondary"
             disabled={multiMatchMode || !saveQueryName.trim()}
             onClick={async () => {
-              const req = buildRequest(false);
+              if (embedded) {
+                pushEmbeddedReportToPipeline();
+              }
+              const pipelineReport = useQueryBuilderPipeline.getState().report;
+              let req = embedded
+                ? useQueryBuilderPipeline.getState().mergedRequestForApply(pipelineReport.dedupEnabled)
+                : buildRequest(false);
+              if (embedded && req) {
+                const { extract } = useQueryBuilderPipeline.getState();
+                req = preserveExtractDisplayColumnsOnSave(extract, req);
+              }
               if (!req) {
-                setSavedQueryMessage("Complete source/target criteria before saving.");
+                setSavedQueryMessage(
+                  embedded
+                    ? "Complete the Extract step before saving."
+                    : "Complete source/target criteria before saving.",
+                );
                 return;
               }
               try {
@@ -1414,16 +1956,13 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
           </button>
           <select
             className="srse-input"
+            aria-label="Open saved query"
             defaultValue=""
             onChange={async (e) => {
               const id = Number(e.target.value);
               if (!id) return;
               try {
-                const detail = await getSavedQuery(id);
-                lastRunRequestRef.current = detail.request;
-                setSavedQueryMessage(
-                  `Loaded “${detail.name}”. Run match to execute under your scope (values from save are in the request payload).`,
-                );
+                await openSavedQuery(id);
               } catch (err: unknown) {
                 setSavedQueryMessage(err instanceof Error ? err.message : String(err));
               }
@@ -1446,32 +1985,40 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
         )}
       </section>
 
-      <label className="srse-checkbox-label" htmlFor="highlight-duplicates" style={{ marginBottom: "0.5rem", display: "inline-flex" }}>
-        <input
-          id="highlight-duplicates"
-          type="checkbox"
-          checked={highlightDuplicates}
-          onChange={(e) => setHighlightDuplicates(e.target.checked)}
-        />
-        {" "}
-        Highlight Duplicate Records
-        {multiMatchMode && highlightDuplicates && (
-          <span className="srse-text-muted" style={{ marginLeft: "0.5rem", fontSize: "0.78rem" }} title="Scores are per target set and are not comparable across sets.">
-            (match score is per target set)
-          </span>
-        )}
-      </label>
+      {!embedded && (
+        <label className="srse-checkbox-label" htmlFor="highlight-duplicates" style={{ marginBottom: "0.5rem", display: "inline-flex" }}>
+          <input
+            id="highlight-duplicates"
+            type="checkbox"
+            checked={highlightDuplicates}
+            onChange={(e) => setHighlightDuplicates(e.target.checked)}
+          />
+          {" "}
+          Highlight Duplicate Records
+          {multiMatchMode && highlightDuplicates && (
+            <span className="srse-text-muted" style={{ marginLeft: "0.5rem", fontSize: "0.78rem" }} title="Scores are per target set and are not comparable across sets.">
+              (match score is per target set)
+            </span>
+          )}
+        </label>
+      )}
 
-      <label className="srse-checkbox-label" htmlFor="multi-match-mode" style={{ marginBottom: "1rem", display: "inline-flex", marginLeft: "1.5rem" }}>
-        <input
-          id="multi-match-mode"
-          type="checkbox"
-          checked={multiMatchMode}
-          onChange={(e) => setMultiMatchMode(e.target.checked)}
-        />
-        {" "}
-        Match against multiple tables
-      </label>
+      {!embedded && (
+        <label
+          className="srse-checkbox-label"
+          htmlFor="multi-match-mode"
+          style={{ marginBottom: "1rem", display: "inline-flex", marginLeft: "1.5rem" }}
+        >
+          <input
+            id="multi-match-mode"
+            type="checkbox"
+            checked={multiMatchMode}
+            onChange={(e) => setMultiMatchMode(e.target.checked)}
+          />
+          {" "}
+          Match against multiple tables
+        </label>
+      )}
 
       {multiMatchMode && (
         <div style={{ marginBottom: "1rem", display: "flex", flexWrap: "wrap", gap: "1rem", alignItems: "center" }}>
@@ -1540,7 +2087,7 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
         </div>
       )}
 
-      {!multiMatchMode && twoTableRefsReady && (
+      {!embedded && !multiMatchMode && twoTableRefsReady && (
         <section className="srse-card" style={{ marginBottom: "1rem", width: "100%" }}>
           <h2 className="srse-card-title" style={{ marginTop: 0 }}>
             Join key suggestions
@@ -1608,10 +2155,33 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
         />
       )}
 
+      {embedded && (
+        <section className="section" aria-label="Extract summary">
+          <h4>{t("tabExtract")}</h4>
+          <p className="desc">
+            {pipelineDualMode
+              ? `${pipelineExtract.sourceRef.catalog}.${pipelineExtract.sourceRef.schema}.${pipelineExtract.sourceRef.table} ↔ ${pipelineExtract.targetRef.catalog}.${pipelineExtract.targetRef.schema}.${pipelineExtract.targetRef.table}`
+              : `${pipelineExtract.sourceRef.catalog}.${pipelineExtract.sourceRef.schema}.${pipelineExtract.sourceRef.table}`}
+            {pipelineExtract.displayCols.length > 0
+              ? ` · ${pipelineExtract.displayCols.length} attribute(s)`
+              : ""}
+            {pipelineDualMode && pipelineExtract.joinKeySource
+              ? ` · join ${pipelineExtract.joinKeySource} ↔ ${pipelineExtract.joinKeyTarget}`
+              : ""}
+          </p>
+          {onGoExtract && (
+            <button type="button" className="btn secondary sm" onClick={onGoExtract}>
+              {t("btnBackExtract")}
+            </button>
+          )}
+        </section>
+      )}
+
       <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", width: "100%" }}>
-        {!(multiMatchMode && multiUiMode === "canvas") && (
+        {!embedded && !(multiMatchMode && multiUiMode === "canvas") && (
         <>
         <CriterionBox
+          prototypeUi={embedded}
           title={multiMatchMode ? "Hub table — match on" : "Select Source"}
           boxId="source"
           rows={sourceRows}
@@ -1661,6 +2231,7 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
         />
         {!multiMatchMode && (
           <CriterionBox
+            prototypeUi={embedded}
             title="Select Target"
             boxId="target"
             rows={targetRows}
@@ -1987,7 +2558,7 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
           " Multi-target runs one two-table join per target set; the NDJSON stream can include partial results if one set fails — CSV export is all-or-nothing."}
       </p>
 
-      {!multiMatchMode && (
+      {!embedded && !multiMatchMode && (
         <section className="srse-card" style={{ width: "100%", marginTop: "1rem" }}>
           <h2 className="srse-card-title">Compare columns (after join)</h2>
           <p className="srse-text-muted" style={{ marginTop: 0, lineHeight: 1.5 }}>
@@ -2019,7 +2590,7 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
         </section>
       )}
 
-      {!multiMatchMode && (
+      {!embedded && !multiMatchMode && (
         <section className="srse-card" style={{ marginTop: "1rem" }}>
           <h2 className="srse-card-title">Join type</h2>
           <p className="srse-text-muted" style={{ marginTop: 0, lineHeight: 1.5 }}>
@@ -2052,6 +2623,7 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
       )}
 
       <div
+        className={embedded ? "row" : undefined}
         style={{
           display: "flex",
           justifyContent: "flex-end",
@@ -2064,7 +2636,7 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
         {!multiMatchMode && (
           <button
             type="button"
-            className="srse-btn srse-btn-ghost"
+            className={embedded ? "btn secondary" : "srse-btn srse-btn-ghost"}
             disabled={sqlPreviewLoading || matchStatus === "loading"}
             onClick={async () => {
               const req = buildRequest(false);
@@ -2087,22 +2659,53 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
             {sqlPreviewLoading ? "Planning…" : "Preview SQL"}
           </button>
         )}
+        {embedded && (
+          <button
+            type="button"
+            className="btn secondary"
+            data-testid="report-filters-toggle"
+            aria-expanded={controlsPanelOpen}
+            aria-label={t("btnToggleControls")}
+            onClick={() => setControlsPanelOpen((o) => !o)}
+          >
+            {t("btnToggleControls")}
+          </button>
+        )}
         <button
           type="button"
-          className="srse-btn srse-btn-primary"
-          onClick={() => runMatch(dedupEnabled)}
-          disabled={matchStatus === "loading"}
+          className={embedded ? "btn" : "srse-btn srse-btn-primary"}
+          onClick={() => runMatch(dedupActive)}
+          disabled={
+            matchStatus === "loading"
+            || (embedded
+              && !multiMatchMode
+              && requestsEqual(
+                buildMergedRequest(
+                  pipelineDualMode,
+                  pipelineExtract,
+                  embeddedReportPreview(dedupActive),
+                ),
+                lastAppliedPipelineRequest,
+              ))
+          }
         >
-          {matchStatus === "loading" ? "Running…" : "Run Match"}
+          {matchStatus === "loading"
+            ? t("btnRunning")
+            : embedded
+              ? "Apply report options"
+              : t("qbRunMatch")}
         </button>
       </div>
 
       {sqlPreviewError && (
-        <p className="srse-text-danger" style={{ textAlign: "right", marginTop: "0.5rem" }}>
+        <p className={embedded ? "text-danger" : "srse-text-danger"} style={{ textAlign: "right", marginTop: "0.5rem" }}>
           {sqlPreviewError}
         </p>
       )}
       {sqlPreview && (
+        embedded ? (
+          <div className="query-box" style={{ marginTop: "0.75rem" }}>{sqlPreview}</div>
+        ) : (
         <pre
           className="srse-card"
           style={{
@@ -2115,6 +2718,7 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
         >
           {sqlPreview}
         </pre>
+        )
       )}
 
       {matchError && (
@@ -2181,7 +2785,7 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
                 className="btn secondary sm"
                 onClick={() => router.push("/dashboard")}
               >
-                View in Dashboard →
+                {t("btnViewDashboard")}
               </button>
             </div>
           )}
@@ -2206,6 +2810,7 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
             </div>
           )}
           <AnalysisResultsGrid
+            appearance={embedded ? "prototype" : "legacy"}
             columns={matchColumns}
             rows={displayedMatchRows}
             sql={matchSql}
@@ -2222,7 +2827,7 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
                 : undefined
             }
             highlightDuplicates={highlightDuplicates}
-            dedupAvailable={!!dedupColumn}
+            dedupAvailable={!embedded && !!dedupColumn}
             dedupEnabled={dedupEnabled}
             dedupDisabledReason={
               dedupBlockedByJoin
@@ -2234,11 +2839,14 @@ export default function ReportAnalysisTab({ embedded = false, onRunComplete }: R
             columnLabels={buildColumnLabels()}
             onDedupToggle={(enabled) => {
               setDedupEnabled(enabled);
+              patchPipelineReport({ dedupEnabled: enabled });
               runMatch(enabled);
             }}
           />
         </div>
       )}
+      </div>
+      {embeddedControlsPanel}
     </div>
   );
 }

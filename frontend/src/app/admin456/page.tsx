@@ -821,7 +821,6 @@ function RegistrationRow({
   }
 
   async function onSave() {
-    if (!layer.trim()) return;
     setSaving(true);
     try {
       await updateTableRegistration(registration.id, {
@@ -918,7 +917,7 @@ function RegistrationRow({
               <button
                 type="button"
                 className="srse-btn srse-btn-sm"
-                disabled={saving || !layer.trim()}
+                disabled={saving}
                 onClick={onSave}
               >
                 {saving ? "Saving…" : "Save"}
@@ -1180,7 +1179,7 @@ function LakehouseRegistryPanel({
         />
         <div>
           <label htmlFor="register-layer" className="srse-text-muted" style={{ fontSize: "0.72rem", display: "block" }}>
-            Layer (required)
+            Layer (optional)
           </label>
           <select
             id="register-layer"
@@ -1238,7 +1237,7 @@ function LakehouseRegistryPanel({
         <button
           type="button"
           className="srse-btn srse-btn-primary"
-          disabled={saving || !isCascadeComplete(cascade) || !layer.trim()}
+          disabled={saving || !isCascadeComplete(cascade)}
           onClick={onRegister}
         >
           {registerButtonLabel(saving, alreadyRegistered)}

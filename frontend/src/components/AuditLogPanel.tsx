@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   downloadAuditCsv,
   fetchAuditPage,
@@ -37,34 +37,45 @@ export function AuditLogPanel() {
     outcome: "",
   });
   const [page, setPage] = useState(0);
-  const [data, setData] = useState<AuditPage | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchAuditPage({
-        from: filters.from || undefined,
-        to: filters.to || undefined,
-        actorUserId: filters.actorUserId ? Number(filters.actorUserId) : undefined,
-        actionType: filters.actionType || undefined,
-        outcome: filters.outcome || undefined,
-        page,
-        size: 50,
-      });
-      setData(result);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [filters, page]);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const queryKey = JSON.stringify({ filters, page, refreshToken });
+  const [fetchState, setFetchState] = useState<{
+    key: string;
+    data: AuditPage | null;
+    error: string | null;
+  }>({ key: "", data: null, error: null });
+  const loading = fetchState.key !== queryKey;
+  const data = fetchState.key === queryKey ? fetchState.data : null;
+  const [actionError, setActionError] = useState<string | null>(null);
+  const error = (fetchState.key === queryKey ? fetchState.error : null) ?? actionError;
 
   useEffect(() => {
-    load().catch(() => {});
-  }, [load]);
+    let cancelled = false;
+    fetchAuditPage({
+      from: filters.from || undefined,
+      to: filters.to || undefined,
+      actorUserId: filters.actorUserId ? Number(filters.actorUserId) : undefined,
+      actionType: filters.actionType || undefined,
+      outcome: filters.outcome || undefined,
+      page,
+      size: 50,
+    })
+      .then((result) => {
+        if (!cancelled) setFetchState({ key: queryKey, data: result, error: null });
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setFetchState({
+            key: queryKey,
+            data: null,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [queryKey, filters, page]);
 
   async function onExport() {
     try {
@@ -76,7 +87,7 @@ export function AuditLogPanel() {
         outcome: filters.outcome || undefined,
       });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setActionError(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -146,7 +157,7 @@ export function AuditLogPanel() {
             className="px-3 py-1 rounded bg-primary text-white text-sm"
             onClick={() => {
               setPage(0);
-              load();
+              setRefreshToken((t) => t + 1);
             }}
           >
             Apply

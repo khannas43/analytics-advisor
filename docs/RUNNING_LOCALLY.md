@@ -12,9 +12,11 @@ docker compose up --build
 Frontend at **http://localhost:3000**, backend on 8080.
 
 This runs `auth-mode=mock`, which is the inherited development seam: there is no
-login screen and every caller is treated as an admin. **You will not see user
-management, login, or data scoping this way** — mock deliberately bypasses
-scoping, because it has no user records to scope against.
+login screen. Mock JWTs identify **`mock-officer`** (`STATE_OFFICER` only) or
+**`mock-admin`** (`?role=admin` → `SRSE_ADMIN` + `STATE_OFFICER`). On startup the
+backend ensures matching **`app_user`** rows exist so **audited admin mutations**
+(registration POST, scope binding writes, etc.) resolve a real actor. **Row-level
+scoping is still not exercised in mock mode** — use local auth (§B) for that.
 
 Good for: the Analysis tab, the admin page, connections, registrations, column
 metadata, scope-binding configuration, exports.
@@ -48,6 +50,22 @@ cd ../frontend
 NEXT_PUBLIC_AUTH_MODE=local NEXT_PUBLIC_API_BASE=http://localhost:8080 npm run dev
 ```
 
+If the frontend dev server uses a port other than 3000, add that origin on the backend
+(CORS is deny-by-default):
+
+```bash
+SRSE_FRONTEND_ORIGINS=http://localhost:3000,http://localhost:3001 \
+  SRSE_AUTH_MODE=local docker compose up -d srse-backend
+```
+
+For Docker, `NEXT_PUBLIC_*` values are baked at **image build** time (see `frontend/Dockerfile`).
+Rebuild the frontend when switching auth mode:
+
+```bash
+NEXT_PUBLIC_AUTH_MODE=local docker compose build srse-frontend
+SRSE_AUTH_MODE=local docker compose up -d srse-backend srse-frontend
+```
+
 **JDK 17 is required** — the build enforcer rejects anything else. There is no
 root pom, so `mvn -pl backend` does not work; use `-f backend/pom.xml` or run
 from inside `backend/`.
@@ -64,7 +82,7 @@ The PostgreSQL volume already carries fixtures from verification runs:
 | Account | Password | What it shows |
 |---|---|---|
 | `superadmin` | `Restored$Sup1` | Unscoped — sees all 7 districts, 200,000 rows |
-| `jaipurofficer` | `JaiOffic$1x` | Scoped to Jaipur — 28,571 rows, that district only. **MFA is enabled on this account**, so login returns a challenge and you read the six-digit code from the backend log (`LoggingOtpSender`). Turn MFA off from the admin user screen if it is in the way. |
+| `jaipurofficer` | `JaiOffic$1x` | Scoped to Jaipur — only Jaipur district rows (strict subset of the unscoped population). **MFA is enabled on this account**, so login returns a challenge and you read the six-digit code from the backend log (`LoggingOtpSender`). Turn MFA off from the admin user screen if it is in the way. |
 | `jaipuradmin` | `JaipurNew$1` | A **scoped admin**: manages only users inside Jaipur |
 | `sanganeruser` | `Officer$New1` | Taluka scope, for the deny-by-default case |
 
@@ -78,8 +96,9 @@ written.
 
 **The clearest single demonstration:** log in as `jaipurofficer`, run a match on
 `beneficiary` keyed on `id` with `district` as a display column, and note the row
-count. Then do exactly the same as `superadmin`. 28,571 against 200,000, same
-request.
+count. Then do exactly the same as `superadmin`. The scoped run must return
+**fewer rows than the unscoped run** (same request shape; only permitted districts
+in SQL), not a fixed seed count.
 
 ## Worth knowing
 

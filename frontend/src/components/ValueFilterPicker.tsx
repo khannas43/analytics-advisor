@@ -1,69 +1,172 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchColumnDistinctValues,
   type PredicateSpecWire,
   type TableRef,
 } from "@/lib/analysisApi";
+import {
+  inPredicateHydrationKey,
+  inPredicateHydrationKeyFor,
+} from "@/lib/valuePickerSemantics";
+
+const NULL_SENTINEL = "__NULL__";
 
 type Props = Readonly<{
   table: TableRef;
   column: string;
+  /** When reopening a saved query, re-select IN values from the persisted predicate. */
+  hydratedSpec?: PredicateSpecWire | null;
   onChange: (spec: PredicateSpecWire | null) => void;
 }>;
 
-const NULL_SENTINEL = "__NULL__";
+function selectedFromInSpec(spec: PredicateSpecWire | null | undefined): Set<string> {
+  const root = spec?.root;
+  if (root?.type !== "PREDICATE" || root.operator !== "IN" || !Array.isArray(root.value)) {
+    return new Set();
+  }
+  return new Set(root.value.map((v) => (v === null ? NULL_SENTINEL : String(v))));
+}
 
-export default function ValueFilterPicker({ table, column, onChange }: Props) {
-  const [values, setValues] = useState<(string | null)[]>([]);
-  const [truncated, setTruncated] = useState(false);
+function setsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const v of a) {
+    if (!b.has(v)) return false;
+  }
+  return true;
+}
+
+/** @deprecated use {@link inPredicateHydrationKey} from valuePickerSemantics */
+export { inPredicateHydrationKey } from "@/lib/valuePickerSemantics";
+
+export function predicateWireSignature(p: PredicateSpecWire | null): string {
+  if (!p) return "__null__";
+  const canonical = inPredicateHydrationKey(p);
+  if (canonical) return canonical;
+  return JSON.stringify(p);
+}
+
+export default function ValueFilterPicker({ table, column, hydratedSpec, onChange }: Props) {
+  const pickerKey = `${table.catalog}.${table.schema}.${table.table}|${column}`;
+  const [fetchState, setFetchState] = useState<{
+    key: string;
+    values: (string | null)[];
+    truncated: boolean;
+    error: string | null;
+  }>({ key: "", values: [], truncated: false, error: null });
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(() => selectedFromInSpec(hydratedSpec));
 
-  const load = useCallback(
-    async (searchTerm?: string) => {
-      if (!column) {
-        setValues([]);
-        onChange(null);
-        return;
-      }
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetchColumnDistinctValues(table, column, searchTerm);
-        setValues(res.values);
-        setTruncated(res.truncated);
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [table, column, onChange],
-  );
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const emittedSigRef = useRef<string>("");
+  const hydratedSpecRef = useRef(hydratedSpec);
+  hydratedSpecRef.current = hydratedSpec;
+
+  const loading = Boolean(column) && fetchState.key !== pickerKey;
+  const values = fetchState.key === pickerKey ? fetchState.values : [];
+  const truncated = fetchState.key === pickerKey ? fetchState.truncated : false;
+  const error = fetchState.key === pickerKey ? fetchState.error : null;
+
+  const hydratedKey = inPredicateHydrationKey(hydratedSpec);
 
   useEffect(() => {
-    setSelected(new Set());
-    void load();
-  }, [load]);
+    const next = selectedFromInSpec(hydratedSpecRef.current);
+    setSelected((prev) => (setsEqual(prev, next) ? prev : next));
+    setSearch("");
+  }, [hydratedKey, pickerKey]);
 
   useEffect(() => {
+    if (!column) {
+      return undefined;
+    }
+    let cancelled = false;
+    const tableRef: TableRef = {
+      catalog: table.catalog,
+      schema: table.schema,
+      table: table.table,
+    };
+    fetchColumnDistinctValues(tableRef, column)
+      .then((res) => {
+        if (!cancelled) {
+          setFetchState({
+            key: pickerKey,
+            values: res.values,
+            truncated: res.truncated,
+            error: null,
+          });
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setFetchState({
+            key: pickerKey,
+            values: [],
+            truncated: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pickerKey, column, table.catalog, table.schema, table.table]);
+
+  const predicate = useMemo((): PredicateSpecWire | null => {
     if (!column || selected.size === 0) {
-      onChange(null);
-      return;
+      return null;
     }
     const picked: (string | null)[] = [...selected].map((s) => (s === NULL_SENTINEL ? null : s));
     const node = {
       type: "PREDICATE" as const,
-      column: { table: { catalog: table.catalog, schema: table.schema, table: table.table }, column },
+      column: {
+        table: { catalog: table.catalog, schema: table.schema, table: table.table },
+        column,
+      },
       operator: "IN" as const,
       value: picked,
     };
-    onChange({ root: node });
-  }, [selected, column, table, onChange]);
+    return { root: node };
+  }, [selected, column, table.catalog, table.schema, table.table]);
+
+  const selfSig = useMemo(() => {
+    if (!column || selected.size === 0) {
+      return "";
+    }
+    return inPredicateHydrationKeyFor(table, column, selected);
+  }, [selected, column, table.catalog, table.schema, table.table]);
+
+  useEffect(() => {
+    const parentSig = hydratedKey;
+
+    if (!column) {
+      if (parentSig !== "") {
+        return;
+      }
+      if (emittedSigRef.current !== "__null__") {
+        emittedSigRef.current = "__null__";
+        onChangeRef.current(null);
+      }
+      return;
+    }
+
+    if (selfSig === parentSig && parentSig !== "") {
+      emittedSigRef.current = selfSig;
+      return;
+    }
+
+    if (selfSig === "" && parentSig !== "") {
+      return;
+    }
+
+    if (selfSig === emittedSigRef.current) {
+      return;
+    }
+
+    emittedSigRef.current = selfSig || "__null__";
+    onChangeRef.current(predicate);
+  }, [selfSig, hydratedKey, column, predicate]);
 
   function toggle(value: string) {
     setSelected((prev) => {
@@ -78,48 +181,56 @@ export default function ValueFilterPicker({ table, column, onChange }: Props) {
   }
 
   return (
-    <div className="srse-card" style={{ padding: "0.75rem", marginTop: "0.5rem" }}>
-      <div className="srse-text-muted" style={{ fontSize: "0.78rem", marginBottom: "0.5rem" }}>
-        Value filter — emits the same <code>IN</code> rule as the rule builder (scoped, audited value list).
-      </div>
-      {error && <p className="srse-text-danger">{error}</p>}
-      {truncated && (
-        <div style={{ marginBottom: "0.5rem" }}>
-          <p className="srse-text-muted" style={{ fontSize: "0.75rem" }}>
-            Showing the first values only — list is truncated. Type to search with a bound LIKE.
-          </p>
-          <div style={{ display: "flex", gap: "0.4rem" }}>
-            <input
-              className="srse-input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search…"
-            />
-            <button type="button" className="srse-btn srse-btn-sm" onClick={() => load(search)}>
-              Search
-            </button>
-          </div>
-        </div>
+    <div className="srse-card value-filter-picker" style={{ padding: "0.75rem", marginTop: "0.5rem" }}>
+      {!column ? (
+        <p className="srse-text-muted" style={{ margin: 0 }}>
+          Pick a column first.
+        </p>
+      ) : (
+        <>
+          <input
+            type="search"
+            placeholder="Search values…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="srse-input"
+            style={{ marginBottom: "0.5rem", width: "100%" }}
+          />
+          {loading && <p className="srse-text-muted">Loading values…</p>}
+          {error && <p className="srse-text-danger">{error}</p>}
+          {!loading && !error && (
+            <ul style={{ maxHeight: 160, overflow: "auto", listStyle: "none", padding: 0, margin: 0 }}>
+              {values
+                .filter((v) => {
+                  const label = v === null ? "(null)" : String(v);
+                  return !search || label.toLowerCase().includes(search.toLowerCase());
+                })
+                .map((v) => {
+                  const key = v === null ? NULL_SENTINEL : String(v);
+                  const label = v === null ? "(null)" : String(v);
+                  return (
+                    <li key={key}>
+                      <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: "0.85rem" }}>
+                        <input
+                          type="checkbox"
+                          aria-label={label}
+                          checked={selected.has(key)}
+                          onChange={() => toggle(key)}
+                        />
+                        {label}
+                      </label>
+                    </li>
+                  );
+                })}
+            </ul>
+          )}
+          {truncated && (
+            <p className="srse-text-muted" style={{ fontSize: "0.75rem", marginTop: "0.35rem" }}>
+              List truncated — refine with search or add more filters.
+            </p>
+          )}
+        </>
       )}
-      {loading && <p className="srse-text-muted">Loading values…</p>}
-      {!loading && values.length === 0 && <p className="srse-text-muted">No values in your scope.</p>}
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem", maxHeight: 200, overflow: "auto" }}>
-        {!loading && column && (
-          <label style={{ fontSize: "0.82rem" }}>
-            <input type="checkbox" checked={selected.has(NULL_SENTINEL)} onChange={() => toggle(NULL_SENTINEL)} />{" "}
-            <span className="srse-text-muted">(null)</span>
-          </label>
-        )}
-        {values.map((v, i) => {
-          const key = v ?? NULL_SENTINEL;
-          const label = v ?? "(null)";
-          return (
-            <label key={`${key}-${i}`} style={{ fontSize: "0.82rem" }}>
-              <input type="checkbox" checked={selected.has(key)} onChange={() => toggle(key)} /> {label}
-            </label>
-          );
-        })}
-      </div>
     </div>
   );
 }

@@ -62,6 +62,7 @@ export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
             type="button"
             className="panel-toggle-btn"
             title="Collapse sidebar"
+            aria-label="Collapse sidebar"
             onClick={() => setSidebarCollapsed(true)}
           >
             ‹
@@ -115,10 +116,20 @@ export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
           type="button"
           className="sidebar-reopen-btn"
           title="Expand Sidebar"
+          aria-label="Expand sidebar"
           onClick={() => setSidebarCollapsed(false)}
         >
           ›
         </button>
+      )}
+
+      {!sidebarCollapsed && (
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label="Close sidebar"
+          onClick={() => setSidebarCollapsed(true)}
+        />
       )}
 
       <main className="main" id="main-content">

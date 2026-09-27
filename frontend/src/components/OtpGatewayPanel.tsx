@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   fetchSmsGateway,
   fetchSmtpGateway,
@@ -30,30 +30,31 @@ export function OtpGatewayPanel() {
   const [saving, setSaving] = useState<"smtp" | "sms" | null>(null);
   const [testing, setTesting] = useState<"smtp" | "sms" | null>(null);
 
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      const [smtpView, smsView] = await Promise.all([fetchSmtpGateway(), fetchSmsGateway()]);
-      setSmtp(smtpView);
-      setSms(smsView);
-      setSmtpHost(smtpView.host ?? "");
-      setSmtpPort(String(smtpView.port || 587));
-      setSmtpUser(smtpView.username ?? "");
-      setSmtpFrom(smtpView.fromAddress ?? "");
-      setSmtpTls(smtpView.tls);
-      setSmsEndpoint(smsView.endpoint ?? "");
-      setSmsUser(smsView.username ?? "");
-      setSmsSenderId(smsView.senderId ?? "");
-      setSmtpPassword("");
-      setSmsPassword("");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
-
   useEffect(() => {
-    load().catch(() => {});
-  }, [load]);
+    let cancelled = false;
+    Promise.all([fetchSmtpGateway(), fetchSmsGateway()])
+      .then(([smtpView, smsView]) => {
+        if (cancelled) return;
+        setSmtp(smtpView);
+        setSms(smsView);
+        setSmtpHost(smtpView.host ?? "");
+        setSmtpPort(String(smtpView.port || 587));
+        setSmtpUser(smtpView.username ?? "");
+        setSmtpFrom(smtpView.fromAddress ?? "");
+        setSmtpTls(smtpView.tls);
+        setSmsEndpoint(smsView.endpoint ?? "");
+        setSmsUser(smsView.username ?? "");
+        setSmsSenderId(smsView.senderId ?? "");
+        setSmtpPassword("");
+        setSmsPassword("");
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function onSaveSmtp() {
     setSaving("smtp");

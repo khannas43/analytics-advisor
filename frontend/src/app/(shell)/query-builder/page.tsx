@@ -3,13 +3,16 @@
 import { useState } from "react";
 import { useShell } from "@/components/shell/ShellProviders";
 import ExtractRecordsTab from "@/components/query-builder/ExtractRecordsTab";
+import { QueryBuilderSavedQueryOpen } from "@/components/query-builder/QueryBuilderSavedQueryOpen";
 import ReportAnalysisTab from "@/components/query-builder/ReportAnalysisTab";
+import { useQueryBuilderPipeline } from "@/lib/queryBuilderPipelineStore";
 
 export default function QueryBuilderPage() {
   const { t } = useShell();
   const [tab, setTab] = useState<1 | 2>(1);
-  const [dualMode, setDualMode] = useState(true);
-  const [hasExtract, setHasExtract] = useState(false);
+  const dualMode = useQueryBuilderPipeline((s) => s.dualMode);
+  const setDualMode = useQueryBuilderPipeline((s) => s.setDualMode);
+  const extractSucceeded = useQueryBuilderPipeline((s) => s.extractSucceeded);
 
   return (
     <div className="page active" data-mode={dualMode ? "dual" : "single"}>
@@ -20,11 +23,25 @@ export default function QueryBuilderPage() {
         </div>
       </div>
 
+      <QueryBuilderSavedQueryOpen onLoaded={() => setTab(1)} />
+
       <div className="tabs">
-        <button type="button" className={tab === 1 ? "active" : ""} onClick={() => setTab(1)}>
+        <button
+          type="button"
+          className={tab === 1 ? "active" : ""}
+          aria-label="Extract Records tab"
+          onClick={() => setTab(1)}
+        >
           {t("tabExtract")}
         </button>
-        <button type="button" className={tab === 2 ? "active" : ""} onClick={() => setTab(2)}>
+        <button
+          type="button"
+          className={tab === 2 ? "active" : ""}
+          onClick={() => setTab(2)}
+          aria-label="Report Analysis tab"
+          aria-disabled={!extractSucceeded}
+          title={!extractSucceeded ? t("msgNoExtractYet") : undefined}
+        >
           {t("tabReport")}
         </button>
       </div>
@@ -36,6 +53,7 @@ export default function QueryBuilderPage() {
             <button
               type="button"
               className={dualMode ? "active" : ""}
+              aria-label="Dual Source mode"
               onClick={() => setDualMode(true)}
             >
               {t("modeDual")}
@@ -43,34 +61,32 @@ export default function QueryBuilderPage() {
             <button
               type="button"
               className={!dualMode ? "active" : ""}
+              aria-label="Single Source mode"
               onClick={() => setDualMode(false)}
             >
               {t("modeSingle")}
             </button>
           </div>
-          <ExtractRecordsTab
-            dualMode={dualMode}
-            onExtractComplete={() => setHasExtract(true)}
-            onGoReport={() => {
-              setHasExtract(true);
-              setTab(2);
-            }}
-          />
+          <ExtractRecordsTab onGoReport={() => setTab(2)} />
         </div>
       )}
 
-      {tab === 2 && (
+      {tab === 2 && !extractSucceeded && (
+        <div id="qb2" className="section empty-state" role="status">
+          <p>{t("msgNoExtractYet")}</p>
+          <button type="button" className="btn secondary" onClick={() => setTab(1)}>
+            {t("btnBackExtract")}
+          </button>
+        </div>
+      )}
+
+      {tab === 2 && extractSucceeded && (
         <div id="qb2">
-          {!hasExtract ? (
-            <div className="section">
-              <div className="empty">{t("msgNoExtractYet")}</div>
-              <button type="button" className="btn" style={{ marginTop: 14 }} onClick={() => setTab(1)}>
-                ← {t("btnBackExtract")}
-              </button>
-            </div>
-          ) : (
-            <ReportAnalysisTab embedded onRunComplete={() => setHasExtract(true)} />
-          )}
+          <ReportAnalysisTab
+            embedded
+            onGoExtract={() => setTab(1)}
+            onSavedQueryLoaded={() => setTab(1)}
+          />
         </div>
       )}
     </div>

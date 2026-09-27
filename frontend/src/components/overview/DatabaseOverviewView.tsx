@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   listOverviewColumns,
   listOverviewSourceSystems,
@@ -10,10 +10,15 @@ import {
   type RegisteredColumn,
   type TableRef,
 } from "@/lib/analysisApi";
+import {
+  shouldShowLabelFilter,
+  UNTAGGED_FILTER,
+  meaningfulLabelFilterOptions,
+} from "@/components/LakehouseCascade";
 
 function tagLabel(tag: string | null): string {
-  if (!tag) return "—";
-  return tag === "UNTAGGED" ? "Untagged (legacy)" : tag;
+  if (!tag) return "";
+  return tag === UNTAGGED_FILTER ? "Untagged (legacy)" : tag;
 }
 
 function errorMessage(err: unknown): string {
@@ -21,28 +26,29 @@ function errorMessage(err: unknown): string {
 }
 
 function TableColumnsPanel({ tableRef }: Readonly<{ tableRef: TableRef }>) {
-  const [columns, setColumns] = useState<RegisteredColumn[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const tableKey = `${tableRef.catalog}.${tableRef.schema}.${tableRef.table}`;
+  const [fetchState, setFetchState] = useState<{
+    key: string;
+    columns: RegisteredColumn[] | null;
+    error: string | null;
+  }>({ key: "", columns: null, error: null });
+  const loading = fetchState.key !== tableKey;
+  const columns = fetchState.key === tableKey ? fetchState.columns : null;
+  const error = fetchState.key === tableKey ? fetchState.error : null;
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     listOverviewColumns(tableRef)
       .then((cols) => {
-        if (!cancelled) setColumns(cols);
+        if (!cancelled) setFetchState({ key: tableKey, columns: cols, error: null });
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(errorMessage(err));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setFetchState({ key: tableKey, columns: null, error: errorMessage(err) });
       });
     return () => {
       cancelled = true;
     };
-  }, [tableRef.catalog, tableRef.schema, tableRef.table]);
+  }, [tableKey, tableRef]);
 
   if (loading) {
     return <p className="srse-text-muted" style={{ margin: "0.5rem 0 0 1.5rem" }}>Loading columns…</p>;
@@ -87,6 +93,10 @@ function TableColumnsPanel({ tableRef }: Readonly<{ tableRef: TableRef }>) {
 function OverviewTableRow({ row }: Readonly<{ row: OverviewTableSummary }>) {
   const [open, setOpen] = useState(false);
   const tableRef: TableRef = { catalog: row.catalog, schema: row.schema, table: row.table };
+  const metaParts: string[] = [];
+  if (row.layer) metaParts.push(`Layer: ${tagLabel(row.layer)}`);
+  if (row.sourceSystem) metaParts.push(`Source: ${tagLabel(row.sourceSystem)}`);
+  if (row.tableGroup) metaParts.push(`Group: ${tagLabel(row.tableGroup)}`);
 
   return (
     <div className="srse-card" style={{ padding: "0.75rem 1rem", marginBottom: "0.5rem" }}>
@@ -100,15 +110,32 @@ function OverviewTableRow({ row }: Readonly<{ row: OverviewTableSummary }>) {
         {open ? "▾" : "▸"}
       </button>
       <span style={{ fontFamily: "monospace", fontSize: "0.88rem" }}>{row.qualifiedName}</span>
-      <div className="srse-text-muted" style={{ fontSize: "0.78rem", marginTop: "0.35rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-        <span>Layer: {tagLabel(row.layer)}</span>
-        <span>Source: {tagLabel(row.sourceSystem)}</span>
-        <span>Group: {tagLabel(row.tableGroup)}</span>
-        {row.sharedReference && <span className="srse-badge">Shared reference</span>}
-      </div>
+      {metaParts.length > 0 && (
+        <div className="srse-text-muted" style={{ fontSize: "0.78rem", marginTop: "0.35rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+          {metaParts.map((p) => (
+            <span key={p}>{p}</span>
+          ))}
+          {row.sharedReference && <span className="srse-badge">Shared reference</span>}
+        </div>
+      )}
       {open && <TableColumnsPanel tableRef={tableRef} />}
     </div>
   );
+}
+
+function groupByCatalogSchema(rows: OverviewTableSummary[]): Map<string, Map<string, OverviewTableSummary[]>> {
+  const out = new Map<string, Map<string, OverviewTableSummary[]>>();
+  for (const row of rows) {
+    let schemas = out.get(row.catalog);
+    if (!schemas) {
+      schemas = new Map();
+      out.set(row.catalog, schemas);
+    }
+    const list = schemas.get(row.schema) ?? [];
+    list.push(row);
+    schemas.set(row.schema, list);
+  }
+  return out;
 }
 
 export default function DatabaseOverviewPage() {
@@ -116,46 +143,81 @@ export default function DatabaseOverviewPage() {
   const [tableGroups, setTableGroups] = useState<string[]>([]);
   const [selectedSource, setSelectedSource] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("");
-  const [tables, setTables] = useState<OverviewTableSummary[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const filterKey = `${selectedSource}|${selectedGroup}`;
+  const [tableFetch, setTableFetch] = useState<{
+    key: string;
+    rows: OverviewTableSummary[];
+    error: string | null;
+  }>({ key: "", rows: [], error: null });
+  const loading = tableFetch.key !== filterKey;
+  const tables = tableFetch.key === filterKey ? tableFetch.rows : [];
+  const tableError = tableFetch.key === filterKey ? tableFetch.error : null;
+  const [labelLoadError, setLabelLoadError] = useState<string | null>(null);
+  const error = tableError ?? labelLoadError;
 
-  const loadSourceSystems = useCallback(() => {
+  const showSourceFilter = shouldShowLabelFilter(sourceSystems);
+  const showGroupFilter = shouldShowLabelFilter(tableGroups);
+
+  useEffect(() => {
+    let cancelled = false;
     listOverviewSourceSystems()
-      .then(setSourceSystems)
-      .catch((err: unknown) => setError(errorMessage(err)));
+      .then((systems) => {
+        if (!cancelled) setSourceSystems(systems);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLabelLoadError(errorMessage(err));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
-    loadSourceSystems();
-  }, [loadSourceSystems]);
-
-  useEffect(() => {
+    let cancelled = false;
     listOverviewTableGroups(selectedSource || undefined)
-      .then(setTableGroups)
-      .catch((err: unknown) => setError(errorMessage(err)));
+      .then((groups) => {
+        if (!cancelled) setTableGroups(groups);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setLabelLoadError(errorMessage(err));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedSource]);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    let cancelled = false;
     listOverviewTables(selectedSource || undefined, selectedGroup || undefined)
-      .then(setTables)
-      .catch((err: unknown) => setError(errorMessage(err)))
-      .finally(() => setLoading(false));
-  }, [selectedSource, selectedGroup]);
+      .then((rows) => {
+        if (!cancelled) setTableFetch({ key: filterKey, rows, error: null });
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setTableFetch({ key: filterKey, rows: [], error: errorMessage(err) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [filterKey, selectedSource, selectedGroup]);
 
   function onSourceChange(value: string) {
     setSelectedSource(value);
     setSelectedGroup("");
   }
 
+  const grouped = useMemo(() => groupByCatalogSchema(tables), [tables]);
+
   return (
     <div className="overview-embed">
         {error && <p className="srse-text-danger">{error}</p>}
 
+        {(showSourceFilter || showGroupFilter) && (
         <section className="srse-card" style={{ marginBottom: "1rem" }}>
+          <p className="srse-text-muted" style={{ marginTop: 0, fontSize: "0.82rem" }}>
+            Optional display-label filters — leave at All to browse every registered table in your scope.
+          </p>
           <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", alignItems: "flex-end" }}>
+            {showSourceFilter && (
             <div>
               <label htmlFor="overview-source" className="srse-text-muted" style={{ fontSize: "0.72rem", display: "block" }}>
                 Source system
@@ -167,14 +229,19 @@ export default function DatabaseOverviewPage() {
                 value={selectedSource}
                 onChange={(e) => onSourceChange(e.target.value)}
               >
-                <option value="">— all —</option>
-                {sourceSystems.map((s) => (
+                <option value="">All</option>
+                {meaningfulLabelFilterOptions(sourceSystems).map((s) => (
                   <option key={s} value={s}>
                     {tagLabel(s)}
                   </option>
                 ))}
+                {sourceSystems.includes(UNTAGGED_FILTER) && (
+                  <option value={UNTAGGED_FILTER}>{tagLabel(UNTAGGED_FILTER)}</option>
+                )}
               </select>
             </div>
+            )}
+            {showGroupFilter && (
             <div>
               <label htmlFor="overview-group" className="srse-text-muted" style={{ fontSize: "0.72rem", display: "block" }}>
                 Table group
@@ -186,16 +253,21 @@ export default function DatabaseOverviewPage() {
                 value={selectedGroup}
                 onChange={(e) => setSelectedGroup(e.target.value)}
               >
-                <option value="">— all —</option>
-                {tableGroups.map((g) => (
+                <option value="">All</option>
+                {meaningfulLabelFilterOptions(tableGroups).map((g) => (
                   <option key={g} value={g}>
                     {tagLabel(g)}
                   </option>
                 ))}
+                {tableGroups.includes(UNTAGGED_FILTER) && (
+                  <option value={UNTAGGED_FILTER}>{tagLabel(UNTAGGED_FILTER)}</option>
+                )}
               </select>
             </div>
+            )}
           </div>
         </section>
+        )}
 
         {loading && <p className="srse-text-muted">Loading tables…</p>}
 
@@ -204,8 +276,20 @@ export default function DatabaseOverviewPage() {
         )}
 
         {!loading &&
-          tables.map((row) => (
-            <OverviewTableRow key={row.qualifiedName} row={row} />
+          [...grouped.entries()].map(([catalog, schemas]) => (
+            <section key={catalog} className="srse-card" style={{ marginBottom: "1rem", padding: "0.75rem 1rem" }}>
+              <h3 style={{ margin: "0 0 0.75rem", fontSize: "1rem" }}>{catalog}</h3>
+              {[...schemas.entries()].map(([schema, schemaRows]) => (
+                <div key={`${catalog}.${schema}`} style={{ marginBottom: "1rem" }}>
+                  <h4 className="srse-text-muted" style={{ margin: "0 0 0.5rem", fontSize: "0.88rem", fontFamily: "monospace" }}>
+                    {schema}
+                  </h4>
+                  {schemaRows.map((row) => (
+                    <OverviewTableRow key={row.qualifiedName} row={row} />
+                  ))}
+                </div>
+              ))}
+            </section>
           ))}
     </div>
   );

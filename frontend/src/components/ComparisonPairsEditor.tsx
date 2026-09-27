@@ -59,6 +59,7 @@ export function ComparisonPairsEditor({
                     <select
                       className="srse-select"
                       style={{ width: "100%" }}
+                      aria-label="Comparison source column"
                       value={pair.sourceColumn}
                       onChange={(e) =>
                         onChange(
@@ -83,6 +84,7 @@ export function ComparisonPairsEditor({
                     <select
                       className="srse-select"
                       style={{ width: "100%" }}
+                      aria-label="Comparison target column"
                       value={pair.targetColumn}
                       onChange={(e) =>
                         onChange(
@@ -139,6 +141,7 @@ export function ComparisonPairsEditor({
           <button
             type="button"
             className="srse-btn srse-btn-ghost srse-btn-sm"
+            aria-label="Add comparison"
             disabled={pairs.length >= MAX_COMPARISON_GROUPS}
             onClick={() =>
               onChange([...pairs, createComparisonPairRow(defaultThreshold)])

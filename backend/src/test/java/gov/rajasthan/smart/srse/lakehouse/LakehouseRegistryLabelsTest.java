@@ -126,6 +126,19 @@ class LakehouseRegistryLabelsTest {
     void reservedUntaggedRejectedForStorage() {
         assertThrows(IllegalArgumentException.class,
                 () -> RegistryDisplayTags.normaliseOptional(RegistryDisplayTags.UNTAGGED));
+        assertThrows(IllegalArgumentException.class,
+                () -> LakehouseLayers.normaliseOptional(LakehouseLayers.UNTAGGED));
+    }
+
+    @Test
+    void overviewListsTablesWhenAllDisplayLabelsNull() {
+        RegisteredTable bare = new RegisteredTable(2L, CATALOG, SCHEMA, "plain", null, false, null, null);
+        when(registrations.findAllByOrderByCatalogNameAscSchemaNameAscTableNameAsc())
+                .thenReturn(List.of(bare));
+
+        assertEquals(1, registry.listOverviewTables(null, null).size());
+        assertEquals(List.of(RegistryDisplayTags.UNTAGGED), registry.listSourceSystems());
+        assertEquals(List.of(RegistryDisplayTags.UNTAGGED), registry.listTableGroups(null));
     }
 
     @Test

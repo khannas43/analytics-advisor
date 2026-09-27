@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   createDimension,
   createLevel,
@@ -57,27 +57,41 @@ export function AdminIdentityPanel() {
     name: "",
   });
 
-  const reload = useCallback(async () => {
-    setError(null);
-    const s = await fetchAuthSession();
-    setSession(s);
-    const [u, d, g] = await Promise.all([listUsers(), listDimensions(), listGrantableNodes()]);
-    setUsers(u);
-    setDimensions(d);
-    setGrantable(g);
-    const dimId = nodeForm.dimensionId || d[0]?.id;
-    if (dimId) {
-      const [lv, nd] = await Promise.all([listLevels(dimId), listScopeNodes(dimId)]);
-      setLevels(lv);
-      setNodes(nd);
-      setLevelForm((f) => ({ ...f, dimensionId: dimId }));
-      setNodeForm((f) => ({ ...f, dimensionId: dimId, levelId: lv[0]?.id ?? 0 }));
-    }
-  }, [nodeForm.dimensionId]);
+  const [dataRevision, setDataRevision] = useState(0);
+  const bumpRefresh = () => {
+    setDataRevision((n) => n + 1);
+    return Promise.resolve();
+  };
+  const reloadKey = `${nodeForm.dimensionId}:${dataRevision}`;
 
   useEffect(() => {
-    reload().catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
-  }, [reload]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await fetchAuthSession();
+        const [u, d, g] = await Promise.all([listUsers(), listDimensions(), listGrantableNodes()]);
+        if (cancelled) return;
+        setSession(s);
+        setUsers(u);
+        setDimensions(d);
+        setGrantable(g);
+        const dimId = nodeForm.dimensionId || d[0]?.id;
+        if (dimId) {
+          const [lv, nd] = await Promise.all([listLevels(dimId), listScopeNodes(dimId)]);
+          if (cancelled) return;
+          setLevels(lv);
+          setNodes(nd);
+          setLevelForm((f) => ({ ...f, dimensionId: dimId }));
+          setNodeForm((f) => ({ ...f, dimensionId: dimId, levelId: lv[0]?.id ?? 0 }));
+        }
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey, nodeForm.dimensionId]);
 
   async function onCreateUser() {
     setMessage(null);
@@ -91,7 +105,10 @@ export function AdminIdentityPanel() {
         scopeNodeIds: newUser.scopeNodeIds,
       });
       setMessage("User created.");
-      await reload();
+      const s = await fetchAuthSession();
+      setSession(s);
+      setUsers(await listUsers());
+      setDataRevision((n) => n + 1);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -104,7 +121,7 @@ export function AdminIdentityPanel() {
     }
     await createDimension(dimForm);
     setMessage("Dimension created.");
-    await reload();
+    setDataRevision((n) => n + 1);
   }
 
   async function onCreateLevel() {
@@ -114,7 +131,7 @@ export function AdminIdentityPanel() {
     }
     await createLevel(levelForm);
     setMessage("Level created.");
-    await reload();
+    setDataRevision((n) => n + 1);
   }
 
   async function onCreateNode() {
@@ -126,7 +143,7 @@ export function AdminIdentityPanel() {
       name: nodeForm.name,
     });
     setMessage("Node created.");
-    await reload();
+    setDataRevision((n) => n + 1);
   }
 
   return (
@@ -171,7 +188,7 @@ export function AdminIdentityPanel() {
                   <td>{u.scopeAssignments.map((s) => s.path).join(" ") || "—"}</td>
                   <td>{u.active ? "yes" : "no"}</td>
                   <td>
-                    <UserRowActions user={u} grantable={grantable} onDone={reload} setError={setError} />
+                    <UserRowActions user={u} grantable={grantable} onDone={bumpRefresh} setError={setError} />
                   </td>
                 </tr>
               ))}
@@ -296,7 +313,7 @@ export function AdminIdentityPanel() {
                 <button
                   type="button"
                   className="srse-btn srse-btn-ghost srse-btn-sm"
-                  onClick={() => deleteScopeNode(n.id).then(reload).catch((e) => setError(String(e)))}
+                  onClick={() => deleteScopeNode(n.id).then(bumpRefresh).catch((e) => setError(String(e)))}
                 >
                   Delete
                 </button>

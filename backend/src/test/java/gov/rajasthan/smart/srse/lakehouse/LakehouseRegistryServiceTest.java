@@ -133,10 +133,34 @@ class LakehouseRegistryServiceTest {
     }
 
     @Test
-    void registerBlankLayerIsRejected() {
+    void registerBlankLayerStoresNull() {
+        when(registrations.findByCatalogNameAndSchemaNameAndTableName(CATALOG, SCHEMA, TABLE))
+                .thenReturn(Optional.empty());
+        when(registrations.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        RegisteredTable saved = service.register(CATALOG, SCHEMA, TABLE, "  ", null, null);
+
+        assertNull(saved.getLayer());
+        verify(registrations).save(any());
+    }
+
+    @Test
+    void registerAllDisplayLabelsBlank() {
+        when(registrations.findByCatalogNameAndSchemaNameAndTableName(CATALOG, SCHEMA, TABLE))
+                .thenReturn(Optional.empty());
+        when(registrations.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        RegisteredTable saved = service.register(CATALOG, SCHEMA, TABLE, null, "  ", "  ");
+
+        assertNull(saved.getLayer());
+        assertNull(saved.getSourceSystem());
+        assertNull(saved.getTableGroup());
+    }
+
+    @Test
+    void normaliseOptionalLayerRejectsUntaggedAsStoredValue() {
         assertThrows(IllegalArgumentException.class,
-                () -> service.register(CATALOG, SCHEMA, TABLE, "  "));
-        verify(registrations, never()).save(any());
+                () -> LakehouseLayers.normaliseOptional(LakehouseLayers.UNTAGGED));
     }
 
     @Test
@@ -176,12 +200,15 @@ class LakehouseRegistryServiceTest {
     }
 
     @Test
-    void updateLayerBlankLayerIsRejected() {
-        when(registrations.findById(7L))
-                .thenReturn(Optional.of(new RegisteredTable(7L, CATALOG, SCHEMA, TABLE, "SILVER")));
+    void updateLayerBlankClearsLayer() {
+        RegisteredTable existing = new RegisteredTable(7L, CATALOG, SCHEMA, TABLE, "SILVER");
+        when(registrations.findById(7L)).thenReturn(Optional.of(existing));
+        when(registrations.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        assertThrows(IllegalArgumentException.class, () -> service.updateLayer(7L, "  "));
-        verify(registrations, never()).save(any());
+        RegisteredTable saved = service.updateLayer(7L, "  ");
+
+        assertNull(saved.getLayer());
+        verify(registrations).save(existing);
     }
 
     @Test
@@ -338,6 +365,16 @@ class LakehouseRegistryServiceTest {
                         new RegisteredTable(2L, CATALOG, SCHEMA, TABLE, "SILVER")));
 
         assertEquals(List.of("iceberg_bronze"), service.listCatalogs("BRONZE"));
+    }
+
+    @Test
+    void listCatalogsWithoutLayerFilterIncludesNullAndTaggedLayers() {
+        when(registrations.findAllByOrderByCatalogNameAscSchemaNameAscTableNameAsc())
+                .thenReturn(List.of(
+                        new RegisteredTable(1L, "iceberg_bronze", SCHEMA, TABLE, "BRONZE"),
+                        new RegisteredTable(2L, CATALOG, SCHEMA, TABLE, null)));
+
+        assertEquals(List.of("iceberg_bronze", CATALOG), service.listCatalogs());
     }
 
     @Test

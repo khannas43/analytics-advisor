@@ -106,7 +106,7 @@ public class LakehouseRegistryService {
                 .findByCatalogNameAndSchemaNameAndTableName(catalog, schema, table)
                 .orElse(null);
         if (existing != null) {
-            existing.setLayer(LakehouseLayers.normalise(layer));
+            existing.setLayer(LakehouseLayers.normaliseOptional(layer));
             existing.setSourceSystem(source);
             existing.setTableGroup(group);
             RegisteredTable saved = registrations.save(existing);
@@ -118,7 +118,7 @@ public class LakehouseRegistryService {
             return saved;
         }
         RegisteredTable saved = registrations.save(new RegisteredTable(
-                null, catalog, schema, table, LakehouseLayers.normalise(layer), false, source, group));
+                null, catalog, schema, table, LakehouseLayers.normaliseOptional(layer), false, source, group));
         auditService.recordRegistryEvent(
                 AuditActionType.TABLE_REGISTERED,
                 authenticatedUserService.requireCurrentUser(),
@@ -140,7 +140,7 @@ public class LakehouseRegistryService {
     public RegisteredTable updateLayer(long id, String layer) {
         RegisteredTable existing = registrations.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("No such registration: " + id));
-        existing.setLayer(LakehouseLayers.normalise(layer));
+        existing.setLayer(LakehouseLayers.normaliseOptional(layer));
         return registrations.save(existing);
     }
 
@@ -150,7 +150,7 @@ public class LakehouseRegistryService {
             long id, String layer, String sourceSystem, String tableGroup) {
         RegisteredTable existing = registrations.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("No such registration: " + id));
-        existing.setLayer(LakehouseLayers.normalise(layer));
+        existing.setLayer(LakehouseLayers.normaliseOptional(layer));
         existing.setSourceSystem(RegistryDisplayTags.normaliseOptional(sourceSystem));
         existing.setTableGroup(RegistryDisplayTags.normaliseOptional(tableGroup));
         return registrations.save(existing);

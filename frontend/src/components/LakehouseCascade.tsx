@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { RegistryBrowseFilter } from "@/lib/analysisApi";
 
 /**
@@ -15,9 +15,10 @@ import type { RegistryBrowseFilter } from "@/lib/analysisApi";
  * would silently point at the wrong layer rather than failing loudly.
  *
  * When registry filter fetchers are supplied (Analysis registry cascade),
- * optional Source system / Table group / Layer rungs appear first. Those
- * values are component-internal state only — they are never part of
- * {@link CascadeValue}, so they cannot ride into match payloads via spread.
+ * optional Source system / Table group / Layer filters may appear in a
+ * secondary block. Those values are component-internal state only — they are
+ * never part of {@link CascadeValue}, so they cannot ride into match payloads
+ * via spread.
  *
  * Deliberately source-agnostic — the caller supplies the fetchers. The
  * Admin page passes the live-browse endpoints (everything the Presto
@@ -35,6 +36,18 @@ export const EMPTY_CASCADE: CascadeValue = { catalog: "", schema: "", table: "" 
 
 export function isCascadeComplete(v: CascadeValue): boolean {
   return Boolean(v.catalog && v.schema && v.table);
+}
+
+/** Wire sentinel for legacy null-tag rows — filter only, never stored. */
+export const UNTAGGED_FILTER = "UNTAGGED";
+
+/** Options worth showing in an optional label filter (excludes empty and UNTAGGED-only lists). */
+export function meaningfulLabelFilterOptions(options: string[]): string[] {
+  return options.filter((o) => o && o !== UNTAGGED_FILTER);
+}
+
+export function shouldShowLabelFilter(options: string[]): boolean {
+  return meaningfulLabelFilterOptions(options).length > 0;
 }
 
 /** A table option; `layer` (SILVER/GOLD) is rendered as a suffix when present. */
@@ -63,6 +76,8 @@ type Props = Readonly<{
   disabled?: boolean;
   /** Compact drops the per-select captions — for dense repeated rows. */
   compact?: boolean;
+  /** Prototype Query Builder: `.field` / `.row` layout inside `.pick` cards. */
+  appearance?: "legacy" | "prototype";
   onError?: (message: string) => void;
 }>;
 
@@ -70,7 +85,7 @@ const selectStyle = { minWidth: 150 } as const;
 
 /** Must stay in lockstep with {@code RegistryDisplayTags.UNTAGGED} on the backend. */
 function tagOptionLabel(tag: string): string {
-  return tag === "UNTAGGED" ? "Untagged (legacy)" : tag;
+  return tag === UNTAGGED_FILTER ? "Untagged (legacy)" : tag;
 }
 
 export default function LakehouseCascade({
@@ -81,20 +96,17 @@ export default function LakehouseCascade({
   idPrefix,
   disabled = false,
   compact = false,
+  appearance = "legacy",
   onError,
 }: Props) {
+  const proto = appearance === "prototype";
   const [sourceSystems, setSourceSystems] = useState<string[]>([]);
   const [tableGroups, setTableGroups] = useState<string[]>([]);
   const [layers, setLayers] = useState<string[]>([]);
   const [selectedSourceSystem, setSelectedSourceSystem] = useState("");
   const [selectedTableGroup, setSelectedTableGroup] = useState("");
   const [selectedLayer, setSelectedLayer] = useState("");
-  const [catalogs, setCatalogs] = useState<string[]>([]);
-  const [schemas, setSchemas] = useState<string[]>([]);
-  const [tables, setTables] = useState<TableOption[]>([]);
-  const [loading, setLoading] = useState(false);
 
-  const layerRequired = fetchers.listLayers != null;
   const browseFilter = useMemo((): RegistryBrowseFilter => {
     const f: RegistryBrowseFilter = {};
     if (selectedLayer) f.layer = selectedLayer;
@@ -103,10 +115,28 @@ export default function LakehouseCascade({
     return f;
   }, [selectedLayer, selectedSourceSystem, selectedTableGroup]);
 
-  const canFetchCatalogs =
-    !layerRequired || Boolean(selectedLayer) || Boolean(value.catalog);
-  const catalogDisabled =
-    disabled || (layerRequired && !selectedLayer && !value.catalog);
+  const browseFilterKey = useMemo(() => JSON.stringify(browseFilter), [browseFilter]);
+  const [catalogFetch, setCatalogFetch] = useState<{ key: string; items: string[] }>({
+    key: "",
+    items: [],
+  });
+  const [schemaFetch, setSchemaFetch] = useState<{ key: string; items: string[] }>({
+    key: "",
+    items: [],
+  });
+  const [tableFetch, setTableFetch] = useState<{ key: string; items: TableOption[] }>({
+    key: "",
+    items: [],
+  });
+  const catalogsLoading = catalogFetch.key !== browseFilterKey;
+  const catalogs = catalogsLoading ? catalogFetch.items : catalogFetch.items;
+  const schemaKey = value.catalog ? `${value.catalog}|${browseFilterKey}` : "";
+  const schemas =
+    value.catalog && schemaFetch.key === schemaKey ? schemaFetch.items : [];
+  const tableKey = value.catalog && value.schema ? `${schemaKey}|${value.schema}` : "";
+  const tables =
+    value.catalog && value.schema && tableFetch.key === tableKey ? tableFetch.items : [];
+  const loading = catalogsLoading;
 
   const report = useCallback(
     (err: unknown) => onError?.(err instanceof Error ? err.message : String(err)),
@@ -164,59 +194,74 @@ export default function LakehouseCascade({
 
   useEffect(() => {
     let cancelled = false;
-    if (!canFetchCatalogs) {
-      return undefined;
-    }
-    setLoading(true);
     listCatalogs(browseFilter)
       .then((c) => {
-        if (!cancelled) setCatalogs(c);
+        if (cancelled) return;
+        setCatalogFetch({ key: browseFilterKey, items: c });
+        if (value.catalog && !c.includes(value.catalog)) {
+          onChange({ catalog: "", schema: "", table: "" });
+        }
       })
-      .catch(report)
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .catch(report);
     return () => {
       cancelled = true;
     };
-  }, [canFetchCatalogs, browseFilter, listCatalogs, report]);
+  }, [browseFilterKey, browseFilter, listCatalogs, report, value.catalog, onChange]);
 
   const sourceSystemOptions = listSourceSystems ? sourceSystems : [];
   const tableGroupOptions = listTableGroups ? tableGroups : [];
   const layerOptions = listLayers ? layers : [];
-  const catalogOptions = canFetchCatalogs ? catalogs : [];
+
+  const showSourceFilter = listSourceSystems != null && shouldShowLabelFilter(sourceSystemOptions);
+  const showGroupFilter = listTableGroups != null && shouldShowLabelFilter(tableGroupOptions);
+  const showLayerFilter = listLayers != null && shouldShowLabelFilter(layerOptions);
+
+  const layerSelectOptions = useMemo(() => {
+    const meaningful = meaningfulLabelFilterOptions(layerOptions);
+    const opts = [...meaningful];
+    if (layerOptions.includes(UNTAGGED_FILTER)) {
+      opts.push(UNTAGGED_FILTER);
+    }
+    return opts;
+  }, [layerOptions]);
 
   useEffect(() => {
-    let cancelled = false;
     if (!value.catalog) {
-      setSchemas([]);
       return undefined;
     }
+    let cancelled = false;
     listSchemas(value.catalog, browseFilter)
       .then((s) => {
-        if (!cancelled) setSchemas(s);
+        if (cancelled) return;
+        setSchemaFetch({ key: schemaKey, items: s });
+        if (value.schema && !s.includes(value.schema)) {
+          onChange({ catalog: value.catalog, schema: "", table: "" });
+        }
       })
       .catch(report);
     return () => {
       cancelled = true;
     };
-  }, [value.catalog, browseFilter, listSchemas, report]);
+  }, [value.catalog, value.schema, schemaKey, browseFilter, listSchemas, report, onChange]);
 
   useEffect(() => {
-    let cancelled = false;
     if (!value.catalog || !value.schema) {
-      setTables([]);
       return undefined;
     }
+    let cancelled = false;
     listTables(value.catalog, value.schema, browseFilter)
       .then((t) => {
-        if (!cancelled) setTables(t);
+        if (cancelled) return;
+        setTableFetch({ key: tableKey, items: t });
+        if (value.table && !t.some((row) => row.name === value.table)) {
+          onChange({ catalog: value.catalog, schema: value.schema, table: "" });
+        }
       })
       .catch(report);
     return () => {
       cancelled = true;
     };
-  }, [value.catalog, value.schema, browseFilter, listTables, report]);
+  }, [value.catalog, value.schema, value.table, tableKey, browseFilter, listTables, report, onChange]);
 
   function clearCascade() {
     onChange({ catalog: "", schema: "", table: "" });
@@ -252,6 +297,9 @@ export default function LakehouseCascade({
 
   function caption(text: string, htmlFor: string) {
     if (compact) return null;
+    if (proto) {
+      return <label htmlFor={htmlFor}>{text}</label>;
+    }
     return (
       <label htmlFor={htmlFor} className="srse-text-muted" style={{ fontSize: "0.72rem", display: "block" }}>
         {text}
@@ -259,102 +307,148 @@ export default function LakehouseCascade({
     );
   }
 
+  function fieldWrap(id: string, captionText: string, child: ReactNode) {
+    if (proto) {
+      return (
+        <div className="field">
+          {caption(captionText, id)}
+          {child}
+        </div>
+      );
+    }
+    return (
+      <div>
+        {caption(captionText, id)}
+        {child}
+      </div>
+    );
+  }
+
+  const optionalFilters =
+    showSourceFilter || showGroupFilter || showLayerFilter ? (
+      <details className="cascade-optional-filters">
+        <summary className={proto ? "text-muted" : "srse-text-muted"}>Optional filters</summary>
+        <div
+          className={proto ? "row" : undefined}
+          style={
+            proto
+              ? { marginTop: 8, flexWrap: "wrap", gap: 8 }
+              : { display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end", marginTop: "0.5rem" }
+          }
+        >
+          {showSourceFilter &&
+            fieldWrap(
+              `${idPrefix}-source-system`,
+              "Source system",
+              <select
+                id={`${idPrefix}-source-system`}
+                className={proto ? undefined : "srse-select"}
+                style={proto ? undefined : selectStyle}
+                value={selectedSourceSystem}
+                disabled={disabled}
+                onChange={(e) => pickSourceSystem(e.target.value)}
+              >
+                <option value="">All</option>
+                {meaningfulLabelFilterOptions(sourceSystemOptions).map((s) => (
+                  <option key={s} value={s}>
+                    {tagOptionLabel(s)}
+                  </option>
+                ))}
+                {sourceSystemOptions.includes(UNTAGGED_FILTER) && (
+                  <option value={UNTAGGED_FILTER}>{tagOptionLabel(UNTAGGED_FILTER)}</option>
+                )}
+              </select>,
+            )}
+
+          {showGroupFilter &&
+            fieldWrap(
+              `${idPrefix}-table-group`,
+              "Table group",
+              <select
+                id={`${idPrefix}-table-group`}
+                className={proto ? undefined : "srse-select"}
+                style={proto ? undefined : selectStyle}
+                value={selectedTableGroup}
+                disabled={disabled}
+                onChange={(e) => pickTableGroup(e.target.value)}
+              >
+                <option value="">All</option>
+                {meaningfulLabelFilterOptions(tableGroupOptions).map((g) => (
+                  <option key={g} value={g}>
+                    {tagOptionLabel(g)}
+                  </option>
+                ))}
+                {tableGroupOptions.includes(UNTAGGED_FILTER) && (
+                  <option value={UNTAGGED_FILTER}>{tagOptionLabel(UNTAGGED_FILTER)}</option>
+                )}
+              </select>,
+            )}
+
+          {showLayerFilter &&
+            fieldWrap(
+              `${idPrefix}-layer`,
+              "Layer",
+              <select
+                id={`${idPrefix}-layer`}
+                className={proto ? undefined : "srse-select"}
+                style={proto ? undefined : selectStyle}
+                value={selectedLayer}
+                disabled={disabled}
+                onChange={(e) => pickLayer(e.target.value)}
+              >
+                <option value="">All</option>
+                {layerSelectOptions.map((l) => (
+                  <option key={l} value={l}>
+                    {tagOptionLabel(l)}
+                  </option>
+                ))}
+              </select>,
+            )}
+        </div>
+      </details>
+    ) : null;
+
   return (
-    <div>
-      {label && (
+    <div className={proto ? "row" : undefined}>
+      {label && !proto && (
         <div className="srse-text-muted" style={{ fontSize: "0.78rem", marginBottom: "0.3rem" }}>
           {label}
         </div>
       )}
-      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end" }}>
-        {listSourceSystems && (
-          <div>
-            {caption("Source system", `${idPrefix}-source-system`)}
-            <select
-              id={`${idPrefix}-source-system`}
-              className="srse-select"
-              style={selectStyle}
-              value={selectedSourceSystem}
-              disabled={disabled}
-              onChange={(e) => pickSourceSystem(e.target.value)}
-            >
-              <option value="">— any —</option>
-              {sourceSystemOptions.map((s) => (
-                <option key={s} value={s}>
-                  {tagOptionLabel(s)}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {listTableGroups && (
-          <div>
-            {caption("Table group", `${idPrefix}-table-group`)}
-            <select
-              id={`${idPrefix}-table-group`}
-              className="srse-select"
-              style={selectStyle}
-              value={selectedTableGroup}
-              disabled={disabled}
-              onChange={(e) => pickTableGroup(e.target.value)}
-            >
-              <option value="">— any —</option>
-              {tableGroupOptions.map((g) => (
-                <option key={g} value={g}>
-                  {tagOptionLabel(g)}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {layerRequired && (
-          <div>
-            {caption("Layer", `${idPrefix}-layer`)}
-            <select
-              id={`${idPrefix}-layer`}
-              className="srse-select"
-              style={selectStyle}
-              value={selectedLayer}
-              disabled={disabled}
-              onChange={(e) => pickLayer(e.target.value)}
-            >
-              <option value="">— layer —</option>
-              {layerOptions.map((l) => (
-                <option key={l} value={l}>
-                  {tagOptionLabel(l)}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        <div>
-          {caption("Catalog", `${idPrefix}-catalog`)}
+      {label && proto && <div className="ttl">{label}</div>}
+      <div
+        className={proto ? "row" : undefined}
+        style={
+          proto ? { flexWrap: "wrap", gap: 8 } : { display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "flex-end" }
+        }
+      >
+        {fieldWrap(
+          `${idPrefix}-catalog`,
+          "Catalog",
           <select
             id={`${idPrefix}-catalog`}
-            className="srse-select"
-            style={selectStyle}
+            className={proto ? undefined : "srse-select"}
+            style={proto ? undefined : selectStyle}
             value={value.catalog}
-            disabled={catalogDisabled}
+            disabled={disabled}
             onChange={(e) => pickCatalog(e.target.value)}
           >
             <option value="">{loading ? "— loading… —" : "— catalog —"}</option>
-            {catalogOptions.map((c) => (
+            {catalogs.map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
             ))}
-          </select>
-        </div>
+          </select>,
+        )}
 
-        <div>
-          {caption("Schema", `${idPrefix}-schema`)}
+        {fieldWrap(
+          `${idPrefix}-schema`,
+          "Schema",
           <select
             id={`${idPrefix}-schema`}
-            className="srse-select"
-            style={selectStyle}
+            className={proto ? undefined : "srse-select"}
+            style={proto ? undefined : selectStyle}
             value={value.schema}
             disabled={disabled || !value.catalog}
             onChange={(e) => pickSchema(e.target.value)}
@@ -365,15 +459,16 @@ export default function LakehouseCascade({
                 {s}
               </option>
             ))}
-          </select>
-        </div>
+          </select>,
+        )}
 
-        <div>
-          {caption("Table", `${idPrefix}-table`)}
+        {fieldWrap(
+          `${idPrefix}-table`,
+          "Table",
           <select
             id={`${idPrefix}-table`}
-            className="srse-select"
-            style={selectStyle}
+            className={proto ? undefined : "srse-select"}
+            style={proto ? undefined : selectStyle}
             value={value.table}
             disabled={disabled || !value.schema}
             onChange={(e) => pickTable(e.target.value)}
@@ -384,9 +479,10 @@ export default function LakehouseCascade({
                 {t.layer ? `${t.name} (${t.layer})` : t.name}
               </option>
             ))}
-          </select>
-        </div>
+          </select>,
+        )}
       </div>
+      {optionalFilters}
     </div>
   );
 }

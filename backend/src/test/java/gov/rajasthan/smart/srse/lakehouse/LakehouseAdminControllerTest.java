@@ -151,15 +151,16 @@ class LakehouseAdminControllerTest {
     }
 
     @Test
-    void registerRejectsBlankLayer() throws Exception {
-        doThrow(new IllegalArgumentException("Layer is required"))
-                .when(registry).register(eq(CATALOG), eq(SCHEMA), eq(TABLE), eq(""), isNull(), isNull());
+    void registerAcceptsBlankLayer() throws Exception {
+        when(registry.register(CATALOG, SCHEMA, TABLE, "", null, null))
+                .thenReturn(new RegisteredTable(3L, CATALOG, SCHEMA, TABLE, null));
 
         mockMvc.perform(post("/api/admin/lakehouse/registrations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"catalog\":\"" + CATALOG + "\",\"schema\":\"" + SCHEMA + "\","
                                 + "\"table\":\"" + TABLE + "\",\"layer\":\"\"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.layer").isEmpty());
     }
 
     @Test
@@ -190,14 +191,15 @@ class LakehouseAdminControllerTest {
     }
 
     @Test
-    void editRejectsBlankLayer() throws Exception {
-        doThrow(new IllegalArgumentException("Layer is required"))
-                .when(registry).updateRegistrationTags(5L, "", null, null);
+    void editClearsBlankLayer() throws Exception {
+        when(registry.updateRegistrationTags(5L, "", null, null))
+                .thenReturn(new RegisteredTable(5L, CATALOG, SCHEMA, TABLE, null));
 
         mockMvc.perform(put("/api/admin/lakehouse/registrations/{id}", 5)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"layer\":\"\"}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.layer").isEmpty());
     }
 
     @Test

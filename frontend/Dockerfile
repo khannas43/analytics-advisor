@@ -6,7 +6,9 @@ WORKDIR /app
 # Must be passed as a build ARG (docker-compose.yml's build.args) to actually
 # change which backend URL the deployed app talks to.
 ARG NEXT_PUBLIC_API_BASE=http://localhost:8080
+ARG NEXT_PUBLIC_AUTH_MODE=mock
 ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
+ENV NEXT_PUBLIC_AUTH_MODE=$NEXT_PUBLIC_AUTH_MODE
 COPY package.json package-lock.json* ./
 RUN npm install
 COPY . .
