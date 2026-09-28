@@ -9,7 +9,7 @@ const BASE = process.env.AA_BASE_URL || "http://localhost:3001";
 async function login(page) {
   await page.goto(`${BASE}/login`);
   await page.getByLabel("Username").fill(process.env.AA_ADMIN_USER || "superadmin");
-  await page.getByLabel("Password").fill(process.env.AA_ADMIN_PASS || "Restored$Sup1");
+  await page.getByLabel("Password").fill(process.env.AA_ADMIN_PASS || "Supradmin@123");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL((u) => !u.pathname.includes("/login"));
 }

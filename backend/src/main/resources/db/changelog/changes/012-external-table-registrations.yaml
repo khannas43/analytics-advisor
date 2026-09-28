@@ -1,0 +1,40 @@
+databaseChangeLog:
+  - changeSet:
+      id: 012-external-table-registrations
+      author: analytics-advisor
+      comment: Link officer-visible registrations to saved JDBC sources without changing request payloads.
+      changes:
+        - addColumn:
+            tableName: external_data_source
+            columns:
+              - column:
+                  name: federation_catalog
+                  type: varchar(128)
+                  constraints:
+                    nullable: true
+        - addColumn:
+            tableName: registered_table
+            columns:
+              - column:
+                  name: external_data_source_id
+                  type: bigint
+                  constraints:
+                    nullable: true
+              - column:
+                  name: external_catalog
+                  type: varchar(128)
+                  constraints:
+                    nullable: true
+        - addForeignKeyConstraint:
+            baseTableName: registered_table
+            baseColumnNames: external_data_source_id
+            referencedTableName: external_data_source
+            referencedColumnNames: id
+            constraintName: fk_registered_table_external_source
+            onDelete: RESTRICT
+        - createIndex:
+            tableName: registered_table
+            indexName: ix_registered_table_external_source
+            columns:
+              - column:
+                  name: external_data_source_id

@@ -6,6 +6,10 @@ import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.lakehouse.QualifiedColumn;
 import gov.rajasthan.smart.srse.lakehouse.QualifiedTable;
 import gov.rajasthan.smart.srse.lakehouse.ScopeFilteredFrom;
+import gov.rajasthan.smart.srse.execution.AnalysisExecutionRoute;
+import gov.rajasthan.smart.srse.execution.AnalysisExecutionRouter;
+import gov.rajasthan.smart.srse.execution.GuardrailProperties;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -25,16 +29,32 @@ public class ColumnDistinctValuesService {
     private final LakehouseRegistryService registry;
     private final AnalysisScopeFromService scopeFrom;
     private final AnalysisProperties analysisProperties;
+    private final GuardrailProperties guardrails;
 
+    @Autowired(required = false)
+    private AnalysisExecutionRouter executionRouter;
+
+    /** Test constructor. Runtime wiring uses the guardrail-aware constructor. */
     public ColumnDistinctValuesService(
             @Qualifier("prestoJdbcTemplate") JdbcTemplate jdbc,
             LakehouseRegistryService registry,
             AnalysisScopeFromService scopeFrom,
             AnalysisProperties analysisProperties) {
+        this(jdbc, registry, scopeFrom, analysisProperties, new GuardrailProperties(1000, 30, 50));
+    }
+
+    @Autowired
+    public ColumnDistinctValuesService(
+            @Qualifier("prestoJdbcTemplate") JdbcTemplate jdbc,
+            LakehouseRegistryService registry,
+            AnalysisScopeFromService scopeFrom,
+            AnalysisProperties analysisProperties,
+            GuardrailProperties guardrails) {
         this.jdbc = jdbc;
         this.registry = registry;
         this.scopeFrom = scopeFrom;
         this.analysisProperties = analysisProperties;
+        this.guardrails = guardrails;
     }
 
     public PlannedColumnValues plan(ColumnValuesRequest req) {
@@ -71,15 +91,22 @@ public class ColumnDistinctValuesService {
 
         String sql = "SELECT DISTINCT scoped." + column.column() + " AS v FROM " + from
                 + where + " ORDER BY v NULLS FIRST LIMIT " + (limit + 1);
-        return new PlannedColumnValues(sql, List.copyOf(params), limit, true);
+        if (executionRouter == null) {
+            return new PlannedColumnValues(sql, List.copyOf(params), limit, true);
+        }
+        AnalysisExecutionRouter.RoutedSql routed = executionRouter.route(sql, List.of(table));
+        return new PlannedColumnValues(
+                sql, List.copyOf(params), limit, true, routed.sql(), routed.route());
     }
 
     public ColumnValuesResponse execute(PlannedColumnValues planned) {
         if (!planned.executes()) {
             return new ColumnValuesResponse(List.of(), false, false);
         }
-        List<Object> raw = jdbc.query(
-                planned.sql(),
+        JdbcTemplate executionJdbc = executionRouter == null ? jdbc : executionRouter.jdbc(planned.route());
+        executionJdbc.setQueryTimeout(guardrails.queryTimeoutSeconds());
+        List<Object> raw = executionJdbc.query(
+                planned.routedSql(),
                 planned.params().toArray(),
                 (rs, rowNum) -> rs.getObject(1));
         return buildResponse(raw, planned.limit());
@@ -122,7 +149,17 @@ public class ColumnDistinctValuesService {
         }
     }
 
-    public record PlannedColumnValues(String sql, List<Object> params, int limit, boolean executes) {
+    public record PlannedColumnValues(
+            String sql,
+            List<Object> params,
+            int limit,
+            boolean executes,
+            String routedSql,
+            AnalysisExecutionRoute route) {
+        public PlannedColumnValues(String sql, List<Object> params, int limit, boolean executes) {
+            this(sql, params, limit, executes, sql, AnalysisExecutionRoute.presto());
+        }
+
         public PlannedColumnValues {
             params = List.copyOf(params);
         }

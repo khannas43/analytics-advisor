@@ -3,9 +3,13 @@ package gov.rajasthan.smart.srse.lakehouse;
 import gov.rajasthan.smart.srse.audit.AuditActionType;
 import gov.rajasthan.smart.srse.audit.AuditService;
 import gov.rajasthan.smart.srse.identity.AuthenticatedUserService;
+import gov.rajasthan.smart.srse.datasource.ExternalDataSourceMetadataService;
+import gov.rajasthan.smart.srse.datasource.ExternalDataSourceService;
+import gov.rajasthan.smart.srse.datasource.ExternalDataSourceType;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadata;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
@@ -58,7 +62,34 @@ public class LakehouseRegistryService {
     private final TableScopeRegistrationService tableScopeRegistrationService;
     private final AuthenticatedUserService authenticatedUserService;
     private final AuditService auditService;
+    private final ExternalDataSourceMetadataService externalMetadata;
+    private final ExternalDataSourceService externalSources;
 
+    @Autowired
+    public LakehouseRegistryService(
+            RegisteredTableRepository registrations,
+            AnalysisColumnMetadataRepository columnMetadata,
+            LakehouseBrowseService browse,
+            OfficerRegistryScopeService officerScope,
+            RegisteredTableScopeCatalog scopeCatalog,
+            TableScopeRegistrationService tableScopeRegistrationService,
+            AuthenticatedUserService authenticatedUserService,
+            AuditService auditService,
+            ExternalDataSourceMetadataService externalMetadata,
+            ExternalDataSourceService externalSources) {
+        this.registrations = registrations;
+        this.columnMetadata = columnMetadata;
+        this.browse = browse;
+        this.officerScope = officerScope;
+        this.scopeCatalog = scopeCatalog;
+        this.tableScopeRegistrationService = tableScopeRegistrationService;
+        this.authenticatedUserService = authenticatedUserService;
+        this.auditService = auditService;
+        this.externalMetadata = externalMetadata;
+        this.externalSources = externalSources;
+    }
+
+    /** Test-compatible constructor for native-Presto registry scenarios. */
     public LakehouseRegistryService(
             RegisteredTableRepository registrations,
             AnalysisColumnMetadataRepository columnMetadata,
@@ -68,14 +99,8 @@ public class LakehouseRegistryService {
             TableScopeRegistrationService tableScopeRegistrationService,
             AuthenticatedUserService authenticatedUserService,
             AuditService auditService) {
-        this.registrations = registrations;
-        this.columnMetadata = columnMetadata;
-        this.browse = browse;
-        this.officerScope = officerScope;
-        this.scopeCatalog = scopeCatalog;
-        this.tableScopeRegistrationService = tableScopeRegistrationService;
-        this.authenticatedUserService = authenticatedUserService;
-        this.auditService = auditService;
+        this(registrations, columnMetadata, browse, officerScope, scopeCatalog,
+                tableScopeRegistrationService, authenticatedUserService, auditService, null, null);
     }
 
     // ---- admin: registration ----
@@ -125,6 +150,82 @@ public class LakehouseRegistryService {
                 saved.toQualifiedTable().qualifiedName(),
                 "registered");
         return saved;
+    }
+
+    /** Registers a table discovered through a saved JDBC source. */
+    @Transactional
+    public RegisteredTable registerExternal(
+            long sourceId,
+            String physicalCatalog,
+            String schema,
+            String table,
+            String layer,
+            String sourceSystem,
+            String tableGroup) {
+        if (externalMetadata == null || externalSources == null) {
+            throw new IllegalStateException("External data-source registry is unavailable");
+        }
+        var source = externalSources.requireForBrowse(sourceId);
+        String tableName = table == null ? "" : table.trim();
+        String requestedSchema = schema == null ? "" : schema.trim();
+        String storedCatalog = normalisePhysicalCatalog(physicalCatalog);
+        String logicalSchema = requestedSchema;
+        if (logicalSchema.isEmpty()
+                && (source.getDatabaseType() == ExternalDataSourceType.MYSQL
+                    || source.getDatabaseType() == ExternalDataSourceType.MARIADB)) {
+            logicalSchema = storedCatalog == null ? "" : storedCatalog;
+        }
+        LakehouseIdentifiers.requireSafe("schema", logicalSchema);
+        LakehouseIdentifiers.requireSafe("table", tableName);
+        externalMetadata.validateRegisteredTableCandidate(
+                sourceId, storedCatalog, requestedSchema.isEmpty() ? null : requestedSchema, tableName);
+        String logicalCatalog = "jdbc_" + sourceId;
+        String requestedSourceLabel = RegistryDisplayTags.normaliseOptional(sourceSystem);
+        String sourceLabel = requestedSourceLabel == null ? source.getName() : requestedSourceLabel;
+        String group = RegistryDisplayTags.normaliseOptional(tableGroup);
+        String schemaForRegistration = logicalSchema;
+        RegisteredTable registration = registrations
+                .findByCatalogNameAndSchemaNameAndTableName(logicalCatalog, schemaForRegistration, tableName)
+                .orElseGet(() -> new RegisteredTable(
+                        null, logicalCatalog, schemaForRegistration, tableName,
+                        LakehouseLayers.normaliseOptional(layer), false, sourceLabel, group));
+        if (registration.getExternalDataSourceId() != null
+                && registration.getExternalDataSourceId() != sourceId) {
+            throw new IllegalStateException("Logical table address is already attached to another source");
+        }
+        registration.setLayer(LakehouseLayers.normaliseOptional(layer));
+        registration.setSourceSystem(sourceLabel);
+        registration.setTableGroup(group);
+        registration.attachExternalSource(sourceId, storedCatalog);
+        RegisteredTable saved = registrations.save(registration);
+        auditService.recordRegistryEvent(
+                AuditActionType.TABLE_REGISTERED,
+                authenticatedUserService.requireCurrentUser(),
+                saved.toQualifiedTable().qualifiedName(),
+                "external source=" + source.getName());
+        return saved;
+    }
+
+    /**
+     * Physical catalog is stored for the admin explorer. It is never interpolated
+     * into officer SQL — the logical address is {@code jdbc_<id>.schema.table}.
+     * Hyphens are allowed here because a database name is not a SQL identifier
+     * in the direct-JDBC path. Quotes, semicolons, and line breaks are not.
+     */
+    private static String normalisePhysicalCatalog(String catalog) {
+        if (catalog == null || catalog.isBlank()) {
+            return null;
+        }
+        String trimmed = catalog.trim();
+        if (trimmed.length() > 128
+                || trimmed.indexOf(';') >= 0
+                || trimmed.indexOf('\'') >= 0
+                || trimmed.indexOf('"') >= 0
+                || trimmed.indexOf('\n') >= 0
+                || trimmed.indexOf('\r') >= 0) {
+            throw new IllegalArgumentException("Catalog contains unsupported characters");
+        }
+        return trimmed;
     }
 
     /**
@@ -233,6 +334,13 @@ public class LakehouseRegistryService {
 
     public List<RegisteredTable> listRegistrations() {
         return allOrdered();
+    }
+
+    public List<RegisteredTable> listExternalRegistrations(long sourceId) {
+        return allOrdered().stream()
+                .filter(row -> row.getExternalDataSourceId() != null
+                        && row.getExternalDataSourceId() == sourceId)
+                .toList();
     }
 
     private List<RegisteredTable> allOrdered() {
@@ -422,13 +530,25 @@ public class LakehouseRegistryService {
      * with columns the admin opted out already filtered away.
      */
     public List<RegisteredColumn> listColumns(String catalog, String schema, String table) {
-        validateRegistered(catalog, schema, table);
+        RegisteredTable registration = requireVisibleRegistration(catalog, schema, table);
         Map<String, AnalysisColumnMetadata> byColumn = columnMetadata
                 .findByCatalogNameAndSchemaNameAndTableName(catalog, schema, table).stream()
                 .collect(java.util.stream.Collectors.toMap(
                         AnalysisColumnMetadata::getColumnName, Function.identity()));
 
-        return browse.listColumns(catalog, schema, table).stream()
+        java.util.stream.Stream<LakehouseBrowseService.ColumnInfo> liveColumns;
+        if (registration.isExternal()) {
+            if (externalMetadata == null) {
+                throw new IllegalStateException("External metadata service is unavailable");
+            }
+            liveColumns = externalMetadata.registeredColumns(
+                            registration.getExternalDataSourceId(), registration.getExternalCatalog(), schema, table)
+                    .stream()
+                    .map(c -> new LakehouseBrowseService.ColumnInfo(c.name(), c.dataType()));
+        } else {
+            liveColumns = browse.listColumns(catalog, schema, table).stream();
+        }
+        return liveColumns
                 .map(c -> {
                     AnalysisColumnMetadata meta = byColumn.get(c.name());
                     return new RegisteredColumn(
@@ -455,8 +575,7 @@ public class LakehouseRegistryService {
      * hand-typed mapping, while the lakehouse reports its own casing.
      */
     public boolean hasColumns(QualifiedTable table, Collection<String> columns) {
-        validateRegistered(table);
-        Set<String> live = browse.listColumns(table).stream()
+        Set<String> live = listColumns(table.catalog(), table.schema(), table.table()).stream()
                 .map(c -> c.name().toLowerCase(java.util.Locale.ROOT))
                 .collect(java.util.stream.Collectors.toSet());
         return columns.stream().allMatch(c -> live.contains(c.toLowerCase(java.util.Locale.ROOT)));
@@ -466,6 +585,10 @@ public class LakehouseRegistryService {
 
     /** Throws unless an admin has registered {@code catalog.schema.table}. */
     public void validateRegistered(String catalog, String schema, String table) {
+        requireVisibleRegistration(catalog, schema, table);
+    }
+
+    public RegisteredTable requireVisibleRegistration(String catalog, String schema, String table) {
         LakehouseIdentifiers.requireSafe("catalog", catalog);
         LakehouseIdentifiers.requireSafe("schema", schema);
         LakehouseIdentifiers.requireSafe("table", table);
@@ -474,6 +597,11 @@ public class LakehouseRegistryService {
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Table is not registered for SRSE: " + catalog + "." + schema + "." + table));
         assertOfficerVisible(row);
+        return row;
+    }
+
+    public RegisteredTable requireVisibleRegistration(QualifiedTable table) {
+        return requireVisibleRegistration(table.catalog(), table.schema(), table.table());
     }
 
     public void validateRegistered(QualifiedTable table) {

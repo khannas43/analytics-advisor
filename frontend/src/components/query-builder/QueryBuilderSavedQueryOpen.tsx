@@ -19,7 +19,7 @@ export function QueryBuilderSavedQueryOpen({ onLoaded }: { onLoaded: () => void 
   }, []);
 
   return (
-    <section role="region" aria-label={t("qbSavedQueries")} className="section" style={{ marginBottom: "0.75rem" }}>
+    <section role="region" aria-label={t("qbSavedQueriesExtract")} className="section" style={{ marginBottom: "0.75rem" }}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "center" }}>
         <select
           className="srse-input"

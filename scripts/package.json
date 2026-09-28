@@ -1,0 +1,12 @@
+{
+  "name": "analytics-advisor-acceptance",
+  "private": true,
+  "type": "module",
+  "description": "Browser acceptance drivers (Playwright). Install here: npm install",
+  "scripts": {
+    "test": "node --test acceptance_runner.test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.51.1"
+  }
+}

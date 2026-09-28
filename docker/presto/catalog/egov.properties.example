@@ -1,0 +1,8 @@
+# Copy to egov.properties and fill in the password (file is gitignored).
+# Requires: kubectl port-forward -n egov svc/postgres 5434:5432
+# Use 5434 — analytics-advisor maps local Operational Postgres to host 5433.
+
+connector.name=postgresql
+connection-url=jdbc:postgresql://host.docker.internal:5434/egov_db
+connection-user=egovuser
+connection-password=REPLACE_ME

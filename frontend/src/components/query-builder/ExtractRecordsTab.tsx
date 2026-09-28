@@ -10,7 +10,8 @@ import LakehouseCascade, {
 import { AnalysisResultsGrid } from "@/components/AnalysisResultsGrid";
 import ValueFilterPicker from "@/components/ValueFilterPicker";
 import {
-  downloadRecordMatchCsv,
+  downloadRecordMatchExport,
+  type MatchExportFormat,
   fetchMatchSql,
   listAnalysisCatalogs,
   listAnalysisColumns,
@@ -174,7 +175,13 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
     if (columns.length === 0 || rows.length === 0) {
       return;
     }
-    setLastResult({ columns, rows, totalRows, source: "extract" });
+    setLastResult({
+      columns,
+      rows,
+      totalRows,
+      source: "extract",
+      matchExportRequest: lastRunRequestRef.current,
+    });
   }
 
   const sourceRefKey = `${sourceRef.catalog}.${sourceRef.schema}.${sourceRef.table}`;
@@ -359,17 +366,20 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
     }
   }
 
-  async function downloadFullCsv() {
+  async function downloadFullExport(format: MatchExportFormat) {
     const req = lastRunRequestRef.current;
     if (!req) {
-      return;
+      throw new Error("Run a query first.");
     }
-    const blob = await downloadRecordMatchCsv(req);
+    const ext = format === "xlsx" ? "xlsx" : format;
+    const blob = await downloadRecordMatchExport(req, format);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "extract.csv";
+    a.download = `extract-${new Date().toISOString().slice(0, 19).replaceAll(/[:T]/g, "-")}.${ext}`;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     URL.revokeObjectURL(url);
   }
 
@@ -765,7 +775,8 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
             totalRowsIsPartial={matchCountIsPartial}
             tooManyToDisplay={matchTooManyToDisplay}
             displayLimit={MAX_DISPLAYED_ROWS}
-            onDownloadFullCsv={downloadFullCsv}
+            onDownloadFullCsv={() => downloadFullExport("csv")}
+            onDownloadFullExport={downloadFullExport}
             highlightDuplicates={false}
             dedupAvailable={false}
             dedupEnabled={false}

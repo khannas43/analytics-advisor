@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
   createColumnHelper,
   flexRender,
@@ -12,13 +12,18 @@ import {
   type ColumnFiltersState,
   type SortingState,
 } from "@tanstack/react-table";
-import { MultiSelectDropdown } from "@/components/MultiSelectDropdown";
 import { ChartsSection } from "@/components/ChartsSection";
+import { ResultTableToolbar } from "@/components/results/ResultTableToolbar";
 import { useShell } from "@/components/shell/ShellProviders";
+import {
+  resetColumnVisibilityForSchema,
+  visibleColumnIds,
+} from "@/lib/resultTableColumns";
+import { RESULT_DEFAULT_PAGE_SIZE } from "@/lib/resultTableConstants";
+import { exportBufferedAnalyticalResult } from "@/lib/resultTableExport";
+import { compareCellValues } from "@/lib/resultTableSort";
 
 type Row = Record<string, unknown>;
-
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 
 function prettify(columnId: string): string {
   if (columnId === "match_status" || columnId.endsWith("_match_status")) return "Match status";
@@ -35,12 +40,6 @@ function prettify(columnId: string): string {
     .replace(/^target_/, "Target: ")
     .replaceAll("_", " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function csvEscape(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  const s = String(value);
-  return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 }
 
 function isComparisonColumn(columnId: string): boolean {
@@ -66,22 +65,6 @@ const MATCH_STATUS_STYLES: Record<string, CSSProperties> = {
   NO_SOURCE: { background: "var(--srse-bg-muted, #f0f0f0)", fontWeight: 600, padding: "0.1rem 0.35rem", borderRadius: 4 },
 };
 
-function downloadCsv(rows: Row[], visibleIds: string[], labelFor: (id: string) => string) {
-  const lines = [
-    visibleIds.map((id) => csvEscape(labelFor(id))).join(","),
-    ...rows.map((row) => visibleIds.map((id) => csvEscape(row[id])).join(",")),
-  ];
-  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `analysis-match-${new Date().toISOString().slice(0, 19).replaceAll(/[:T]/g, "-")}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
 function filterInputStyle(proto: boolean): CSSProperties {
   return {
     width: "100%",
@@ -95,44 +78,39 @@ function filterInputStyle(proto: boolean): CSSProperties {
   };
 }
 
-type AnalysisResultsGridProps = Readonly<{
+function ariaSortValue(sorted: false | "asc" | "desc"): "none" | "ascending" | "descending" {
+  if (sorted === "asc") return "ascending";
+  if (sorted === "desc") return "descending";
+  return "none";
+}
+
+export type AnalysisResultsGridProps = Readonly<{
   columns: string[];
   rows: Row[];
   sql: string;
   streaming?: boolean;
   totalRows?: number | null;
   totalRowsIsPartial?: boolean;
-  /**
-   * The result outgrew what the tab will render. The table, filters and the
-   * "export what I'm looking at" CSV are all withheld — there is nothing on
-   * screen for them to act on — and the whole result is offered as a download
-   * instead.
-   */
   tooManyToDisplay?: boolean;
   displayLimit?: number;
-  /** Streams the COMPLETE result from the backend; see the page's handler. */
   onDownloadFullCsv?: () => Promise<void>;
   onDownloadFullExport?: (format: "csv" | "json" | "xml" | "xlsx") => Promise<void>;
   highlightDuplicates: boolean;
   dedupAvailable: boolean;
   dedupEnabled: boolean;
-  /** When set, dedup is disabled and this explains why (e.g. RIGHT/FULL join). */
   dedupDisabledReason?: string;
   onDedupToggle: (enabled: boolean) => void;
   columnLabels?: Record<string, string>;
-  /** Shown near full-result CSV download (e.g. multi-target all-or-nothing export). */
   fullCsvDownloadNote?: string;
   appearance?: "legacy" | "prototype";
+  /** Hide charts section (e.g. dashboard already charts above). */
+  showCharts?: boolean;
+  /** When true, CSV/Excel use the backend match export (UI sort does not apply). */
+  serverExportAvailable?: boolean;
 }>;
 
 function uiClass(appearance: "legacy" | "prototype" | undefined, legacy: string, proto: string): string {
   return appearance === "prototype" ? proto : legacy;
-}
-
-function sortIndicator(sorted: false | "asc" | "desc"): string {
-  if (sorted === "asc") return "▲";
-  if (sorted === "desc") return "▼";
-  return "⇅";
 }
 
 function MatchRowCountCaption({
@@ -167,21 +145,11 @@ function MatchRowCountCaption({
   return (
     <>
       Showing {rowsLength} of {totalRows}
-      {totalRowsIsPartial ? "+" : ""} matching rows — refine your Source/Target criteria (add a
-      matching column, narrow a fuzzy threshold, or add an age filter) to bring this into view.
+      {totalRowsIsPartial ? "+" : ""} matching rows — refine criteria to load more on screen.
     </>
   );
 }
 
-/**
- * What the officer gets instead of the table once the result outgrows what the
- * tab will render: the count, the reason, and the whole result as a file.
- *
- * The download is not the grid's own CSV — that one serialises the rows on
- * screen, and there are none here. It re-runs the match on the backend and
- * streams it straight to disk, so what lands in the file is the complete
- * result rather than the part the browser was willing to keep.
- */
 function TooManyRowsPanel({
   totalRows,
   totalRowsIsPartial,
@@ -190,6 +158,7 @@ function TooManyRowsPanel({
   onDownloadFullCsv,
   onDownloadFullExport,
   fullCsvDownloadNote,
+  exportUsesServerOrder,
 }: Readonly<{
   totalRows: number | null | undefined;
   totalRowsIsPartial: boolean | undefined;
@@ -198,6 +167,7 @@ function TooManyRowsPanel({
   onDownloadFullCsv?: () => Promise<void>;
   onDownloadFullExport?: (format: "csv" | "json" | "xml" | "xlsx") => Promise<void>;
   fullCsvDownloadNote?: string;
+  exportUsesServerOrder?: boolean;
 }>) {
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -222,64 +192,39 @@ function TooManyRowsPanel({
   const limitLabel = (displayLimit ?? 10000).toLocaleString();
 
   return (
-    <div
-      style={{
-        border: "1px solid var(--srse-border)",
-        borderRadius: "var(--srse-radius-sm)",
-        background: "var(--srse-bg)",
-        padding: "1.25rem",
-      }}
-    >
-      <p style={{ marginTop: 0, marginBottom: "0.5rem", fontWeight: 600 }}>
-        Too many rows to display
-      </p>
+    <div className="result-too-many-panel">
+      <p style={{ marginTop: 0, marginBottom: "0.5rem", fontWeight: 600 }}>Too many rows to display</p>
       <p className="srse-text-muted" style={{ marginTop: 0, lineHeight: 1.5 }}>
         This match returned more than {limitLabel} rows
-        {totalRows != null && ` (${totalRows.toLocaleString()}${totalRowsIsPartial ? "+" : ""})`}, so
-        the results grid, its filters and the charts are not rendered — a table that size cannot be
-        sorted or scrolled usefully, and holding it has crashed the tab before now. Download the CSV
-        to work with the full result, or narrow the match (add a matching column, tighten a fuzzy
-        threshold, or set an age filter) to bring it back on screen.
+        {totalRows != null && ` (${totalRows.toLocaleString()}${totalRowsIsPartial ? "+" : ""})`}, so the grid is
+        withheld. Download CSV or Excel for the complete server-side result.
       </p>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
-        <button
-          type="button"
-          className="srse-btn srse-btn-primary"
-          onClick={() => download("csv")}
-          disabled={downloading || streaming || (!onDownloadFullCsv && !onDownloadFullExport)}
-          title={
-            streaming
-              ? "Wait for the count to finish"
-              : "Runs the match again on the server and streams every row into the file"
-          }
-        >
-          {downloading ? "Preparing file…" : "⬇ Download all rows (CSV)"}
+      {exportUsesServerOrder && (
+        <p className="result-table-export-note" style={{ marginTop: 0 }}>
+          Downloads use the server query order (not the temporary sort applied on screen).
+        </p>
+      )}
+      <div className="result-table-toolbar-actions">
+        <button type="button" className="btn sm" disabled={downloading || streaming} onClick={() => void download("csv")} aria-label="Download CSV">
+          CSV
+        </button>
+        <button type="button" className="btn sm" disabled={downloading || streaming} onClick={() => void download("xlsx")} aria-label="Download Excel">
+          Excel
         </button>
         {onDownloadFullExport && (
           <>
-            <button type="button" className="srse-btn srse-btn-secondary" disabled={downloading || streaming} onClick={() => download("json")}>
+            <button type="button" className="btn secondary sm" disabled={downloading || streaming} onClick={() => void download("json")}>
               JSON
             </button>
-            <button type="button" className="srse-btn srse-btn-secondary" disabled={downloading || streaming} onClick={() => download("xml")}>
+            <button type="button" className="btn secondary sm" disabled={downloading || streaming} onClick={() => void download("xml")}>
               XML
-            </button>
-            <button type="button" className="srse-btn srse-btn-secondary" disabled={downloading || streaming} onClick={() => download("xlsx")}>
-              Excel
             </button>
           </>
         )}
-        {downloading && (
-          <span className="srse-text-muted" style={{ fontSize: "0.8rem" }}>
-            The match runs again to build the file — this can take as long as the match itself did.
-          </span>
-        )}
-        {error && <span className="srse-text-danger">{error}</span>}
       </div>
-      {fullCsvDownloadNote && (
-        <p className="srse-text-muted" style={{ fontSize: "0.78rem", marginTop: "0.75rem", marginBottom: 0 }}>
-          {fullCsvDownloadNote}
-        </p>
-      )}
+      {downloading && <span className="srse-text-muted">Preparing export…</span>}
+      {error && <span className="srse-text-danger">{error}</span>}
+      {fullCsvDownloadNote && <p className="srse-text-muted">{fullCsvDownloadNote}</p>}
     </div>
   );
 }
@@ -303,6 +248,8 @@ export function AnalysisResultsGrid({
   columnLabels,
   fullCsvDownloadNote,
   appearance = "legacy",
+  showCharts = true,
+  serverExportAvailable = Boolean(onDownloadFullExport || onDownloadFullCsv),
 }: AnalysisResultsGridProps) {
   const { t } = useShell();
   const proto = appearance === "prototype";
@@ -310,41 +257,44 @@ export function AnalysisResultsGrid({
   const muted = uiClass(appearance, "srse-text-muted", "text-muted");
   const borderVar = proto ? "var(--border)" : "var(--srse-border)";
   const radiusSm = proto ? "var(--radius-sm, 6px)" : "var(--srse-radius-sm)";
+
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [visibleColumnIds, setVisibleColumnIds] = useState<string[]>([]);
+  const [pagination, setPagination] = useState({
+    pageIndex: 0,
+    pageSize: RESULT_DEFAULT_PAGE_SIZE,
+  });
+  const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
   const [showSql, setShowSql] = useState(true);
-  const showAllColumns = visibleColumnIds.length === 0;
+  const [exportBusy, setExportBusy] = useState(false);
+
+  const columnsKey = columns.join("\u0001");
+  useEffect(() => {
+    setHiddenColumnIds((prev) => resetColumnVisibilityForSchema(prev, columns));
+    setSorting([]);
+    setColumnFilters([]);
+  }, [columnsKey, columns]);
+
   const effectiveVisibleIds = useMemo(
-    () => (showAllColumns ? columns : columns.filter((c) => visibleColumnIds.includes(c))),
-    [showAllColumns, visibleColumnIds, columns],
+    () => visibleColumnIds(columns, hiddenColumnIds),
+    [columns, hiddenColumnIds],
   );
 
   const columnHelper = useMemo(() => createColumnHelper<Row>(), []);
+
   function comparisonCellStyle(columnId: string, row: Row): CSSProperties | undefined {
     const match = columnId.match(/^cmp_(\d+)_match$/);
     if (match) {
       const v = row[columnId];
-      if (v === null || v === undefined) {
-        return { color: "var(--srse-text-muted)", fontStyle: "italic" };
-      }
-      if (v === false || v === 0 || v === "false") {
-        return { background: "var(--srse-danger-bg, #fde8e8)", fontWeight: 600 };
-      }
-      if (v === true || v === 1 || v === "true") {
-        return { background: "var(--srse-success-bg, #e8f5e9)" };
-      }
-      return undefined;
+      if (v === null || v === undefined) return { color: "var(--srse-text-muted)", fontStyle: "italic" };
+      if (v === false || v === 0 || v === "false") return { background: "var(--srse-danger-bg, #fde8e8)", fontWeight: 600 };
+      if (v === true || v === 1 || v === "true") return { background: "var(--srse-success-bg, #e8f5e9)" };
     }
     const valueCol = columnId.match(/^cmp_(\d+)_(source|target|score_pct)$/);
     if (valueCol) {
       const verdict = row[`cmp_${valueCol[1]}_match`];
-      if (verdict === null || verdict === undefined) {
-        return { color: "var(--srse-text-muted)", fontStyle: "italic" };
-      }
-      if (verdict === false || verdict === 0 || verdict === "false") {
-        return { background: "var(--srse-danger-bg, #fde8e8)" };
-      }
+      if (verdict === null || verdict === undefined) return { color: "var(--srse-text-muted)", fontStyle: "italic" };
+      if (verdict === false || verdict === 0 || verdict === "false") return { background: "var(--srse-danger-bg, #fde8e8)" };
     }
     return undefined;
   }
@@ -355,6 +305,9 @@ export function AnalysisResultsGrid({
         columnHelper.accessor((row) => row[id], {
           id,
           header: labelFor(id),
+          enableSorting: true,
+          sortingFn: (rowA, rowB, colId) =>
+            compareCellValues(rowA.getValue(colId), rowB.getValue(colId)),
           cell: (info) => {
             const style = comparisonCellStyle(id, info.row.original);
             const text = displayCell(id, info.getValue());
@@ -366,8 +319,7 @@ export function AnalysisResultsGrid({
           },
           filterFn: (row, columnId, filterValue) => {
             if (!filterValue) return true;
-            const cell = row.getValue(columnId);
-            return displayCell(columnId, cell)
+            return displayCell(columnId, row.getValue(columnId))
               .toLowerCase()
               .includes(String(filterValue).toLowerCase());
           },
@@ -383,289 +335,259 @@ export function AnalysisResultsGrid({
       sorting,
       columnFilters,
       columnVisibility: Object.fromEntries(columns.map((c) => [c, effectiveVisibleIds.includes(c)])),
+      pagination,
     },
-    initialState: { pagination: { pageSize: 20 } },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
+    onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
+    autoResetPageIndex: false,
+    enableSortingRemoval: true,
   });
 
-  const filteredSortedRows = table.getSortedRowModel().rows.map((r) => r.original);
-  const pageCount = table.getPageCount();
   const { pageIndex, pageSize } = table.getState().pagination;
+  const pageCount = table.getPageCount();
+  const filteredCount = table.getFilteredRowModel().rows.length;
 
-  const titleLabel = proto ? t("lblQueryResults") : "Match results";
+  useEffect(() => {
+    setPagination((p) => ({ ...p, pageIndex: 0 }));
+  }, [rows, sorting, columnFilters, hiddenColumnIds, columnsKey]);
+
+  const exportUsesServer = serverExportAvailable && Boolean(onDownloadFullExport || onDownloadFullCsv);
+
+  async function handleExport(format: "csv" | "xlsx" | "json" | "xml") {
+    if (streaming) return;
+    setExportBusy(true);
+    try {
+      if (onDownloadFullExport) {
+        await onDownloadFullExport(format);
+        return;
+      }
+      if (format === "csv" && onDownloadFullCsv) {
+        await onDownloadFullCsv();
+        return;
+      }
+      if (format === "csv" || format === "xlsx") {
+        await exportBufferedAnalyticalResult(format, columns, rows, labelFor);
+        return;
+      }
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  const dedupControl =
+    dedupAvailable ? (
+      <label className={proto ? "checkbox-row" : "srse-checkbox-label"} htmlFor="hide-duplicate-records">
+        <input
+          id="hide-duplicate-records"
+          type="checkbox"
+          aria-label="Hide duplicate records"
+          checked={dedupEnabled && !dedupDisabledReason}
+          disabled={Boolean(dedupDisabledReason) || streaming}
+          onChange={(e) => onDedupToggle(e.target.checked)}
+        />
+        Hide duplicate records
+      </label>
+    ) : null;
+
+  const rowCountLabel: ReactNode = (
+    <h4 style={{ margin: 0 }}>
+      {proto ? t("lblQueryResults") : "Match results"}{" "}
+      {(rows.length > 0 || totalRows != null) && (
+        <span className="badge">
+          <MatchRowCountCaption
+            rowsLength={rows.length}
+            streaming={!!streaming}
+            totalRows={totalRows}
+            totalRowsIsPartial={totalRowsIsPartial}
+            tooManyToDisplay={tooManyToDisplay}
+          />
+        </span>
+      )}
+    </h4>
+  );
+
+  const titleSection = proto ? rowCountLabel : (
+    <>
+      {rowCountLabel}
+      <span className={muted} style={{ fontSize: "0.85rem", display: "block" }}>
+        <MatchRowCountCaption
+          rowsLength={rows.length}
+          streaming={!!streaming}
+          totalRows={totalRows}
+          totalRowsIsPartial={totalRowsIsPartial}
+          tooManyToDisplay={tooManyToDisplay}
+        />
+      </span>
+    </>
+  );
 
   return (
     <>
-    <section className={proto ? "section" : "srse-card"} style={{ width: "100%", marginBottom: proto ? 0 : undefined }}>
-      <div className={proto ? "results-toolbar row" : undefined} style={proto ? undefined : {
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          gap: "0.75rem",
-          marginBottom: "0.75rem",
-        }}>
-        <div className={proto ? "row" : undefined} style={proto ? { gap: 10, alignItems: "center" } : undefined}>
-          <h4 style={{ margin: 0 }}>{titleLabel}{" "}
-            {(rows.length > 0 || totalRows != null) && (
-              <span className="badge">
-                <MatchRowCountCaption
-                  rowsLength={rows.length}
-                  streaming={!!streaming}
-                  totalRows={totalRows}
-                  totalRowsIsPartial={totalRowsIsPartial}
-                  tooManyToDisplay={tooManyToDisplay}
-                />
-              </span>
-            )}
-          </h4>
-          {!proto && (
-          <span className={muted} style={{ fontSize: "0.85rem", display: "block" }}>
-            <MatchRowCountCaption
-              rowsLength={rows.length}
-              streaming={!!streaming}
-              totalRows={totalRows}
-              totalRowsIsPartial={totalRowsIsPartial}
-              tooManyToDisplay={tooManyToDisplay}
-            />
-          </span>
-          )}
-        </div>
-        {rows.length > 0 && !tooManyToDisplay && (
-          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            {dedupAvailable && (
-              <label
-                className={proto ? "checkbox-row" : "srse-checkbox-label"}
-                htmlFor="hide-duplicate-records"
-                title={
-                  dedupDisabledReason
-                  ?? "Hides older duplicate rows, keeping the latest by last-updated date"
-                }
-              >
-                <input
-                  id="hide-duplicate-records"
-                  type="checkbox"
-                  aria-label="Hide duplicate records"
-                  checked={dedupEnabled && !dedupDisabledReason}
-                  disabled={Boolean(dedupDisabledReason) || streaming}
-                  onChange={(e) => onDedupToggle(e.target.checked)}
-                />
-                {" "}
-                Hide duplicate records
-              </label>
-            )}
-            <MultiSelectDropdown
-              options={columns.map((c) => ({ value: c, label: labelFor(c) }))}
-              selected={visibleColumnIds}
-              onChange={setVisibleColumnIds}
-              allLabel="All columns"
-              width={200}
-              disabled={streaming}
-            />
-            <button
-              type="button"
-              className={proto ? "btn secondary sm" : "srse-btn srse-btn-sm"}
-              onClick={() => downloadCsv(filteredSortedRows, [...effectiveVisibleIds], labelFor)}
-              disabled={streaming}
-              title={streaming ? "Wait for the match to finish loading before exporting" : undefined}
-            >
-              ⬇ CSV
-            </button>
-            {onDownloadFullExport && proto && (
+      <section className={proto ? "section result-table-section" : "srse-card result-table-section"} style={{ width: "100%" }}>
+        {tooManyToDisplay ? (
+          <TooManyRowsPanel
+            totalRows={totalRows}
+            totalRowsIsPartial={totalRowsIsPartial}
+            displayLimit={displayLimit}
+            streaming={!!streaming}
+            onDownloadFullCsv={onDownloadFullCsv}
+            onDownloadFullExport={onDownloadFullExport}
+            fullCsvDownloadNote={fullCsvDownloadNote}
+            exportUsesServerOrder={exportUsesServer}
+          />
+        ) : (
+          <>
+            {!tooManyToDisplay && rows.length === 0 ? (
+              <p className={muted}>{t("msgNoMatchRows")}</p>
+            ) : null}
+
+            {rows.length > 0 && (
               <>
-                <button type="button" className="btn sm" disabled={streaming} onClick={() => void onDownloadFullExport("xlsx")}>⬇ Excel</button>
-                <button type="button" className="btn secondary sm" disabled={streaming} onClick={() => void onDownloadFullExport("json")}>⬇ JSON</button>
-                <button type="button" className="btn secondary sm" disabled={streaming} onClick={() => void onDownloadFullExport("xml")}>⬇ XML</button>
+                <div className="result-table-heading">{titleSection}</div>
+                <ResultTableToolbar
+                  appearance={appearance}
+                  rowCountLabel={null}
+                  columns={columns}
+                  hiddenColumnIds={hiddenColumnIds}
+                  onHiddenChange={setHiddenColumnIds}
+                  labelFor={labelFor}
+                  streaming={streaming || exportBusy}
+                  pageSize={pageSize}
+                  onPageSizeChange={(size) => table.setPageSize(size)}
+                  pageIndex={pageIndex}
+                  pageCount={pageCount}
+                  totalFilteredRows={filteredCount}
+                  totalLoadedRows={rows.length}
+                  onFirstPage={() => table.setPageIndex(0)}
+                  onPrevPage={() => table.previousPage()}
+                  onNextPage={() => table.nextPage()}
+                  onLastPage={() => table.setPageIndex(Math.max(0, pageCount - 1))}
+                  canPrevious={table.getCanPreviousPage()}
+                  canNext={table.getCanNextPage()}
+                  onDownloadCsv={() => void handleExport("csv")}
+                  onDownloadExcel={() => void handleExport("xlsx")}
+                  onDownloadJson={onDownloadFullExport ? () => void handleExport("json") : undefined}
+                  onDownloadXml={onDownloadFullExport ? () => void handleExport("xml") : undefined}
+                  exportUsesServerOrder={exportUsesServer}
+                  csvHeaderHelp="CSV has no styling: row 1 is always the header (UTF-8 with BOM for Excel)."
+                  dedupControl={dedupControl}
+                  t={t}
+                />
+
+                <div className={proto ? "results-scroll result-table-scroll" : "result-table-scroll"} style={proto ? undefined : { overflowX: "auto" }}>
+                  <table className={proto ? "data-table result-data-table" : "srse-table result-data-table"}>
+                    <thead className="result-table-sticky-head">
+                      {table.getHeaderGroups().map((hg) => (
+                        <tr key={hg.id}>
+                          {hg.headers.map((header) => {
+                            const sorted = header.column.getIsSorted();
+                            return (
+                              <th key={header.id} style={{ verticalAlign: "top" }} aria-sort={ariaSortValue(sorted)}>
+                                <button
+                                  type="button"
+                                  className="result-sort-btn"
+                                  onClick={header.column.getToggleSortingHandler()}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                      e.preventDefault();
+                                      header.column.getToggleSortingHandler()?.(e);
+                                    }
+                                  }}
+                                  aria-label={`Sort by ${String(header.column.columnDef.header)}`}
+                                >
+                                  {flexRender(header.column.columnDef.header, header.getContext())}
+                                  <span className="result-sort-indicator" aria-hidden>
+                                    {sorted === "asc" ? "▲" : sorted === "desc" ? "▼" : "⇅"}
+                                  </span>
+                                </button>
+                                <input
+                                  id={`filter-${header.id}`}
+                                  value={(header.column.getFilterValue() as string) ?? ""}
+                                  onChange={(e) => header.column.setFilterValue(e.target.value)}
+                                  placeholder="filter…"
+                                  style={filterInputStyle(proto)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  aria-label={`Filter ${String(header.column.columnDef.header)}`}
+                                />
+                              </th>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </thead>
+                    <tbody>
+                      {table.getRowModel().rows.map((row) => (
+                        <tr
+                          key={row.id}
+                          style={highlightDuplicates ? { background: "var(--srse-warning-bg, #fff7e6)" } : undefined}
+                        >
+                          {row.getVisibleCells().map((cell) => (
+                            <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                          ))}
+                        </tr>
+                      ))}
+                      {table.getRowModel().rows.length === 0 && (
+                        <tr>
+                          <td colSpan={table.getVisibleFlatColumns().length} className={muted}>
+                            No rows match the current filters.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </>
             )}
-          </div>
+          </>
         )}
-      </div>
 
-      {tooManyToDisplay && (
-        <TooManyRowsPanel
-          totalRows={totalRows}
-          totalRowsIsPartial={totalRowsIsPartial}
-          displayLimit={displayLimit}
-          streaming={!!streaming}
-          onDownloadFullCsv={onDownloadFullCsv}
-          onDownloadFullExport={onDownloadFullExport}
-          fullCsvDownloadNote={fullCsvDownloadNote}
-        />
+        <div style={{ marginTop: "1rem" }}>
+          {!proto && (
+            <button type="button" className="srse-btn srse-btn-ghost srse-btn-sm" onClick={() => setShowSql((s) => !s)}>
+              {showSql ? "▾" : "▸"} Show generated SQL
+            </button>
+          )}
+          {showSql && !proto && (
+            <pre
+              style={{
+                marginTop: "0.5rem",
+                padding: "0.75rem",
+                background: "var(--srse-surface-muted, #f5f5f5)",
+                border: `1px solid ${borderVar}`,
+                borderRadius: radiusSm,
+                fontSize: "0.8rem",
+                overflowX: "auto",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+              }}
+            >
+              {sql}
+            </pre>
+          )}
+          {proto && sql && (
+            <p className="desc" style={{ fontFamily: "var(--font-mono)", fontSize: 12, marginTop: 8 }}>
+              {sql.slice(0, 240)}
+              {sql.length > 240 ? "…" : ""}
+            </p>
+          )}
+        </div>
+      </section>
+
+      {showCharts && rows.length > 0 && !tooManyToDisplay && (
+        <div style={{ marginTop: "1.5rem" }}>
+          <ChartsSection
+            rows={rows}
+            dimensions={columns.map((c) => ({ key: c, label: labelFor(c) }))}
+            getValue={(row, key) => String(row[key])}
+            getCount={() => 1}
+          />
+        </div>
       )}
-
-      {!tooManyToDisplay && rows.length === 0 ? (
-        <p className={muted}>{t("msgNoMatchRows")}</p>
-      ) : null}
-
-      {!tooManyToDisplay && rows.length > 0 && (
-        <>
-          <div className={proto ? "results-scroll" : undefined} style={proto ? undefined : { overflowX: "auto" }}>
-            <table className={proto ? "data-table" : "srse-table"}>
-              <thead>
-                {table.getHeaderGroups().map((hg) => (
-                  <tr key={hg.id}>
-                    {hg.headers.map((header) => (
-                      <th key={header.id} style={{ verticalAlign: "top" }}>
-                        <button
-                          type="button"
-                          onClick={header.column.getToggleSortingHandler()}
-                          style={{
-                            cursor: "pointer",
-                            userSelect: "none",
-                            display: "inline-flex",
-                            gap: "0.3rem",
-                            background: "none",
-                            border: "none",
-                            padding: 0,
-                            font: "inherit",
-                            color: "inherit",
-                          }}
-                        >
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                          <span style={{ color: "var(--srse-text-faint)" }}>
-                            {sortIndicator(header.column.getIsSorted())}
-                          </span>
-                        </button>
-                        <input
-                          id={`filter-${header.id}`}
-                          value={(header.column.getFilterValue() as string) ?? ""}
-                          onChange={(e) => header.column.setFilterValue(e.target.value)}
-                          placeholder="filter…"
-                          style={filterInputStyle(proto)}
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label={`Filter ${String(header.column.columnDef.header)}`}
-                        />
-                      </th>
-                    ))}
-                  </tr>
-                ))}
-              </thead>
-              <tbody>
-                {table.getRowModel().rows.map((row) => (
-                  <tr
-                    key={row.id}
-                    style={highlightDuplicates ? { background: "var(--srse-warning-bg, #fff7e6)" } : undefined}
-                  >
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
-                    ))}
-                  </tr>
-                ))}
-                {table.getRowModel().rows.length === 0 && (
-                  <tr>
-                    <td colSpan={table.getVisibleFlatColumns().length} className={muted}>
-                      No rows match the current filters.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              flexWrap: "wrap",
-              gap: "0.75rem",
-              marginTop: "0.85rem",
-            }}
-          >
-            <span className={muted}>
-              {t("lblShowing")} {filteredSortedRows.length} {t("lblOf")} {rows.length} {t("lblTotalRows")}
-            </span>
-            <div className="row" style={{ gap: "0.6rem" }}>
-              <label htmlFor="rows-per-page" className="row" style={{ gap: "0.4rem", fontSize: "0.85rem" }}>
-                <span>{t("lblRowsPerPage")}</span>
-                <select
-                  id="rows-per-page"
-                  value={pageSize}
-                  onChange={(e) => table.setPageSize(Number(e.target.value))}
-                >
-                  {PAGE_SIZE_OPTIONS.map((size) => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                className={proto ? "btn secondary sm" : "srse-btn srse-btn-ghost srse-btn-sm"}
-                onClick={() => table.previousPage()}
-                disabled={!table.getCanPreviousPage()}
-              >
-                {t("btnPrev")}
-              </button>
-              <span className={muted}>
-                {t("lblPage")} {pageCount === 0 ? 0 : pageIndex + 1} {t("lblOf")} {pageCount}
-              </span>
-              <button
-                type="button"
-                className={proto ? "btn secondary sm" : "srse-btn srse-btn-ghost srse-btn-sm"}
-                onClick={() => table.nextPage()}
-                disabled={!table.getCanNextPage()}
-              >
-                {t("btnNext")}
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      <div style={{ marginTop: "1rem" }}>
-        {!proto && (
-        <button
-          type="button"
-          className="srse-btn srse-btn-ghost srse-btn-sm"
-          onClick={() => setShowSql((s) => !s)}
-        >
-          {showSql ? "▾" : "▸"} Show generated SQL
-        </button>
-        )}
-        {showSql && !proto && (
-          <pre
-            style={{
-              marginTop: "0.5rem",
-              padding: "0.75rem",
-              background: "var(--srse-surface-muted, #f5f5f5)",
-              border: `1px solid ${borderVar}`,
-              borderRadius: radiusSm,
-              fontSize: "0.8rem",
-              overflowX: "auto",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-            }}
-          >
-            {sql}
-          </pre>
-        )}
-        {proto && sql && (
-          <p className="desc" style={{ fontFamily: "var(--font-mono)", fontSize: 12, marginTop: 8 }}>
-            {sql.slice(0, 240)}
-            {sql.length > 240 ? "…" : ""}
-          </p>
-        )}
-      </div>
-    </section>
-
-    {rows.length > 0 && (
-      <div style={{ marginTop: "1.5rem" }}>
-        <ChartsSection
-          rows={rows}
-          dimensions={columns.map((c) => ({ key: c, label: labelFor(c) }))}
-          getValue={(row, key) => String(row[key])}
-          getCount={() => 1}
-        />
-      </div>
-    )}
     </>
   );
 }

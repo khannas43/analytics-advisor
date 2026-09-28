@@ -69,6 +69,14 @@ public class RegisteredTable {
     @Column(name = "table_group")
     private String tableGroup;
 
+    /** Null for native Presto registrations; populated for a saved JDBC source. */
+    @Column(name = "external_data_source_id")
+    private Long externalDataSourceId;
+
+    /** Physical JDBC catalog/database. The logical catalog remains catalogName (for example jdbc_1). */
+    @Column(name = "external_catalog", length = IDENTIFIER_LENGTH)
+    private String externalCatalog;
+
     /** A4 — visible to all officers regardless of scope bindings. */
     @Column(name = "shared_reference", nullable = false)
     private boolean sharedReference = false;
@@ -150,6 +158,23 @@ public class RegisteredTable {
 
     public void setTableGroup(String tableGroup) {
         this.tableGroup = tableGroup;
+    }
+
+    public Long getExternalDataSourceId() {
+        return externalDataSourceId;
+    }
+
+    public String getExternalCatalog() {
+        return externalCatalog;
+    }
+
+    public boolean isExternal() {
+        return externalDataSourceId != null;
+    }
+
+    public void attachExternalSource(long sourceId, String physicalCatalog) {
+        this.externalDataSourceId = sourceId;
+        this.externalCatalog = physicalCatalog == null || physicalCatalog.isBlank() ? null : physicalCatalog;
     }
 
     /** The address form used everywhere downstream; re-validates the identifiers. */

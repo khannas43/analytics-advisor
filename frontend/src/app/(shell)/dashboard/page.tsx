@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
   Bar,
@@ -14,8 +14,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { AnalysisResultsGrid } from "@/components/AnalysisResultsGrid";
 import { useShell } from "@/components/shell/ShellProviders";
+import { downloadRecordMatchExport, type MatchExportFormat } from "@/lib/analysisApi";
 import { useQueryResultsStore } from "@/lib/queryResultsStore";
+import { defaultExportFilename, exportBufferedAnalyticalResult, triggerBlobDownload } from "@/lib/resultTableExport";
 
 const PIE_COLORS = ["#38bdf8", "#6366f1", "#10b981", "#f59e0b", "#ef4444", "#a855f7"];
 
@@ -23,17 +26,15 @@ export default function DashboardPage() {
   const { t } = useShell();
   const lastResult = useQueryResultsStore((s) => s.lastResult);
 
-  const { numericCols, chartData, tablePreview } = useMemo(() => {
+  const { numericCols, chartData } = useMemo(() => {
     if (!lastResult?.rows.length) {
-      return { numericCols: [] as string[], chartData: [] as { name: string; count: number }[], tablePreview: [] as Record<string, unknown>[] };
+      return { numericCols: [] as string[], chartData: [] as { name: string; count: number }[] };
     }
     const { columns, rows } = lastResult;
     const numeric = columns.filter((c) =>
       rows.every((r) => {
         const v = r[c];
-        if (v === null || v === undefined || v === "") {
-          return true;
-        }
+        if (v === null || v === undefined || v === "") return true;
         return !Number.isNaN(Number(v));
       }),
     );
@@ -49,8 +50,39 @@ export default function DashboardPage() {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 12);
-    return { numericCols: numeric, chartData, tablePreview: rows.slice(0, 50) };
+    return { numericCols: numeric, chartData };
   }, [lastResult]);
+
+  const labelFor = useCallback((id: string) => id, []);
+
+  const downloadFullExport = useCallback(
+    async (format: MatchExportFormat) => {
+      if (!lastResult?.rows.length) {
+        throw new Error("No results to export.");
+      }
+      const req = lastResult.matchExportRequest;
+      if (req && (format === "csv" || format === "xlsx" || format === "json" || format === "xml")) {
+        const blob = await downloadRecordMatchExport(req, format);
+        triggerBlobDownload(
+          blob,
+          defaultExportFilename("dashboard-result", format === "xlsx" ? "xlsx" : format),
+        );
+        return;
+      }
+      if (format === "csv" || format === "xlsx") {
+        await exportBufferedAnalyticalResult(
+          format,
+          lastResult.columns,
+          lastResult.rows,
+          labelFor,
+          "dashboard-result",
+        );
+        return;
+      }
+      throw new Error("JSON/XML export requires the original query — open Query Builder.");
+    },
+    [lastResult, labelFor],
+  );
 
   return (
     <div className="page active">
@@ -82,13 +114,6 @@ export default function DashboardPage() {
 
           <div className="section">
             <h4>{t("secGroupCount")}</h4>
-            <p className="desc">
-              {lastResult.columns[0] ? (
-                <>
-                  <b>{lastResult.columns[0]}</b>
-                </>
-              ) : null}
-            </p>
             <div style={{ width: "100%", height: 280 }}>
               <ResponsiveContainer>
                 <BarChart data={chartData} layout="vertical" margin={{ left: 8, right: 16 }}>
@@ -120,29 +145,20 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <div className="section">
-            <h4>{t("lblReportResults")}</h4>
-            <div className="results-scroll">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    {lastResult.columns.map((c) => (
-                      <th key={c}>{c}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {tablePreview.map((row, i) => (
-                    <tr key={i}>
-                      {lastResult.columns.map((c) => (
-                        <td key={c}>{String(row[c] ?? "")}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <AnalysisResultsGrid
+            appearance="prototype"
+            columns={lastResult.columns}
+            rows={lastResult.rows}
+            sql=""
+            totalRows={lastResult.totalRows}
+            highlightDuplicates={false}
+            dedupAvailable={false}
+            dedupEnabled={false}
+            onDedupToggle={() => {}}
+            showCharts={false}
+            onDownloadFullExport={downloadFullExport}
+            serverExportAvailable={Boolean(lastResult.matchExportRequest)}
+          />
         </div>
       )}
 

@@ -7,6 +7,11 @@ import { QueryBuilderSavedQueryOpen } from "@/components/query-builder/QueryBuil
 import ReportAnalysisTab from "@/components/query-builder/ReportAnalysisTab";
 import { useQueryBuilderPipeline } from "@/lib/queryBuilderPipelineStore";
 
+const TAB_EXTRACT_ID = "qb-tab-extract";
+const TAB_REPORT_ID = "qb-tab-report";
+const PANEL_EXTRACT_ID = "qb-panel-extract";
+const PANEL_REPORT_ID = "qb-panel-report";
+
 export default function QueryBuilderPage() {
   const { t } = useShell();
   const [tab, setTab] = useState<1 | 2>(1);
@@ -23,72 +28,100 @@ export default function QueryBuilderPage() {
         </div>
       </div>
 
-      <QueryBuilderSavedQueryOpen onLoaded={() => setTab(1)} />
-
-      <div className="tabs">
+      <div className="tabs" role="tablist" aria-label={t("p2Title")}>
         <button
           type="button"
+          role="tab"
+          id={TAB_EXTRACT_ID}
           className={tab === 1 ? "active" : ""}
           aria-label="Extract Records tab"
+          aria-selected={tab === 1}
+          aria-controls={PANEL_EXTRACT_ID}
+          tabIndex={tab === 1 ? 0 : -1}
           onClick={() => setTab(1)}
         >
           {t("tabExtract")}
         </button>
         <button
           type="button"
+          role="tab"
+          id={TAB_REPORT_ID}
           className={tab === 2 ? "active" : ""}
-          onClick={() => setTab(2)}
+          onClick={() => extractSucceeded && setTab(2)}
           aria-label="Report Analysis tab"
+          aria-selected={tab === 2}
+          aria-controls={PANEL_REPORT_ID}
           aria-disabled={!extractSucceeded}
+          tabIndex={tab === 2 ? 0 : -1}
           title={!extractSucceeded ? t("msgNoExtractYet") : undefined}
         >
           {t("tabReport")}
         </button>
       </div>
 
-      {tab === 1 && (
-        <div id="qb1">
-          <div className="mode-switch">
-            <span className="mode-label">{t("lblMode")}</span>
-            <button
-              type="button"
-              className={dualMode ? "active" : ""}
-              aria-label="Dual Source mode"
-              onClick={() => setDualMode(true)}
-            >
-              {t("modeDual")}
-            </button>
-            <button
-              type="button"
-              className={!dualMode ? "active" : ""}
-              aria-label="Single Source mode"
-              onClick={() => setDualMode(false)}
-            >
-              {t("modeSingle")}
+      {tab === 1 ? (
+        <div id={PANEL_EXTRACT_ID} role="tabpanel" aria-labelledby={TAB_EXTRACT_ID} tabIndex={0}>
+          <QueryBuilderSavedQueryOpen onLoaded={() => setTab(1)} />
+          <div id="qb1">
+            <div className="mode-switch">
+              <span className="mode-label">{t("lblMode")}</span>
+              <button
+                type="button"
+                className={dualMode ? "active" : ""}
+                aria-label="Dual Source mode"
+                onClick={() => setDualMode(true)}
+              >
+                {t("modeDual")}
+              </button>
+              <button
+                type="button"
+                className={!dualMode ? "active" : ""}
+                aria-label="Single Source mode"
+                onClick={() => setDualMode(false)}
+              >
+                {t("modeSingle")}
+              </button>
+            </div>
+            <ExtractRecordsTab onGoReport={() => setTab(2)} />
+          </div>
+        </div>
+      ) : null}
+
+      {tab === 2 && !extractSucceeded ? (
+        <div
+          id={PANEL_REPORT_ID}
+          role="tabpanel"
+          aria-labelledby={TAB_REPORT_ID}
+          className="section empty-state"
+          tabIndex={0}
+        >
+          <div id="qb2" role="status">
+            <p>{t("msgNoExtractYet")}</p>
+            <button type="button" className="btn secondary" onClick={() => setTab(1)}>
+              {t("btnBackExtract")}
             </button>
           </div>
-          <ExtractRecordsTab onGoReport={() => setTab(2)} />
         </div>
-      )}
+      ) : null}
 
-      {tab === 2 && !extractSucceeded && (
-        <div id="qb2" className="section empty-state" role="status">
-          <p>{t("msgNoExtractYet")}</p>
-          <button type="button" className="btn secondary" onClick={() => setTab(1)}>
-            {t("btnBackExtract")}
-          </button>
+      {tab === 2 && extractSucceeded ? (
+        <div id={PANEL_REPORT_ID} role="tabpanel" aria-labelledby={TAB_REPORT_ID} tabIndex={0}>
+          <div id="qb2">
+            <ReportAnalysisTab
+              embedded
+              onGoExtract={() => setTab(1)}
+              onSavedQueryLoaded={() => setTab(1)}
+            />
+          </div>
         </div>
-      )}
-
-      {tab === 2 && extractSucceeded && (
-        <div id="qb2">
-          <ReportAnalysisTab
-            embedded
-            onGoExtract={() => setTab(1)}
-            onSavedQueryLoaded={() => setTab(1)}
-          />
-        </div>
-      )}
+      ) : null}
     </div>
   );
 }
+
+export const queryBuilderTabIds = {
+  TAB_EXTRACT_ID,
+  TAB_REPORT_ID,
+  PANEL_EXTRACT_ID,
+  PANEL_REPORT_ID,
+} as const;

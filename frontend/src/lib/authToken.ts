@@ -40,6 +40,11 @@ function readStoredToken(): string | null {
   return sessionStorage.getItem(STORAGE_KEY);
 }
 
+/** Session bearer from local login (null in mock mode until stored). */
+export function readStoredAuthToken(): string | null {
+  return readStoredToken();
+}
+
 export function storeAuthToken(token: string): void {
   sessionStorage.setItem(STORAGE_KEY, token);
   tokenCache.clear();

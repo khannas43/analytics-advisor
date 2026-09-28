@@ -788,6 +788,13 @@ export default function ReportAnalysisTab({
   // and disables CSV/column-visibility until the result is actually complete.
   const matchStreaming = matchStatus === "loading";
 
+  // The request the displayed result actually came from. The CSV download must
+  // use THIS, not a freshly built one: the officer may have edited the criteria
+  // since running the match, and a file that quietly answers a different
+  // question than the count on screen is worse than no file.
+  const lastRunRequestRef = useRef<RecordMatchRequest | null>(null);
+  const lastRunMultiRequestRef = useRef<MultiTargetRecordMatchRequest | null>(null);
+
   useEffect(() => {
     if (embedded) {
       return;
@@ -800,16 +807,10 @@ export default function ReportAnalysisTab({
       rows: matchRows,
       totalRows: matchTotalRows,
       source: "report",
+      matchExportRequest: lastRunRequestRef.current,
     });
     onRunComplete?.();
   }, [embedded, matchStatus, matchColumns, matchRows, matchTotalRows, setLastResult, onRunComplete]);
-
-  // The request the displayed result actually came from. The CSV download must
-  // use THIS, not a freshly built one: the officer may have edited the criteria
-  // since running the match, and a file that quietly answers a different
-  // question than the count on screen is worse than no file.
-  const lastRunRequestRef = useRef<RecordMatchRequest | null>(null);
-  const lastRunMultiRequestRef = useRef<MultiTargetRecordMatchRequest | null>(null);
   const pendingRowsRef = useRef<Record<string, unknown>[]>([]);
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rowsSeenRef = useRef(0);
@@ -1644,6 +1645,7 @@ export default function ReportAnalysisTab({
           rows: snapshot.rows,
           totalRows: snapshot.totalRows ?? rowsSeenRef.current,
           source: "report",
+          matchExportRequest: req,
         });
         onRunComplete?.();
       }
@@ -1902,7 +1904,7 @@ export default function ReportAnalysisTab({
         role="region"
         className={embedded ? "section" : "srse-panel"}
         style={embedded ? undefined : { marginBottom: "1rem", padding: "0.75rem 1rem" }}
-        aria-label="Saved queries"
+        aria-label={t("qbSavedQueriesReport")}
       >
         <p className="srse-text-muted" style={{ marginTop: 0, fontSize: "0.85rem" }}>
           Saved queries store your criteria and typed filter values (names, thresholds) in SRSE&apos;s

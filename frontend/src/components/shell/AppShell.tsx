@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
-import { fetchAuthSession, type AuthSession } from "@/lib/authToken";
+import { type ReactNode } from "react";
+import { AuthenticatedUserBar } from "@/components/shell/AuthenticatedUserBar";
+import { useAuthSession } from "@/components/shell/AuthSessionProvider";
+import { BrandMark } from "@/components/shell/BrandMark";
 import { useShell } from "@/components/shell/ShellProviders";
 
 const NAV = [
@@ -37,13 +39,7 @@ function NavIcon({ kind }: Readonly<{ kind: string }>) {
 export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
   const pathname = usePathname();
   const { t, theme, lang, sidebarCollapsed, setSidebarCollapsed, toggleTheme, toggleLang } = useShell();
-  const [session, setSession] = useState<AuthSession | null>(null);
-
-  useEffect(() => {
-    fetchAuthSession()
-      .then(setSession)
-      .catch(() => setSession(null));
-  }, [pathname]);
+  const { session } = useAuthSession();
 
   const showAdmin = Boolean(session?.admin);
 
@@ -52,11 +48,7 @@ export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
       <aside className={`sidebar${sidebarCollapsed ? " collapsed" : ""}`} id="app-sidebar">
         <div className="brand">
           <div className="brand-left">
-            <div className="brand-icon">A</div>
-            <div className="brand-info">
-              <h1>{t("appTitle")}</h1>
-              <span>{t("appSub")}</span>
-            </div>
+            <BrandMark />
           </div>
           <button
             type="button"
@@ -132,8 +124,11 @@ export function AppShell({ children }: Readonly<{ children: ReactNode }>) {
         />
       )}
 
-      <main className="main" id="main-content">
-        {children}
+      <main className="main main-with-user-bar" id="main-content">
+        <div className="main-user-bar-row">
+          <AuthenticatedUserBar />
+        </div>
+        <div className="main-body">{children}</div>
       </main>
     </div>
   );

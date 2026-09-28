@@ -48,6 +48,7 @@ Full framing and the reasoning behind each in `docs/OPEN_DECISIONS.md`.
 | 0.5 | Users | **Built in-house from scratch.** No existing directory, no SSO at this stage, access limited to a small number of users. Local accounts with password management. Keep the existing `AuthMode` seam so SSO can be added without touching `SecurityConfig`. |
 | 0.6 | Row limits | **Keep the inherited limits** — 10,000 rendered, 200,000 streamed, complete CSV beyond. Measured at crore scale rather than guessed. |
 | 0.7 | Scope dimensions (was A16) | **Department is a SECOND AXIS, orthogonal to geography.** A deployment defines N dimensions, each its own tree; a user holds assignments in each; the predicate is AND across dimensions, OR within one. |
+| 0.8 | External databases | **A Super Admin connects a business database; that connection is not the application's own database.** Supported types are PostgreSQL, DB2, MySQL, MariaDB, SQL Server, and Oracle. Same-database questions run on the saved read-only JDBC connection. A question that mixes sources runs on Presto only when each involved database has a Presto catalog alias saved in Admin. Without that alias the question is refused. See §2.4. |
 
 ### Answered since
 
@@ -120,6 +121,25 @@ one JDBC connection reaches both, and cross-system joins work natively.
 | 2.3.1 | Document the catalog-per-source-system model and what ops must configure | N | 1 |
 | 2.3.2 | Connection health panel — per catalog reachable/unreachable | N | 2 |
 | 2.3.3 | Decide behaviour when a catalog disappears (registered tables pointing at it) | N | 1 |
+
+### 2.4 Connected business databases
+
+This is separate from both planes above.
+
+- The **application database** is the operational PostgreSQL (or DB2) store. It holds users, scopes, saved queries, audit events, and the list of registered tables. Officers never query it from Query Builder.
+- A **connected business database** is a read-only JDBC connection a Super Admin adds under Admin → Data Sources. Its password is encrypted with `SRSE_EXTERNAL_SOURCE_SECRET_KEY` and is never sent back to the browser.
+- **Direct JDBC** answers a question whose tables all come from one connected database.
+- **Presto federation** answers a question that mixes the lakehouse with a connected database, or mixes two connected databases. It runs only when a Presto catalog alias was saved for each connected database in the question. Configuring that catalog is an operations task on the Presto server. Saving the alias in Admin does not create the catalog.
+
+Workflow, in order:
+
+1. Super Admin → Data Sources → Add connection. Test runs before the connection is saved.
+2. Browse catalogs, schemas, tables, and columns.
+3. Register the tables officers should be able to use. Each registration gets a stable logical address `jdbc_<id>.schema.table`. The connection's display name is not that address and does not go into the query.
+4. Grant access on purpose. A new registration is not shared. A Super Admin can see it. A scoped officer cannot until either the table is bound to their scope in Table Registry, or a Super Admin marks it as a shared reference. Do not mark it shared merely because it was registered.
+5. Officers pick the logical table in Query Builder and run, page, sort, and export as they do for lakehouse tables. Removing a connection is blocked while any of its tables stay registered.
+
+Fuzzy matching, folded name groups, and any other Presto-only function still need the catalog alias even when every table is on one connected database. MySQL and MariaDB tables that have no schema are registered under the database name, and that name must be a plain identifier (letters, digits, underscores).
 
 ---
 

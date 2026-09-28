@@ -12,6 +12,7 @@
   "dependencies": {
     "@heroui/react": "^2.4.0",
     "@tanstack/react-table": "^8.20.0",
+    "exceljs": "^4.4.0",
     "framer-motion": "^11.0.0",
     "next": "16.1.1",
     "react": "19.2.3",

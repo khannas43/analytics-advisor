@@ -188,10 +188,12 @@ public class MultiTargetRecordMatchService {
                 if (timeoutSeconds <= 0) {
                     throw new IllegalStateException("Multi-match time budget exhausted before target " + i);
                 }
-                jdbc.setQueryTimeout(timeoutSeconds);
+                JdbcTemplate executionJdbc = recordMatchService.jdbcFor(query);
+                if (executionJdbc == null) executionJdbc = jdbc;
+                executionJdbc.setQueryTimeout(timeoutSeconds);
                 ColumnMapRowMapper rowMapper = new ColumnMapRowMapper();
                 TargetRowMapper mapper = layout.mapperForTarget(i);
-                jdbc.query(query.sql(), query.params().toArray(), (RowCallbackHandler) rs -> {
+                executionJdbc.query(query.routedSql(), query.params().toArray(), (RowCallbackHandler) rs -> {
                     Map<String, Object> raw = rowMapper.mapRow(rs, 0);
                     try {
                         writeCsvRow(writer, layout.supersetColumns().stream()
@@ -249,11 +251,13 @@ public class MultiTargetRecordMatchService {
 
     private long streamTargetRows(java.io.OutputStream outputStream, RecordMatchService.MatchQuery query,
                                   MergedLayout layout, int targetIndex, int timeoutSeconds) throws IOException {
-        jdbc.setQueryTimeout(timeoutSeconds);
+        JdbcTemplate executionJdbc = recordMatchService.jdbcFor(query);
+        if (executionJdbc == null) executionJdbc = jdbc;
+        executionJdbc.setQueryTimeout(timeoutSeconds);
         ColumnMapRowMapper rowMapper = new ColumnMapRowMapper();
         TargetRowMapper mapper = layout.mapperForTarget(targetIndex);
         long[] count = {0};
-        jdbc.query(query.sql(), query.params().toArray(), (RowCallbackHandler) rs -> {
+        executionJdbc.query(query.routedSql(), query.params().toArray(), (RowCallbackHandler) rs -> {
             Map<String, Object> raw = rowMapper.mapRow(rs, 0);
             try {
                 writeLine(outputStream, Map.of("type", "row", "data", mapper.mapRow(raw)));

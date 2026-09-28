@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import type { RecordMatchRequest } from "@/lib/analysisApi";
 
 export type QueryResultRow = Record<string, unknown>;
 
@@ -9,6 +10,8 @@ export type QueryResultsPayload = {
   totalRows: number | null;
   capturedAt: string;
   source: "extract" | "report";
+  /** When set, dashboard can re-run server CSV/Excel for the full analytical result. */
+  matchExportRequest?: RecordMatchRequest | null;
 };
 
 type QueryResultsState = {

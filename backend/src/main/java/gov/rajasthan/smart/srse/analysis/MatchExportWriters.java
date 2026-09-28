@@ -2,7 +2,10 @@ package gov.rajasthan.smart.srse.analysis;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.Font;
 import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.streaming.SXSSFSheet;
 import org.apache.poi.xssf.streaming.SXSSFWorkbook;
 
@@ -111,11 +114,20 @@ final class MatchExportWriters {
             java.util.function.Consumer<MatchExportStreamer.RowSink> streamRows) throws IOException {
         try (SXSSFWorkbook workbook = new SXSSFWorkbook(100)) {
             SXSSFSheet sheet = workbook.createSheet("match");
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            CellStyle headerStyle = workbook.createCellStyle();
+            headerStyle.setFont(headerFont);
             Row header = sheet.createRow(0);
             for (int i = 0; i < columns.size(); i++) {
                 Cell cell = header.createCell(i);
                 cell.setCellValue(columns.get(i));
+                cell.setCellStyle(headerStyle);
             }
+            if (!columns.isEmpty()) {
+                sheet.setAutoFilter(new CellRangeAddress(0, 0, 0, columns.size() - 1));
+            }
+            sheet.createFreezePane(0, 1);
             int[] rowIndex = {1};
             MatchExportStreamer.RowSink body = row -> {
                 if (rowIndex[0] >= MatchExportLimits.EXCEL_MAX_ROWS_PER_SHEET) {

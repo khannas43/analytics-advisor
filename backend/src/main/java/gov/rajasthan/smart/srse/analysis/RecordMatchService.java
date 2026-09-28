@@ -12,6 +12,8 @@ import gov.rajasthan.smart.srse.compiler.RuleCompiler;
 import gov.rajasthan.smart.srse.compiler.SqlTypeFamily;
 import gov.rajasthan.smart.srse.compiler.TypeCoercion;
 import gov.rajasthan.smart.srse.execution.GuardrailProperties;
+import gov.rajasthan.smart.srse.execution.AnalysisExecutionRoute;
+import gov.rajasthan.smart.srse.execution.AnalysisExecutionRouter;
 import gov.rajasthan.smart.srse.lakehouse.AnalysisScopeFromService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
@@ -20,6 +22,7 @@ import gov.rajasthan.smart.srse.lakehouse.ScopeFilteredFrom;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadata;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.ColumnMapRowMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
@@ -118,6 +121,9 @@ public class RecordMatchService {
     private final AnalysisScopeFromService scopeFrom;
     private final RuleCompiler ruleCompiler;
 
+    @Autowired(required = false)
+    private AnalysisExecutionRouter executionRouter;
+
     public RecordMatchService(@Qualifier("prestoJdbcTemplate") JdbcTemplate jdbc,
                               LakehouseRegistryService registry,
                               GuardrailProperties guardrails,
@@ -141,16 +147,24 @@ public class RecordMatchService {
      */
     public MatchQuery planMatch(RecordMatchRequest req) {
         if (req.singleSource()) {
-            return buildSingleSourceQuery(req);
+            MatchQuery query = buildSingleSourceQuery(req);
+            return route(query, List.of(tableForSingleSource(req)));
         }
         JoinPlan join = normalizeJoin(req);
         Sides sides = validateRequest(req, join);
-        return buildMatchQuery(req, join, sides);
+        MatchQuery query = buildMatchQuery(req, join, sides);
+        return route(query, List.of(sides.sourceTable(), sides.targetTable()));
+    }
+
+    private MatchQuery route(MatchQuery query, List<QualifiedTable> tables) {
+        if (executionRouter == null) return query;
+        AnalysisExecutionRouter.RoutedSql routed = executionRouter.route(query.sql(), tables);
+        return new MatchQuery(query.sql(), query.params(), query.columns(), routed.sql(), routed.route());
     }
 
     /** Display-only SQL with bound parameters rendered as literals — never re-executed. */
     public String renderQueryForDisplay(MatchQuery query) {
-        return renderForDisplay(query.sql(), query.params());
+        return renderForDisplay(query.routedSql(), query.params());
     }
 
     /**
@@ -222,7 +236,7 @@ public class RecordMatchService {
      * Refuses before streaming when the match would exceed Excel's per-sheet row limit.
      */
     public void assertExcelExportAllowed(MatchQuery query) {
-        long rows = MatchExportStreamer.countRows(jdbc, guardrails.queryTimeoutSeconds(), query);
+        long rows = MatchExportStreamer.countRows(jdbcFor(query), guardrails.queryTimeoutSeconds(), query);
         if (rows > MatchExportLimits.EXCEL_MAX_ROWS_PER_SHEET) {
             throw new IllegalArgumentException(
                     "Excel export is limited to " + MatchExportLimits.EXCEL_MAX_ROWS_PER_SHEET
@@ -260,8 +274,8 @@ public class RecordMatchService {
                         .append(i).append("_matches");
             }
         }
-        agg.append(" FROM (").append(query.sql()).append(") comparison_summary_inner");
-        Map<String, Object> row = jdbc.queryForMap(agg.toString(), query.params().toArray());
+        agg.append(" FROM (").append(query.routedSql()).append(") comparison_summary_inner");
+        Map<String, Object> row = jdbcFor(query).queryForMap(agg.toString(), query.params().toArray());
         long total = toLong(row.get("total_rows"));
         long matched = outerReconciliation ? toLong(row.get("matched_rows")) : total;
         long noCounterpart = outerReconciliation ? toLong(row.get("no_counterpart_rows")) : 0L;
@@ -1171,14 +1185,15 @@ public class RecordMatchService {
     }
 
     private StreamingResponseBody streamResults(MatchQuery query) {
-        String displaySql = renderForDisplay(query.sql(), query.params());
+        String displaySql = renderForDisplay(query.routedSql(), query.params());
         return outputStream -> {
             writeLine(outputStream, Map.of("type", "meta", "columns", query.columns(), "sql", displaySql));
             try {
-                jdbc.setQueryTimeout(guardrails.queryTimeoutSeconds());
+                JdbcTemplate executionJdbc = jdbcFor(query);
+                executionJdbc.setQueryTimeout(guardrails.queryTimeoutSeconds());
                 ColumnMapRowMapper rowMapper = new ColumnMapRowMapper();
                 long[] totalRows = {0};
-                jdbc.query(query.sql(), query.params().toArray(), (RowCallbackHandler) rs -> {
+                executionJdbc.query(query.routedSql(), query.params().toArray(), (RowCallbackHandler) rs -> {
                     Map<String, Object> row = rowMapper.mapRow(rs, 0);
                     try {
                         writeLine(outputStream, Map.of("type", "row", "data", row));
@@ -1214,7 +1229,7 @@ public class RecordMatchService {
             writer.write('\uFEFF');
             MatchExportWriters.writeCsvRow(
                     writer, query.columns().stream().map(Object.class::cast).toList());
-            MatchExportStreamer.streamRows(jdbc, guardrails.queryTimeoutSeconds(), query, row ->
+            MatchExportStreamer.streamRows(jdbcFor(query), guardrails.queryTimeoutSeconds(), query, row ->
                     MatchExportWriters.writeCsvRow(writer, MatchExportStreamer.columnValues(query, row)));
             writer.flush();
         };
@@ -1226,7 +1241,7 @@ public class RecordMatchService {
             try (JsonGenerator gen = mapper.getFactory().createGenerator(outputStream)) {
                 gen.writeStartArray();
                 MatchExportStreamer.streamRows(
-                        jdbc,
+                        jdbcFor(query),
                         guardrails.queryTimeoutSeconds(),
                         query,
                         MatchExportWriters.jsonRowSink(query.columns(), gen));
@@ -1241,7 +1256,7 @@ public class RecordMatchService {
             Writer writer = new BufferedWriter(MatchExportWriters.utf8Writer(outputStream));
             writer.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<matchRows>\n");
             MatchExportStreamer.streamRows(
-                    jdbc,
+                    jdbcFor(query),
                     guardrails.queryTimeoutSeconds(),
                     query,
                     MatchExportWriters.xmlRowSink(writer, query.columns()));
@@ -1255,10 +1270,22 @@ public class RecordMatchService {
                 outputStream,
                 query.columns(),
                 body -> MatchExportStreamer.streamRows(
-                        jdbc, guardrails.queryTimeoutSeconds(), query, body));
+                        jdbcFor(query), guardrails.queryTimeoutSeconds(), query, body));
     }
 
-    public record MatchQuery(String sql, List<Object> params, List<String> columns) {
+    JdbcTemplate jdbcFor(MatchQuery query) {
+        return executionRouter == null ? jdbc : executionRouter.jdbc(query.route());
+    }
+
+    public record MatchQuery(
+            String sql,
+            List<Object> params,
+            List<String> columns,
+            String routedSql,
+            AnalysisExecutionRoute route) {
+        public MatchQuery(String sql, List<Object> params, List<String> columns) {
+            this(sql, params, columns, sql, AnalysisExecutionRoute.presto());
+        }
     }
 
     private void writeLine(java.io.OutputStream out, Map<String, Object> payload) throws IOException {
@@ -1291,11 +1318,11 @@ public class RecordMatchService {
         TableStats sourceStats = sourceScope.appliesFilter() ? TableStats.EMPTY : readCatalogStats(sides.sourceTable());
         TableStats targetStats = targetScope.appliesFilter() ? TableStats.EMPTY : readCatalogStats(sides.targetTable());
         long sourceRows = sourceScope.appliesFilter()
-                ? queryScopedRowCount(sourceScope)
+                ? queryScopedRowCount(sourceScope, sides.sourceTable())
                 : (sourceStats.rowCount() != null
                         ? sourceStats.rowCount() : queryRowCount(sides.sourceTable()));
         long targetRows = targetScope.appliesFilter()
-                ? queryScopedRowCount(targetScope)
+                ? queryScopedRowCount(targetScope, sides.targetTable())
                 : (targetStats.rowCount() != null
                         ? targetStats.rowCount() : queryRowCount(sides.targetTable()));
         if (sourceRows == 0 || targetRows == 0) {
@@ -1363,6 +1390,9 @@ public class RecordMatchService {
      * keep working, just more slowly.
      */
     private TableStats readCatalogStats(QualifiedTable table) {
+        if (executionRouter != null && executionRouter.containsExternal(table)) {
+            return TableStats.EMPTY;
+        }
         Map<String, Long> distinct = new java.util.HashMap<>();
         long[] rowCount = {-1};
         try {
@@ -1397,17 +1427,18 @@ public class RecordMatchService {
     }
 
     private long queryRowCount(QualifiedTable table) {
-        Long count = jdbc.queryForObject("SELECT count(*) FROM " + table.qualifiedName(), Long.class);
+        String sql = "SELECT count(*) FROM " + table.qualifiedName();
+        Long count = queryLong(sql, List.of(), table);
         return count == null ? 0 : Math.max(0, count);
     }
 
-    private long queryScopedRowCount(ScopeFilteredFrom scope) {
+    private long queryScopedRowCount(ScopeFilteredFrom scope, QualifiedTable table) {
         if (scope.isEmptyResult()) {
             return 0;
         }
         String sql = "SELECT count(*) FROM (SELECT * FROM " + scope.qualifiedName() + " t WHERE "
                 + scope.whereSql() + ")";
-        Long count = jdbc.queryForObject(sql, scope.bindValues().toArray(), Long.class);
+        Long count = queryLong(sql, scope.bindValues(), table);
         return count == null ? 0 : Math.max(0, count);
     }
 
@@ -1439,7 +1470,7 @@ public class RecordMatchService {
             long distinct = fromStats != null
                     ? fromStats
                     : queryApproxDistinct(
-                            fromExpr, scope, fuzzy ? blockingKeyExpr(columnRef, fuzzyOptions) : columnRef);
+                            fromExpr, scope, fuzzy ? blockingKeyExpr(columnRef, fuzzyOptions) : columnRef, table);
             product = multiplyCap(product, distinct, ceiling);
         }
         return product;
@@ -1453,14 +1484,32 @@ public class RecordMatchService {
                 + SCOPED_FROM_ALIAS;
     }
 
-    private long queryApproxDistinct(String fromExpression, ScopeFilteredFrom scope, String valueExpression) {
-        String sql = "SELECT CAST(approx_distinct(" + valueExpression + ") AS BIGINT) FROM " + fromExpression;
-        if (scope.appliesFilter()) {
-            Long count = jdbc.queryForObject(sql, scope.bindValues().toArray(), Long.class);
-            return count == null ? 0 : Math.max(0, count);
-        }
-        Long count = jdbc.queryForObject(sql, Long.class);
+    private long queryApproxDistinct(
+            String fromExpression,
+            ScopeFilteredFrom scope,
+            String valueExpression,
+            QualifiedTable table) {
+        boolean external = executionRouter != null && executionRouter.containsExternal(table);
+        String aggregate = external
+                ? "COUNT(DISTINCT " + valueExpression + ")"
+                : "CAST(approx_distinct(" + valueExpression + ") AS BIGINT)";
+        String sql = "SELECT " + aggregate + " FROM " + fromExpression;
+        Long count = queryLong(sql, scope.appliesFilter() ? scope.bindValues() : List.of(), table);
         return count == null ? 0 : Math.max(0, count);
+    }
+
+    private Long queryLong(String sql, List<Object> params, QualifiedTable table) {
+        if (executionRouter == null) {
+            return params.isEmpty()
+                    ? jdbc.queryForObject(sql, Long.class)
+                    : jdbc.queryForObject(sql, params.toArray(), Long.class);
+        }
+        AnalysisExecutionRouter.RoutedSql routed = executionRouter.route(sql, List.of(table));
+        JdbcTemplate executionJdbc = executionRouter.jdbc(routed.route());
+        executionJdbc.setQueryTimeout(guardrails.queryTimeoutSeconds());
+        return params.isEmpty()
+                ? executionJdbc.queryForObject(routed.sql(), Long.class)
+                : executionJdbc.queryForObject(routed.sql(), params.toArray(), Long.class);
     }
 
     private static long multiplyCap(long a, long b, long ceiling) {

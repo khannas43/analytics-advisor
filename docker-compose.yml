@@ -44,8 +44,11 @@ services:
       # Operational plane (PostgreSQL / JPA — Liquibase at boot)
       - SRSE_OPERATIONAL_JDBC_URL=jdbc:postgresql://postgres:5432/srse
       - SRSE_OPERATIONAL_USER=srse
-      - SRSE_OPERATIONAL_PASSWORD=srse_local_pw
+      - SRSE_OPERATIONAL_PASSWORD=${SRSE_OPERATIONAL_PASSWORD:-srse_local_pw}
       - SRSE_OPERATIONAL_DRIVER=org.postgresql.Driver
+      # Encrypts passwords saved through Admin → Data Sources. The deploy script
+      # generates this into the git-ignored .env file when absent.
+      - SRSE_EXTERNAL_SOURCE_SECRET_KEY=${SRSE_EXTERNAL_SOURCE_SECRET_KEY:-}
       # Analytical plane (PrestoDB / JDBC)
       - SRSE_PRESTO_URL=jdbc:presto://presto:8080/iceberg/srse
       - SRSE_PRESTO_USER=srse
@@ -63,12 +66,13 @@ services:
       - SRSE_AGE_BAND_COLUMN=${SRSE_AGE_BAND_COLUMN:-age_band}
       - SRSE_CONNECTION_OVERRIDE_PATH=/app/config/connection-overrides.properties
       # Required on first boot when app_user is empty (7.1b). Change after login.
+      - SRSE_BOOTSTRAP_SUPER_ADMIN_USERNAME=${SRSE_BOOTSTRAP_SUPER_ADMIN_USERNAME:-superadmin}
       - SRSE_BOOTSTRAP_SUPER_ADMIN_PASSWORD=${SRSE_BOOTSTRAP_SUPER_ADMIN_PASSWORD:-}
     volumes:
       - connection-overrides:/app/config
     depends_on:
       postgres:
-        condition: service_started
+        condition: service_healthy
       presto:
         condition: service_started
     restart: unless-stopped
@@ -82,9 +86,15 @@ services:
     environment:
       POSTGRES_DB: srse
       POSTGRES_USER: srse
-      POSTGRES_PASSWORD: srse_local_pw
+      POSTGRES_PASSWORD: ${SRSE_OPERATIONAL_PASSWORD:-srse_local_pw}
     volumes:
       - postgresdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U srse -d srse"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
 
   # ---------- Operational store: DB2 (optional — profile db2) ----------
   db2:

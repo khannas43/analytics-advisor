@@ -15,6 +15,9 @@ spring:
 
 # ---- Operational plane: PostgreSQL or DB2 (JPA) — decision 0.1 ----
 srse:
+  external-sources:
+    # Base64-encoded 32-byte AES key. Required only when external source credentials are saved.
+    secret-key: ${SRSE_EXTERNAL_SOURCE_SECRET_KEY:}
   datasource:
     operational:
       jdbc-url: ${SRSE_OPERATIONAL_JDBC_URL:${SRSE_DB2_URL:jdbc:postgresql://localhost:5433/srse}}

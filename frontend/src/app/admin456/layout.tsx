@@ -3,6 +3,10 @@
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AuthenticatedUserBar } from "@/components/shell/AuthenticatedUserBar";
+import { AuthSessionProvider } from "@/components/shell/AuthSessionProvider";
+import { BrandMark } from "@/components/shell/BrandMark";
+import { ShellProviders } from "@/components/shell/ShellProviders";
 import {
   fetchAuthSession,
   isLocalAuthMode,
@@ -57,12 +61,24 @@ export default function AdminLayout({ children }: Readonly<{ children: ReactNode
       <main className="srse-page">
         <p className="srse-error-text">
           {session === null && !isLocalAuthMode()
-            ? "This account is not an SRSE administrator."
+            ? "This account is not an administrator."
             : "Admin access required."}
         </p>
       </main>
     );
   }
 
-  return children;
+  return (
+    <ShellProviders>
+      <AuthSessionProvider>
+        <div className="admin-standalone-shell">
+          <header className="admin-standalone-top">
+            <BrandMark compact />
+            <AuthenticatedUserBar />
+          </header>
+          {children}
+        </div>
+      </AuthSessionProvider>
+    </ShellProviders>
+  );
 }

@@ -2,6 +2,25 @@
 
 Two ways, depending on what you want to look at.
 
+## Recommended first deployment — one command
+
+From a fresh Git clone, run:
+
+```bash
+./scripts/deploy-docker.sh
+```
+
+The script checks Docker, creates a protected git-ignored `.env`, generates the
+first Super Admin and PostgreSQL passwords when absent, builds the frontend in
+local-auth mode, and starts the complete Docker Compose stack. PostgreSQL is
+pulled automatically and persists users, roles, scopes, saved queries, audit
+events, and registrations in the named `postgresdata` volume. No separate
+PostgreSQL installation is required.
+
+Re-running the script is safe: an existing database and user passwords are not
+reset. Never use `docker compose down -v` unless you intentionally want to erase
+the application database.
+
 ## A. The whole stack — quickest look
 
 ```bash
@@ -81,7 +100,7 @@ The PostgreSQL volume already carries fixtures from verification runs:
 
 | Account | Password | What it shows |
 |---|---|---|
-| `superadmin` | `Restored$Sup1` | Unscoped — sees all 7 districts, 200,000 rows |
+| `superadmin` | `Supradmin@123` (or your bootstrap password from `.env`) | Unscoped — sees all 7 districts, 200,000 rows |
 | `jaipurofficer` | `JaiOffic$1x` | Scoped to Jaipur — only Jaipur district rows (strict subset of the unscoped population). **MFA is enabled on this account**, so login returns a challenge and you read the six-digit code from the backend log (`LoggingOtpSender`). Turn MFA off from the admin user screen if it is in the way. |
 | `jaipuradmin` | `JaipurNew$1` | A **scoped admin**: manages only users inside Jaipur |
 | `sanganeruser` | `Officer$New1` | Taluka scope, for the deny-by-default case |
@@ -99,6 +118,23 @@ written.
 count. Then do exactly the same as `superadmin`. The scoped run must return
 **fewer rows than the unscoped run** (same request shape; only permitted districts
 in SQL), not a fixed seed count.
+
+## Connecting a business database
+
+The PostgreSQL container started above is the **application database**. It stores accounts, scopes, registrations, and audit events. It is not the database officers analyse.
+
+A business database is added separately, by a Super Admin:
+
+1. Open Admin → Data Sources and choose Add connection.
+2. Enter the host, database, and a **read-only** database user. Test & save checks the connection before it is stored. The password is encrypted and is not shown again.
+3. Browse schemas, tables, and columns, then choose Register for Query Builder on each table officers may use.
+4. The table shows up in Query Builder as `jdbc_<id>.schema.table`. That address is what a saved query stores. The connection's name is only a label.
+5. Grant scope on purpose. Registration does not publish the table. In Table Registry, bind the logical table to the officer's scope, or — only when every officer should see every row — have a Super Admin mark it as a shared reference. Until one of those is done, a scoped officer cannot see or query it.
+6. Run the question from Query Builder and export CSV or Excel as usual.
+
+A question that uses only that one database runs on the saved JDBC connection. A question that also uses the lakehouse, or a second business database, runs on Presto and only if Data Sources has a Presto catalog alias for each business database involved. The alias is the name of a catalog someone has already configured on the Presto server. Leaving it blank turns federation off; the product then refuses the mixed question instead of guessing. Direct questions on one database keep working.
+
+The same query timeout used for lakehouse questions applies to these direct questions. A connection cannot be removed while it still has registered tables; unregister those tables first.
 
 ## Worth knowing
 

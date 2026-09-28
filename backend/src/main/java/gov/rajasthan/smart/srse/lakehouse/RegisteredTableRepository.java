@@ -30,6 +30,8 @@ public interface RegisteredTableRepository extends JpaRepository<RegisteredTable
     List<RegisteredTable> findByCatalogNameAndSchemaNameOrderByTableName(
             String catalogName, String schemaName);
 
+    long countByExternalDataSourceId(long externalDataSourceId);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("UPDATE RegisteredTable r SET r.sourceSystem = :to WHERE r.sourceSystem = :from")
     int bulkRenameSourceSystem(@Param("from") String from, @Param("to") String to);

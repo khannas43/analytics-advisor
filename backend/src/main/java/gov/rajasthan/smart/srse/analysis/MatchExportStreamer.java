@@ -32,7 +32,7 @@ final class MatchExportStreamer {
         jdbc.setQueryTimeout(queryTimeoutSeconds);
         ColumnMapRowMapper rowMapper = new ColumnMapRowMapper();
         try {
-            jdbc.query(query.sql(), query.params().toArray(), (RowCallbackHandler) rs -> {
+            jdbc.query(query.routedSql(), query.params().toArray(), (RowCallbackHandler) rs -> {
                 Map<String, Object> row = rowMapper.mapRow(rs, 0);
                 try {
                     sink.accept(row);
@@ -46,7 +46,7 @@ final class MatchExportStreamer {
     }
 
     static long countRows(JdbcTemplate jdbc, int queryTimeoutSeconds, RecordMatchService.MatchQuery query) {
-        String countSql = "SELECT count(*) FROM (" + query.sql() + ") export_row_count_inner";
+        String countSql = "SELECT count(*) FROM (" + query.routedSql() + ") export_row_count_inner";
         jdbc.setQueryTimeout(queryTimeoutSeconds);
         Long count = jdbc.queryForObject(countSql, query.params().toArray(), Long.class);
         return count == null ? 0L : count;

@@ -59,10 +59,16 @@ export default function ValueFilterPicker({ table, column, hydratedSpec, onChang
   const [selected, setSelected] = useState<Set<string>>(() => selectedFromInSpec(hydratedSpec));
 
   const onChangeRef = useRef(onChange);
-  onChangeRef.current = onChange;
   const emittedSigRef = useRef<string>("");
   const hydratedSpecRef = useRef(hydratedSpec);
-  hydratedSpecRef.current = hydratedSpec;
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    hydratedSpecRef.current = hydratedSpec;
+  }, [hydratedSpec]);
 
   const loading = Boolean(column) && fetchState.key !== pickerKey;
   const values = fetchState.key === pickerKey ? fetchState.values : [];

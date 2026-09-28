@@ -69,6 +69,19 @@ Recorded in `docs/PRODUCT_PLAN.md` §0, reasoning in `docs/OPEN_DECISIONS.md`.
 | 0.6 | **Keep the inherited row limits** — 10,000 rendered, 200,000 streamed, complete CSV beyond. |
 | 0.7 | **Scope dimensions are orthogonal.** Geography (District → Taluka → Village/City) and department are separate axes, each its own tree. AND across dimensions, OR within one. |
 
+### Product extension — external data-source onboarding (2026-09-27)
+
+The product now owns an Admin-facing **Data Sources** layer above the existing
+registry. A Super Admin may store an encrypted connection to a supported JDBC
+database and browse its live catalogs, schemas, tables, views, and columns.
+This is deliberately separate from the operational plane: an external source
+contains business data and must never become the JPA/Liquibase database.
+
+The first slice is metadata onboarding for PostgreSQL and DB2. PrestoDB remains
+the only analytical execution engine until a later routing slice explicitly
+adds direct single-source execution. Do not imply that a browsable JDBC table
+is Query Builder-ready until it has an execution route and registry entry.
+
 **Still open: 0.5b — is MFA/OTP required?** Assumed no, seam left open. Confirm
 before §7.1.
 

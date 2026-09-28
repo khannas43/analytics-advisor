@@ -2,6 +2,9 @@ package gov.rajasthan.smart.srse.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.zaxxer.hikari.HikariDataSource;
+import gov.rajasthan.smart.srse.datasource.ExternalDataSourceAdminController;
+import gov.rajasthan.smart.srse.datasource.ExternalDataSourceMetadataService;
+import gov.rajasthan.smart.srse.datasource.ExternalDataSourceService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseAdminController;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseBrowseService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseCatalogController;
@@ -51,6 +54,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  */
 @WebMvcTest(controllers = {
         MockJwtIssuer.class,
+        ExternalDataSourceAdminController.class,
         LakehouseAdminController.class,
         LakehouseCatalogController.class,
         AnalysisColumnMetadataController.class,
@@ -96,6 +100,12 @@ class SecurityConfigRbacTest {
 
     @MockBean
     private AdminConfigService adminConfigService;
+
+    @MockBean
+    private ExternalDataSourceService externalDataSourceService;
+
+    @MockBean
+    private ExternalDataSourceMetadataService externalDataSourceMetadataService;
 
     private String officerToken;
     private String adminToken;
@@ -241,6 +251,26 @@ class SecurityConfigRbacTest {
                         .content("""
                                 {"schemaVersion":"2.0","exportedAt":"2026-01-01T00:00:00Z","dataMode":"synthetic"}
                                 """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void officerForbiddenOnExternalDataSources() throws Exception {
+        mockMvc.perform(get("/api/admin/data-sources")
+                        .header("Authorization", "Bearer " + officerToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/admin/data-sources/3/registrations")
+                        .header("Authorization", "Bearer " + officerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"catalog":"app","schema":"public","table":"people"}
+                                """))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void anonymousForbiddenOnExternalDataSources() throws Exception {
+        mockMvc.perform(get("/api/admin/data-sources"))
                 .andExpect(status().isForbidden());
     }
 

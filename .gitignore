@@ -1,5 +1,6 @@
 # Secrets / env
 .env
+docker/presto/catalog/egov.properties
 *.env.local
 backend/src/main/resources/application-secret*.yml
 

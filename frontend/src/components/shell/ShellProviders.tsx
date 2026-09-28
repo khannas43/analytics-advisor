@@ -33,13 +33,13 @@ const MOBILE_BREAKPOINT_PX = 767;
 
 function readStoredTheme(): ThemeMode {
   if (typeof window === "undefined") {
-    return "dark";
+    return "light";
   }
   const stored = localStorage.getItem(THEME_KEY) as ThemeMode | null;
   if (stored === "light" || stored === "dark") {
     return stored;
   }
-  return "dark";
+  return "light";
 }
 
 function readStoredLang(): I18nLang {
@@ -64,9 +64,19 @@ function readInitialSidebarCollapsed(): boolean {
 }
 
 export function ShellProviders({ children }: Readonly<{ children: ReactNode }>) {
-  const [theme, setTheme] = useState<ThemeMode>(readStoredTheme);
-  const [lang, setLang] = useState<I18nLang>(readStoredLang);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialSidebarCollapsed);
+  /** SSR-safe defaults; sync from storage after mount to avoid React #418 hydration drift. */
+  const [theme, setTheme] = useState<ThemeMode>("light");
+  const [lang, setLang] = useState<I18nLang>("en");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      setTheme(readStoredTheme());
+      setLang(readStoredLang());
+      setSidebarCollapsed(readInitialSidebarCollapsed());
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
