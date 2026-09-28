@@ -35,6 +35,10 @@ export default function AdminLayout({ children }: Readonly<{ children: ReactNode
           return;
         }
         if (!s.admin) {
+          if (isLocalAuthMode()) {
+            router.replace("/overview");
+            return;
+          }
           setSession(null);
           return;
         }

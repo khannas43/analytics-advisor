@@ -148,3 +148,13 @@ export async function authorizedFetch(
   }
   return res;
 }
+
+/** Officers who signed in from the admin URL go to the workspace, not the admin gate. */
+export function pathAfterLogin(returnTo: string, admin: boolean): string {
+  const target = returnTo.startsWith("/") ? returnTo : "/overview";
+  const path = target.split("?")[0].split("#")[0];
+  if (!admin && (path === "/admin456" || path.startsWith("/admin456/"))) {
+    return "/overview";
+  }
+  return target;
+}

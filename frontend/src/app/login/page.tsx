@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useId, useState } from "react";
 import { LoginChromeFooter, LoginChromeHeader } from "@/components/shell/LoginChrome";
 import { useShell } from "@/components/shell/ShellProviders";
-import { isLocalAuthMode, storeAuthToken } from "@/lib/authToken";
+import { fetchAuthSession, isLocalAuthMode, pathAfterLogin, storeAuthToken } from "@/lib/authToken";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
@@ -121,7 +121,8 @@ function LoginForm() {
       if (body.mustChangePassword) {
         router.replace("/change-password");
       } else {
-        router.replace(returnTo);
+        const session = await fetchAuthSession();
+        router.replace(pathAfterLogin(returnTo, session?.admin === true));
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -150,7 +151,8 @@ function LoginForm() {
       if (body.mustChangePassword) {
         router.replace("/change-password");
       } else {
-        router.replace(returnTo);
+        const session = await fetchAuthSession();
+        router.replace(pathAfterLogin(returnTo, session?.admin === true));
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));

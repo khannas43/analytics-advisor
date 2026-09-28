@@ -52,6 +52,9 @@ function buildRuleSpec(
     operator,
   };
   if (opMeta.needsValue) {
+    // Fuzzy mode shares ruleColumn with the ordinary rule. Turning it off leaves
+    // the default GT and a blank value, which would compile to `col > ''`.
+    if (valueRaw.trim() === "") return null;
     node.value = parseRuleValue(valueRaw);
   }
   return { root: node };
