@@ -11,6 +11,7 @@ const TAB_EXTRACT_ID = "qb-tab-extract";
 const TAB_REPORT_ID = "qb-tab-report";
 const PANEL_EXTRACT_ID = "qb-panel-extract";
 const PANEL_REPORT_ID = "qb-panel-report";
+const REPORT_PREREQ_ID = "qb-report-prerequisite";
 
 export default function QueryBuilderPage() {
   const { t } = useShell();
@@ -47,11 +48,11 @@ export default function QueryBuilderPage() {
           role="tab"
           id={TAB_REPORT_ID}
           className={tab === 2 ? "active" : ""}
-          onClick={() => extractSucceeded && setTab(2)}
+          onClick={() => setTab(2)}
           aria-label="Report Analysis tab"
           aria-selected={tab === 2}
           aria-controls={PANEL_REPORT_ID}
-          aria-disabled={!extractSucceeded}
+          aria-describedby={tab === 2 && !extractSucceeded ? REPORT_PREREQ_ID : undefined}
           tabIndex={tab === 2 ? 0 : -1}
           title={!extractSucceeded ? t("msgNoExtractYet") : undefined}
         >
@@ -96,7 +97,7 @@ export default function QueryBuilderPage() {
           tabIndex={0}
         >
           <div id="qb2" role="status">
-            <p>{t("msgNoExtractYet")}</p>
+            <p id={REPORT_PREREQ_ID}>{t("msgNoExtractYet")}</p>
             <button type="button" className="btn secondary" onClick={() => setTab(1)}>
               {t("btnBackExtract")}
             </button>
@@ -124,4 +125,5 @@ export const queryBuilderTabIds = {
   TAB_REPORT_ID,
   PANEL_EXTRACT_ID,
   PANEL_REPORT_ID,
+  REPORT_PREREQ_ID,
 } as const;

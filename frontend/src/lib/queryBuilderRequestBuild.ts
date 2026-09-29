@@ -3,12 +3,13 @@ import type {
   ComparisonGroup,
   DisplayColumn,
   MatchCriterion,
+  PredicateNodeWire,
   PredicateSpecWire,
   RecordMatchRequest,
   RuleOperator,
   TableRef,
 } from "@/lib/analysisApi";
-import type { ExtractConfig, ReportConfig } from "@/lib/queryBuilderPipelineTypes";
+import type { ExtractConfig, ExtractRuleRow, ReportConfig } from "@/lib/queryBuilderPipelineTypes";
 
 const RULE_OPS: { value: RuleOperator; needsValue: boolean }[] = [
   { value: "EQ", needsValue: true },
@@ -29,21 +30,16 @@ function parseRuleValue(raw: string): string | number {
   return trimmed;
 }
 
-function buildRuleSpec(
+function buildPredicateNode(
   ref: TableRef,
   column: string,
   operator: RuleOperator,
   valueRaw: string,
-) {
+): PredicateNodeWire | null {
   if (!column) return null;
   const opMeta = RULE_OPS.find((o) => o.value === operator);
   if (!opMeta) return null;
-  const node: {
-    type: "PREDICATE";
-    column: { table: { catalog: string; schema: string; table: string }; column: string };
-    operator: RuleOperator;
-    value?: unknown;
-  } = {
+  const node: PredicateNodeWire = {
     type: "PREDICATE",
     column: {
       table: { catalog: ref.catalog, schema: ref.schema, table: ref.table },
@@ -57,7 +53,29 @@ function buildRuleSpec(
     if (valueRaw.trim() === "") return null;
     node.value = parseRuleValue(valueRaw);
   }
-  return { root: node };
+  return node;
+}
+
+function buildRuleSpec(
+  ref: TableRef,
+  column: string,
+  operator: RuleOperator,
+  valueRaw: string,
+): PredicateSpecWire | null {
+  const node = buildPredicateNode(ref, column, operator, valueRaw);
+  return node ? { root: node } : null;
+}
+
+/** One valid row is a predicate; two or more are AND-ed. Invalid rows are dropped. */
+function buildRulesFromRows(ref: TableRef, rows: readonly ExtractRuleRow[]): PredicateSpecWire | null {
+  const children: PredicateNodeWire[] = [];
+  for (const row of rows) {
+    const node = buildPredicateNode(ref, row.column, row.operator, row.value);
+    if (node) children.push(node);
+  }
+  if (children.length === 0) return null;
+  if (children.length === 1) return { root: children[0] };
+  return { root: { type: "GROUP", op: "AND", children } };
 }
 
 function refAsTable(ref: CascadeValue): TableRef | null {
@@ -73,6 +91,27 @@ function pairIsFuzzy(sourceCol: string, targetCol: string, threshold: number): b
   return false;
 }
 
+export function toggleDisplayColumnSelection(selected: readonly string[], name: string): string[] {
+  return selected.includes(name) ? selected.filter((column) => column !== name) : [...selected, name];
+}
+
+export function selectAllDisplayColumns(columnNames: readonly string[]): string[] {
+  return [...columnNames];
+}
+
+export function clearDisplayColumnSelection(): string[] {
+  return [];
+}
+
+/** Drop attribute picks that are not columns of the table now selected on that side. */
+export function retainValidDisplayColumns(
+  selected: readonly string[],
+  availableNames: readonly string[],
+): string[] {
+  const available = new Set(availableNames);
+  return selected.filter((name) => available.has(name));
+}
+
 /** Extract-stage request: tables, projections, keys, rules — no report grouping/comparisons. */
 export function buildExtractRequest(dualMode: boolean, extract: ExtractConfig): RecordMatchRequest | null {
   const ref = refAsTable(extract.sourceRef);
@@ -80,38 +119,37 @@ export function buildExtractRequest(dualMode: boolean, extract: ExtractConfig): 
 
   const displays: DisplayColumn[] = extract.displayCols.map((column) => ({ ...ref, column }));
 
-  let sourceRules: PredicateSpecWire | null = buildRuleSpec(
-    ref,
-    extract.ruleColumn,
-    extract.ruleOp,
-    extract.ruleValue,
-  );
-  if (extract.useValuePicker && extract.valuePickerSpec) {
-    sourceRules = extract.valuePickerSpec;
-  } else if (extract.fuzzyRuleEnabled && extract.ruleColumn && extract.fuzzyRuleName.trim()) {
-    sourceRules = {
-      root: {
-        type: "PREDICATE",
-        column: {
-          table: { catalog: ref.catalog, schema: ref.schema, table: ref.table },
-          column: extract.ruleColumn,
-        },
-        operator: "FUZZY_MATCH",
-        value: [
-          extract.fuzzyRuleName.trim(),
-          extract.fuzzyRuleThreshold,
-          {
-            ignoreSpaces: extract.fuzzyIgnoreSpaces,
-            caseSensitive: extract.fuzzyCaseSensitive,
+  let sourceRules: PredicateSpecWire | null;
+  if (extract.sourceRuleRows.length > 0) {
+    sourceRules = buildRulesFromRows(ref, extract.sourceRuleRows);
+  } else {
+    sourceRules = buildRuleSpec(ref, extract.ruleColumn, extract.ruleOp, extract.ruleValue);
+    if (extract.useValuePicker && extract.valuePickerSpec) {
+      sourceRules = extract.valuePickerSpec;
+    } else if (extract.fuzzyRuleEnabled && extract.ruleColumn && extract.fuzzyRuleName.trim()) {
+      sourceRules = {
+        root: {
+          type: "PREDICATE",
+          column: {
+            table: { catalog: ref.catalog, schema: ref.schema, table: ref.table },
+            column: extract.ruleColumn,
           },
-        ],
-      },
-    };
+          operator: "FUZZY_MATCH",
+          value: [
+            extract.fuzzyRuleName.trim(),
+            extract.fuzzyRuleThreshold,
+            {
+              ignoreSpaces: extract.fuzzyIgnoreSpaces,
+              caseSensitive: extract.fuzzyCaseSensitive,
+            },
+          ],
+        },
+      };
+    }
   }
 
-  if (displays.length === 0) return null;
-
   if (!dualMode) {
+    if (displays.length === 0) return null;
     return {
       sourceCriteria: [],
       targetCriteria: [],
@@ -126,13 +164,22 @@ export function buildExtractRequest(dualMode: boolean, extract: ExtractConfig): 
   const tgt = refAsTable(extract.targetRef);
   if (!tgt || !extract.joinKeySource || !extract.joinKeyTarget) return null;
 
+  const targetDisplays: DisplayColumn[] = (extract.targetDisplayCols ?? []).map((column) => ({
+    ...tgt,
+    column,
+  }));
+  if (displays.length === 0 && targetDisplays.length === 0) return null;
+
   const sourceCriteria: MatchCriterion[] = [
     { ...ref, column: extract.joinKeySource, fuzzyThresholdPercent: null },
   ];
   const targetCriteria: MatchCriterion[] = [
     { ...tgt, column: extract.joinKeyTarget, fuzzyThresholdPercent: null },
   ];
-  const targetRules = buildRuleSpec(tgt, extract.targetRuleColumn, extract.targetRuleOp, extract.targetRuleValue);
+  const targetRules =
+    extract.targetRuleRows.length > 0
+      ? buildRulesFromRows(tgt, extract.targetRuleRows)
+      : buildRuleSpec(tgt, extract.targetRuleColumn, extract.targetRuleOp, extract.targetRuleValue);
 
   const req: RecordMatchRequest = {
     sourceCriteria,
@@ -144,6 +191,9 @@ export function buildExtractRequest(dualMode: boolean, extract: ExtractConfig): 
     targetRules: targetRules ?? undefined,
     singleSource: false,
   };
+  if (targetDisplays.length > 0) {
+    req.targetDisplayColumns = targetDisplays;
+  }
   if (extract.joinType !== "INNER") {
     req.joinType = extract.joinType;
   }
@@ -165,6 +215,54 @@ function buildComparisonGroups(
         isNameColumn(p.sourceColumn) || isNameColumn(p.targetColumn) ? p.fuzzyThresholdPercent : null,
       separator: " ",
     }));
+}
+
+/** PREDICATE roots stay one node; AND groups contribute their children. */
+function flattenAndPredicates(
+  root: PredicateSpecWire["root"] | null | undefined,
+): PredicateNodeWire[] {
+  if (!root) return [];
+  if (root.type === "PREDICATE") return [root];
+  if (root.op === "AND") return root.children;
+  return [];
+}
+
+function reportSourceFilterPredicates(ref: TableRef, report: ReportConfig): PredicateNodeWire[] {
+  const nodes: PredicateNodeWire[] = [];
+  if (report.sourceValueFilterEnabled && report.sourceValueFilterSpec?.root) {
+    nodes.push(...flattenAndPredicates(report.sourceValueFilterSpec.root));
+  }
+  if (!report.sourceFuzzyEnabled) return nodes;
+  const column = report.sourceFuzzyColumn.trim();
+  const name = report.sourceFuzzyName.trim();
+  if (!column || !name) return nodes;
+  nodes.push({
+    type: "PREDICATE",
+    column: {
+      table: { catalog: ref.catalog, schema: ref.schema, table: ref.table },
+      column,
+    },
+    operator: "FUZZY_MATCH",
+    value: [
+      name,
+      report.sourceFuzzyThreshold,
+      {
+        ignoreSpaces: report.sourceFuzzyIgnoreSpaces,
+        caseSensitive: report.sourceFuzzyCaseSensitive,
+      },
+    ],
+  });
+  return nodes;
+}
+
+/** One extra predicate stays a PREDICATE root; two or more are AND-ed with existing rules. */
+function combineSourceRules(
+  existing: PredicateSpecWire | null | undefined,
+  extra: readonly PredicateNodeWire[],
+): PredicateSpecWire {
+  const children = [...flattenAndPredicates(existing?.root), ...extra];
+  if (children.length === 1) return { root: children[0] };
+  return { root: { type: "GROUP", op: "AND", children } };
 }
 
 /** Full server request = extract base + report-stage options. */
@@ -212,6 +310,7 @@ export function buildMergedRequest(
   if (report.groupEnabled && report.groupByCol) {
     req.groupByColumns = [{ ...ref, column: report.groupByCol }];
     req.sourceDisplayColumns = [];
+    delete req.targetDisplayColumns;
     req.aggregates = [];
     if (report.aggregateFn === "COUNT" && !report.aggregateCol) {
       req.aggregates.push({ function: "COUNT", distinct: report.countDistinct });
@@ -244,6 +343,11 @@ export function buildMergedRequest(
     req.dedup = { ...ref, column: dedupCol };
   }
 
+  const extraSourceFilters = reportSourceFilterPredicates(ref, report);
+  if (extraSourceFilters.length > 0) {
+    req.sourceRules = combineSourceRules(req.sourceRules, extraSourceFilters);
+  }
+
   return req;
 }
 
@@ -253,9 +357,20 @@ export function preserveExtractDisplayColumnsOnSave(
   req: RecordMatchRequest,
 ): RecordMatchRequest {
   const ref = refAsTable(extract.sourceRef);
-  if (!ref || extract.displayCols.length === 0) {
-    return req;
+  const tgt = refAsTable(extract.targetRef);
+  let next = req;
+  if (ref && extract.displayCols.length > 0) {
+    next = {
+      ...next,
+      sourceDisplayColumns: extract.displayCols.map((column) => ({ ...ref, column })),
+    };
   }
-  const displays: DisplayColumn[] = extract.displayCols.map((column) => ({ ...ref, column }));
-  return { ...req, sourceDisplayColumns: displays };
+  const targetCols = extract.targetDisplayCols ?? [];
+  if (tgt && targetCols.length > 0 && next.singleSource !== true) {
+    next = {
+      ...next,
+      targetDisplayColumns: targetCols.map((column) => ({ ...tgt, column })),
+    };
+  }
+  return next;
 }

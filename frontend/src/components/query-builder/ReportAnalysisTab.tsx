@@ -40,6 +40,7 @@ import {
 } from "@/lib/analysisApi";
 import { AnalysisResultsGrid } from "@/components/AnalysisResultsGrid";
 import { ComparisonPairsEditor } from "@/components/ComparisonPairsEditor";
+import { ReportSourceFilters } from "@/components/query-builder/ReportSourceFilters";
 import { MultiTargetJoinCanvas, createInitialJoinCanvas } from "@/components/MultiTargetJoinCanvas";
 import {
   buildMatchGroup,
@@ -1686,6 +1687,14 @@ export default function ReportAnalysisTab({
             {t("secFilter")}
           </h5>
           <div className="ctrl-sub">{t("secFilterDesc")}</div>
+          {isCascadeComplete(pipelineExtract.sourceRef) && (
+            <ReportSourceFilters
+              table={pipelineExtract.sourceRef}
+              columns={sourceRows.find(isRowFilled)?.columns ?? []}
+              report={pipelineReport}
+              onPatch={patchPipelineReport}
+            />
+          )}
           {!multiMatchMode && (
             <label className="checkbox-row" htmlFor="mismatch-only-embed">
               <input

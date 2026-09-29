@@ -14,11 +14,22 @@ export type ComparisonPairConfig = {
   fuzzyThresholdPercent: number;
 };
 
+/** One basic extract rule. `id` is stable for list identity; it is not a server key. */
+export type ExtractRuleRow = {
+  id: string;
+  column: string;
+  operator: RuleOperator;
+  value: string;
+};
+
 /** Extract Records tab — tables, attributes, keys, and row-level rules only. */
 export type ExtractConfig = {
   sourceRef: CascadeValue;
   targetRef: CascadeValue;
+  /** Source attributes. Kept under this name so older callers stay valid. */
   displayCols: string[];
+  /** Destination attributes. Empty for single-source and for saves that predate the field. */
+  targetDisplayCols: string[];
   joinKeySource: string;
   joinKeyTarget: string;
   joinType: JoinType;
@@ -35,6 +46,10 @@ export type ExtractConfig = {
   targetRuleColumn: string;
   targetRuleOp: RuleOperator;
   targetRuleValue: string;
+  /** Basic rules on the source table. Empty until the multi-rule UI is wired. */
+  sourceRuleRows: ExtractRuleRow[];
+  /** Basic rules on the destination table. Empty until the multi-rule UI is wired. */
+  targetRuleRows: ExtractRuleRow[];
 };
 
 /** Report Analysis stage — filters, fuzzy/join options, grouping, comparisons. */
@@ -53,6 +68,17 @@ export type ReportConfig = {
   joinFuzzyThresholdPercent: number;
   joinFuzzyIgnoreSpaces: boolean;
   joinFuzzyCaseSensitive: boolean;
+  /** Source value filter on the Report stage. */
+  sourceValueFilterEnabled: boolean;
+  sourceValueFilterColumn: string;
+  sourceValueFilterSpec: PredicateSpecWire | null;
+  /** Source fuzzy filter on the Report stage. */
+  sourceFuzzyEnabled: boolean;
+  sourceFuzzyColumn: string;
+  sourceFuzzyName: string;
+  sourceFuzzyThreshold: number;
+  sourceFuzzyIgnoreSpaces: boolean;
+  sourceFuzzyCaseSensitive: boolean;
 };
 
 export type QueryExecutionSnapshot = {
@@ -72,6 +98,7 @@ export const EMPTY_EXTRACT_CONFIG: ExtractConfig = {
   sourceRef: { catalog: "", schema: "", table: "" },
   targetRef: { catalog: "", schema: "", table: "" },
   displayCols: [],
+  targetDisplayCols: [],
   joinKeySource: "",
   joinKeyTarget: "",
   joinType: "INNER",
@@ -88,6 +115,8 @@ export const EMPTY_EXTRACT_CONFIG: ExtractConfig = {
   targetRuleColumn: "",
   targetRuleOp: "GT",
   targetRuleValue: "",
+  sourceRuleRows: [],
+  targetRuleRows: [],
 };
 
 export const EMPTY_REPORT_CONFIG: ReportConfig = {
@@ -104,6 +133,15 @@ export const EMPTY_REPORT_CONFIG: ReportConfig = {
   joinFuzzyThresholdPercent: 80,
   joinFuzzyIgnoreSpaces: false,
   joinFuzzyCaseSensitive: false,
+  sourceValueFilterEnabled: false,
+  sourceValueFilterColumn: "",
+  sourceValueFilterSpec: null,
+  sourceFuzzyEnabled: false,
+  sourceFuzzyColumn: "",
+  sourceFuzzyName: "",
+  sourceFuzzyThreshold: 80,
+  sourceFuzzyIgnoreSpaces: false,
+  sourceFuzzyCaseSensitive: false,
 };
 
 /** Stable JSON comparison for “did server-side report options change since last apply?” */

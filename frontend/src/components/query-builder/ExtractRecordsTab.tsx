@@ -1,14 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import LakehouseCascade, {
-  EMPTY_CASCADE,
   isCascadeComplete,
   type CascadeFetchers,
   type CascadeValue,
 } from "@/components/LakehouseCascade";
 import { AnalysisResultsGrid } from "@/components/AnalysisResultsGrid";
-import ValueFilterPicker from "@/components/ValueFilterPicker";
+import { BasicRuleListEditor } from "@/components/query-builder/BasicRuleListEditor";
 import {
   downloadRecordMatchExport,
   type MatchExportFormat,
@@ -22,16 +21,20 @@ import {
   listAnalysisTables,
   runRecordMatchStream,
   type JoinType,
-  type PredicateSpecWire,
   type RecordMatchRequest,
   type RegisteredColumn,
-  type RuleOperator,
-  type TableRef,
 } from "@/lib/analysisApi";
 import { useQueryResultsStore } from "@/lib/queryResultsStore";
 import { useShell } from "@/components/shell/ShellProviders";
-import { buildExtractRequest } from "@/lib/queryBuilderRequestBuild";
+import {
+  buildExtractRequest,
+  clearDisplayColumnSelection,
+  retainValidDisplayColumns,
+  selectAllDisplayColumns,
+  toggleDisplayColumnSelection,
+} from "@/lib/queryBuilderRequestBuild";
 import { useQueryBuilderPipeline } from "@/lib/queryBuilderPipelineStore";
+import type { ExtractRuleRow } from "@/lib/queryBuilderPipelineTypes";
 
 const REGISTRY_FETCHERS: CascadeFetchers = {
   listSourceSystems: listAnalysisSourceSystems,
@@ -49,19 +52,107 @@ const JOIN_TYPE_OPTIONS: { value: JoinType; label: string }[] = [
   { value: "FULL", label: "All records from both" },
 ];
 
-const RULE_OPS: { value: RuleOperator; label: string; needsValue: boolean }[] = [
-  { value: "EQ", label: "=", needsValue: true },
-  { value: "NE", label: "≠", needsValue: true },
-  { value: "LT", label: "<", needsValue: true },
-  { value: "LTE", label: "≤", needsValue: true },
-  { value: "GT", label: ">", needsValue: true },
-  { value: "GTE", label: "≥", needsValue: true },
-  { value: "IS_NULL", label: "is null", needsValue: false },
-  { value: "NOT_NULL", label: "is not null", needsValue: false },
-];
-
 const MAX_DISPLAYED_ROWS = 10000;
 const MAX_ROWS_TO_PARSE = 200000;
+
+function fillCatalog(template: string, values: Record<string, string | number>): string {
+  return template.replaceAll(/\{(\w+)\}/g, (_match, name: string) => {
+    const value = values[name];
+    return value === undefined ? "" : String(value);
+  });
+}
+
+/**
+ * Saved queries that predate the rule list still store one ordinary rule in the
+ * legacy column. Show that as a single row until the editor writes the array;
+ * clearing the legacy column on that write stops an empty list from bringing it back.
+ */
+function basicRuleRowsForEditor(
+  rows: ExtractRuleRow[],
+  legacyId: "legacy-source" | "legacy-target",
+  column: string,
+  operator: ExtractRuleRow["operator"],
+  value: string,
+): ExtractRuleRow[] {
+  if (rows.length > 0 || column === "") return rows;
+  return [{ id: legacyId, column, operator, value }];
+}
+
+function attributeSelectionSummary(
+  selectedCount: number,
+  optionCount: number,
+  text: { none: string; all: string; count: string },
+): string {
+  if (selectedCount <= 0) return text.none;
+  if (optionCount > 0 && selectedCount === optionCount) return fillCatalog(text.all, { count: selectedCount });
+  return fillCatalog(text.count, { selected: selectedCount, total: optionCount });
+}
+
+export function AttributeMultiSelect({
+  id,
+  label,
+  columns,
+  selected,
+  onChange,
+}: Readonly<{
+  id: string;
+  label: string;
+  columns: RegisteredColumn[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}>) {
+  const { t } = useShell();
+  const names = columns.map((column) => column.name);
+  const summary = attributeSelectionSummary(selected.length, names.length, {
+    none: t("attrSummaryNone"),
+    all: t("attrSummaryAll"),
+    count: t("attrSummaryCount"),
+  });
+  return (
+    <details className="cascade-optional-filters attr-multi-select">
+      <summary id={id} className="attr-multi-select-summary" aria-label={fillCatalog(t("ariaAttrSummary"), { label, summary })}>
+        <span>{summary}</span>
+        <span aria-hidden="true">▾</span>
+      </summary>
+      <div role="group" className="attr-multi-select-options" aria-label={label}>
+        <div className="row attr-multi-select-actions">
+          <button
+            type="button"
+            className="btn secondary sm"
+            aria-label={fillCatalog(t("ariaSelectAllAttrs"), { label })}
+            onClick={() => onChange(selectAllDisplayColumns(names))}
+          >
+            {t("btnSelectAll")}
+          </button>
+          <button
+            type="button"
+            className="btn secondary sm"
+            aria-label={fillCatalog(t("ariaClearAttrs"), { label })}
+            onClick={() => onChange(clearDisplayColumnSelection())}
+          >
+            {t("btnClearSelection")}
+          </button>
+        </div>
+        <div className="attr-multi-select-list">
+          {columns.map((column) => {
+            const caption = column.businessName ?? column.name;
+            return (
+              <label key={column.name} className="checkbox-row attr-multi-select-option">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(column.name)}
+                  aria-label={fillCatalog(t("ariaAttrColumn"), { label, caption })}
+                  onChange={() => onChange(toggleDisplayColumnSelection(selected, column.name))}
+                />
+                {caption}
+              </label>
+            );
+          })}
+        </div>
+      </div>
+    </details>
+  );
+}
 
 type ExtractRecordsTabProps = {
   onGoReport?: () => void;
@@ -78,48 +169,55 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
     sourceRef,
     targetRef,
     displayCols,
+    targetDisplayCols,
     joinKeySource,
     joinKeyTarget,
     joinType,
     ruleColumn,
     ruleOp,
     ruleValue,
-    useValuePicker,
-    valuePickerSpec,
-    fuzzyRuleEnabled,
-    fuzzyRuleName,
-    fuzzyRuleThreshold,
-    fuzzyIgnoreSpaces,
-    fuzzyCaseSensitive,
     targetRuleColumn,
     targetRuleOp,
     targetRuleValue,
+    sourceRuleRows,
+    targetRuleRows,
   } = extract;
-
-  const setSourceRef = (v: CascadeValue) => patchExtract({ sourceRef: v });
-  const setTargetRef = (v: CascadeValue) => patchExtract({ targetRef: v });
-  const setJoinKeySource = (v: string) => patchExtract({ joinKeySource: v });
-  const setJoinKeyTarget = (v: string) => patchExtract({ joinKeyTarget: v });
-  const setJoinType = (v: JoinType) => patchExtract({ joinType: v });
-  const setRuleColumn = (v: string) => patchExtract({ ruleColumn: v });
-  const setRuleOp = (v: RuleOperator) => patchExtract({ ruleOp: v });
-  const setRuleValue = (v: string) => patchExtract({ ruleValue: v });
-  const setUseValuePicker = (v: boolean) => patchExtract({ useValuePicker: v });
-  const setValuePickerSpec = useCallback(
-    (v: PredicateSpecWire | null) => patchExtract({ valuePickerSpec: v }),
-    [patchExtract],
-  );
-  const setFuzzyRuleEnabled = (v: boolean) => patchExtract({ fuzzyRuleEnabled: v });
-  const setFuzzyRuleName = (v: string) => patchExtract({ fuzzyRuleName: v });
-  const setFuzzyRuleThreshold = (v: number) => patchExtract({ fuzzyRuleThreshold: v });
-  const setFuzzyIgnoreSpaces = (v: boolean) => patchExtract({ fuzzyIgnoreSpaces: v });
-  const setFuzzyCaseSensitive = (v: boolean) => patchExtract({ fuzzyCaseSensitive: v });
-  const setTargetRuleColumn = (v: string) => patchExtract({ targetRuleColumn: v });
-  const setTargetRuleOp = (v: RuleOperator) => patchExtract({ targetRuleOp: v });
-  const setTargetRuleValue = (v: string) => patchExtract({ targetRuleValue: v });
 
   const [sourceColumns, setSourceColumns] = useState<RegisteredColumn[]>([]);
   const [targetColumns, setTargetColumns] = useState<RegisteredColumn[]>([]);
+
+  const setSourceRef = (v: CascadeValue) => {
+    const current = useQueryBuilderPipeline.getState().extract;
+    const sameTable =
+      v.catalog === current.sourceRef.catalog &&
+      v.schema === current.sourceRef.schema &&
+      v.table === current.sourceRef.table;
+    if (!sameTable) setSourceColumns([]);
+    patchExtract({
+      sourceRef: v,
+      ...(!isCascadeComplete(v) && current.displayCols.length > 0 ? { displayCols: [] } : {}),
+    });
+  };
+  const setTargetRef = (v: CascadeValue) => {
+    const current = useQueryBuilderPipeline.getState().extract;
+    const sameTable =
+      v.catalog === current.targetRef.catalog &&
+      v.schema === current.targetRef.schema &&
+      v.table === current.targetRef.table;
+    if (!sameTable) setTargetColumns([]);
+    const targetCols = current.targetDisplayCols ?? [];
+    patchExtract({
+      targetRef: v,
+      ...(mode === "join" && !isCascadeComplete(v) && targetCols.length > 0 ? { targetDisplayCols: [] } : {}),
+    });
+  };
+  const setJoinKeySource = (v: string) => patchExtract({ joinKeySource: v });
+  const setJoinKeyTarget = (v: string) => patchExtract({ joinKeyTarget: v });
+  const setJoinType = (v: JoinType) => patchExtract({ joinType: v });
+  const commitSourceRuleRows = (next: ExtractRuleRow[]) =>
+    patchExtract({ sourceRuleRows: next, ruleColumn: "", ruleValue: "" });
+  const commitTargetRuleRows = (next: ExtractRuleRow[]) =>
+    patchExtract({ targetRuleRows: next, targetRuleColumn: "", targetRuleValue: "" });
 
   const [sqlPreview, setSqlPreview] = useState<string | null>(null);
   const [sqlPreviewError, setSqlPreviewError] = useState<string | null>(null);
@@ -193,12 +291,16 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
     }
     let cancelled = false;
     listAnalysisColumns(sourceRef).then((cols) => {
-      if (!cancelled) setSourceColumns(cols);
+      if (cancelled) return;
+      setSourceColumns(cols);
+      const current = useQueryBuilderPipeline.getState().extract.displayCols;
+      const next = retainValidDisplayColumns(current, cols.map((column) => column.name));
+      if (next.length !== current.length) patchExtract({ displayCols: next });
     });
     return () => {
       cancelled = true;
     };
-  }, [sourceRefKey, sourceRef]);
+  }, [sourceRefKey, sourceRef, patchExtract]);
 
   useEffect(() => {
     if (mode !== "join" || !isCascadeComplete(targetRef)) {
@@ -206,31 +308,19 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
     }
     let cancelled = false;
     listAnalysisColumns(targetRef).then((cols) => {
-      if (!cancelled) setTargetColumns(cols);
+      if (cancelled) return;
+      setTargetColumns(cols);
+      const current = useQueryBuilderPipeline.getState().extract.targetDisplayCols ?? [];
+      const next = retainValidDisplayColumns(current, cols.map((column) => column.name));
+      if (next.length !== current.length) patchExtract({ targetDisplayCols: next });
     });
     return () => {
       cancelled = true;
     };
-  }, [mode, targetRefKey, targetRef]);
+  }, [mode, targetRefKey, targetRef, patchExtract]);
 
   const sourceColumnsDisplay = isCascadeComplete(sourceRef) ? sourceColumns : [];
-
-  const valuePickerTable = useMemo(
-    (): TableRef => ({
-      catalog: sourceRef.catalog,
-      schema: sourceRef.schema,
-      table: sourceRef.table,
-    }),
-    [sourceRef.catalog, sourceRef.schema, sourceRef.table],
-  );
   const targetColumnsDisplay = mode === "join" && isCascadeComplete(targetRef) ? targetColumns : [];
-
-  function toggleDisplayColumn(name: string) {
-    const next = displayCols.includes(name)
-      ? displayCols.filter((c) => c !== name)
-      : [...displayCols, name];
-    patchExtract({ displayCols: next });
-  }
 
   function buildRequest(): RecordMatchRequest | null {
     return buildExtractRequest(dualMode, extract);
@@ -383,8 +473,6 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
     URL.revokeObjectURL(url);
   }
 
-  const ruleNeedsValue = RULE_OPS.find((o) => o.value === ruleOp)?.needsValue ?? true;
-  const targetRuleNeedsValue = RULE_OPS.find((o) => o.value === targetRuleOp)?.needsValue ?? true;
   const { t, modeKey } = useShell();
   const dual = mode === "join";
   const previewText =
@@ -426,24 +514,38 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
         </div>
       </section>
 
-      {isCascadeComplete(sourceRef) && (
+      {(isCascadeComplete(sourceRef) || (dual && isCascadeComplete(targetRef))) && (
         <section className="section">
           <h4>
             <span className="step-num">2</span>
             {modeKey("secSelectAttrs", "secSelectAttrsSingle", dual)}
           </h4>
           <p className="desc">{t("secSelectAttrsDesc")}</p>
-          <div className="attr-grid">
-            {sourceColumnsDisplay.map((c) => (
-              <label key={c.name}>
-                <input
-                  type="checkbox"
-                  checked={displayCols.includes(c.name)}
-                  onChange={() => toggleDisplayColumn(c.name)}
-                />{" "}
-                {c.businessName ?? c.name}
-              </label>
-            ))}
+          <div className="two-col">
+            {isCascadeComplete(sourceRef) && (
+              <div className="pick">
+                <div className="ttl">{t("lblSourceAttr")}</div>
+                <AttributeMultiSelect
+                  id="extract-source-attrs"
+                  label={t("lblSourceAttributes")}
+                  columns={sourceColumnsDisplay}
+                  selected={displayCols}
+                  onChange={(next) => patchExtract({ displayCols: next })}
+                />
+              </div>
+            )}
+            {dual && isCascadeComplete(targetRef) && (
+              <div className="pick dest-only">
+                <div className="ttl">{t("lblDestAttr")}</div>
+                <AttributeMultiSelect
+                  id="extract-dest-attrs"
+                  label={t("lblDestAttributes")}
+                  columns={targetColumnsDisplay}
+                  selected={targetDisplayCols ?? []}
+                  onChange={(next) => patchExtract({ targetDisplayCols: next })}
+                />
+              </div>
+            )}
           </div>
         </section>
       )}
@@ -513,195 +615,28 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
         <div className="two-col">
           <div className="pick">
             <div className="ttl">{t("lblRuleSource")}</div>
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                aria-label="Pick values from list"
-                checked={useValuePicker}
-                onChange={(e) => {
-                  setUseValuePicker(e.target.checked);
-                  if (e.target.checked) setFuzzyRuleEnabled(false);
-                }}
-              />
-              {t("qbValuePickerIn")}
-            </label>
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                aria-label="Typed-text fuzzy match"
-                checked={fuzzyRuleEnabled}
-                onChange={(e) => {
-                  setFuzzyRuleEnabled(e.target.checked);
-                  if (e.target.checked) setUseValuePicker(false);
-                }}
-              />
-              {t("qbFuzzyRuleScoped")}
-            </label>
-            {useValuePicker && isCascadeComplete(sourceRef) && (
-              <div className="field" style={{ marginTop: 8, maxWidth: 360 }}>
-                <label>{t("lblColumn")}</label>
-                <select
-                  aria-label="Source rule column"
-                  value={ruleColumn}
-                  onChange={(e) => setRuleColumn(e.target.value)}
-                >
-                  <option value="">{t("selNone")}</option>
-                  {sourceColumnsDisplay.map((c) => (
-                    <option key={c.name} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {useValuePicker && isCascadeComplete(sourceRef) && ruleColumn && (
-              <ValueFilterPicker
-                table={valuePickerTable}
-                column={ruleColumn}
-                hydratedSpec={valuePickerSpec}
-                onChange={setValuePickerSpec}
-              />
-            )}
-            {fuzzyRuleEnabled && isCascadeComplete(sourceRef) && (
-              <div className="field" style={{ marginTop: 8, maxWidth: 360 }}>
-                <label>{t("lblColumn")}</label>
-                <select
-                  aria-label="Source rule column"
-                  value={ruleColumn}
-                  onChange={(e) => setRuleColumn(e.target.value)}
-                >
-                  <option value="">{t("selNone")}</option>
-                  {sourceColumnsDisplay.map((c) => (
-                    <option key={c.name} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {fuzzyRuleEnabled && (
-              <div className="row" style={{ flexWrap: "wrap", gap: 12 }}>
-                <div className="field" style={{ flex: "2 1 160px" }}>
-                  <label>{t("qbFuzzyName")}</label>
-                  <input
-                    aria-label="Name to match"
-                    value={fuzzyRuleName}
-                    onChange={(e) => setFuzzyRuleName(e.target.value)}
-                  />
-                </div>
-                <div className="field" style={{ flex: "1 1 100px" }}>
-                  <label>{t("qbFuzzyThreshold")}</label>
-                  <input
-                    aria-label="Threshold %"
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={fuzzyRuleThreshold}
-                    onChange={(e) => setFuzzyRuleThreshold(Number(e.target.value))}
-                  />
-                </div>
-                <div className="field" style={{ flex: "1 1 140px" }}>
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      aria-label="Ignore spaces"
-                      checked={fuzzyIgnoreSpaces}
-                      onChange={(e) => setFuzzyIgnoreSpaces(e.target.checked)}
-                    />
-                    {t("qbFuzzyIgnoreSpaces")}
-                  </label>
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      aria-label="Case sensitive"
-                      checked={fuzzyCaseSensitive}
-                      onChange={(e) => setFuzzyCaseSensitive(e.target.checked)}
-                    />
-                    {t("qbFuzzyCaseSensitive")}
-                  </label>
-                </div>
-              </div>
-            )}
-            {!useValuePicker && !fuzzyRuleEnabled && (
-              <div className="row" style={{ flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
-                <div className="field" style={{ flex: "2 1 160px" }}>
-                  <label>{t("lblColumn")}</label>
-                  <select
-                    aria-label="Source rule column"
-                    value={ruleColumn}
-                    onChange={(e) => setRuleColumn(e.target.value)}
-                  >
-                    <option value="">{t("selNone")}</option>
-                    {sourceColumnsDisplay.map((c) => (
-                      <option key={c.name} value={c.name}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field" style={{ flex: "1 1 120px" }}>
-                  <label>{t("lblOperator")}</label>
-                  <select
-                    aria-label="Source rule operator"
-                    value={ruleOp}
-                    onChange={(e) => setRuleOp(e.target.value as RuleOperator)}
-                  >
-                    {RULE_OPS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {ruleNeedsValue && (
-                  <div className="field" style={{ flex: "1 1 120px" }}>
-                    <label>{t("lblValue")}</label>
-                    <input
-                      aria-label="Source rule value"
-                      value={ruleValue}
-                      onChange={(e) => setRuleValue(e.target.value)}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
+            <BasicRuleListEditor
+              side="source"
+              columns={sourceColumnsDisplay}
+              rows={basicRuleRowsForEditor(sourceRuleRows, "legacy-source", ruleColumn, ruleOp, ruleValue)}
+              onChange={commitSourceRuleRows}
+            />
           </div>
           <div className="pick dest-only">
             <div className="ttl">{t("lblRuleDest")}</div>
             {dual ? (
-              <div className="row" style={{ flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
-                <div className="field" style={{ flex: "2 1 160px" }}>
-                  <label>{t("lblColumn")}</label>
-                  <select
-                    aria-label="Target rule column"
-                    value={targetRuleColumn}
-                    onChange={(e) => setTargetRuleColumn(e.target.value)}
-                  >
-                    <option value="">{t("selNone")}</option>
-                    {targetColumnsDisplay.map((c) => (
-                      <option key={c.name} value={c.name}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="field" style={{ flex: "1 1 120px" }}>
-                  <label>{t("lblOperator")}</label>
-                  <select value={targetRuleOp} onChange={(e) => setTargetRuleOp(e.target.value as RuleOperator)}>
-                    {RULE_OPS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {targetRuleNeedsValue && (
-                  <div className="field" style={{ flex: "1 1 120px" }}>
-                    <label>{t("lblValue")}</label>
-                    <input value={targetRuleValue} onChange={(e) => setTargetRuleValue(e.target.value)} />
-                  </div>
+              <BasicRuleListEditor
+                side="target"
+                columns={targetColumnsDisplay}
+                rows={basicRuleRowsForEditor(
+                  targetRuleRows,
+                  "legacy-target",
+                  targetRuleColumn,
+                  targetRuleOp,
+                  targetRuleValue,
                 )}
-              </div>
+                onChange={commitTargetRuleRows}
+              />
             ) : (
               <p className="text-muted" style={{ margin: 0 }}>
                 {t("secRulesDescSingle")}

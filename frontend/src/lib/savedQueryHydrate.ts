@@ -11,8 +11,10 @@ import type { ComparisonPairRow, CriterionRowModel } from "@/lib/analysisCriteri
 import type { CascadeValue } from "@/components/LakehouseCascade";
 import {
   EMPTY_EXTRACT_CONFIG,
+  EMPTY_REPORT_CONFIG,
   type ComparisonPairConfig,
   type ExtractConfig,
+  type ExtractRuleRow,
   type ReportConfig,
 } from "@/lib/queryBuilderPipelineTypes";
 
@@ -124,7 +126,7 @@ function predicateRoot(spec: PredicateSpecWire | null | undefined): PredicateNod
   return spec.root;
 }
 
-function ruleFieldsFromSpec(spec: PredicateSpecWire | null | undefined): {
+type LegacyRuleFields = {
   column: string;
   operator: RuleOperator;
   value: string;
@@ -135,21 +137,28 @@ function ruleFieldsFromSpec(spec: PredicateSpecWire | null | undefined): {
   fuzzyCaseSensitive: boolean;
   useValuePicker: boolean;
   valuePickerSpec: PredicateSpecWire | null;
-} {
+};
+
+/** Value-picker and fuzzy controls now live on Report, so Extract keeps these empty. */
+function emptyLegacyRuleFields(): LegacyRuleFields {
+  return {
+    column: EMPTY_EXTRACT_CONFIG.ruleColumn,
+    operator: EMPTY_EXTRACT_CONFIG.ruleOp,
+    value: EMPTY_EXTRACT_CONFIG.ruleValue,
+    fuzzyRuleEnabled: EMPTY_EXTRACT_CONFIG.fuzzyRuleEnabled,
+    fuzzyRuleName: EMPTY_EXTRACT_CONFIG.fuzzyRuleName,
+    fuzzyRuleThreshold: EMPTY_EXTRACT_CONFIG.fuzzyRuleThreshold,
+    fuzzyIgnoreSpaces: EMPTY_EXTRACT_CONFIG.fuzzyIgnoreSpaces,
+    fuzzyCaseSensitive: EMPTY_EXTRACT_CONFIG.fuzzyCaseSensitive,
+    useValuePicker: EMPTY_EXTRACT_CONFIG.useValuePicker,
+    valuePickerSpec: EMPTY_EXTRACT_CONFIG.valuePickerSpec,
+  };
+}
+
+function ruleFieldsFromSpec(spec: PredicateSpecWire | null | undefined): LegacyRuleFields {
   const root = predicateRoot(spec);
   if (!root) {
-    return {
-      column: "",
-      operator: "GT",
-      value: "",
-      fuzzyRuleEnabled: false,
-      fuzzyRuleName: "",
-      fuzzyRuleThreshold: 80,
-      fuzzyIgnoreSpaces: false,
-      fuzzyCaseSensitive: false,
-      useValuePicker: false,
-      valuePickerSpec: null,
-    };
+    return emptyLegacyRuleFields();
   }
   if (root.operator === "IN") {
     return {
@@ -200,6 +209,74 @@ function ruleFieldsFromSpec(spec: PredicateSpecWire | null | undefined): {
   };
 }
 
+/** Operators a basic extract row can hold. IN and FUZZY_MATCH are Report filters. */
+const BASIC_RULE_OPERATORS: ReadonlySet<RuleOperator> = new Set([
+  "EQ",
+  "NE",
+  "LT",
+  "LTE",
+  "GT",
+  "GTE",
+  "IS_NULL",
+  "NOT_NULL",
+]);
+
+function stringRuleValue(value: unknown): string {
+  if (value === undefined || value === null) {
+    return "";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+  return String(value);
+}
+
+function basicRuleRow(node: PredicateNodeWire): ExtractRuleRow | null {
+  if (node.type !== "PREDICATE" || !BASIC_RULE_OPERATORS.has(node.operator)) {
+    return null;
+  }
+  const column = node.column?.column ?? "";
+  if (column.trim() === "") {
+    return null;
+  }
+  const nullOperator = node.operator === "IS_NULL" || node.operator === "NOT_NULL";
+  const value = nullOperator ? "" : stringRuleValue(node.value);
+  if (!nullOperator && value.trim() === "") {
+    return null;
+  }
+  return {
+    id: crypto.randomUUID(),
+    column,
+    operator: node.operator,
+    value,
+  };
+}
+
+/** AND-group children become basic rows. A single predicate, an OR group, or an IN/fuzzy child does not. */
+function basicRuleRowsFromSpec(spec: PredicateSpecWire | null | undefined): ExtractRuleRow[] {
+  const root = spec?.root;
+  if (!root || root.type !== "GROUP" || root.op !== "AND") {
+    return [];
+  }
+  const rows: ExtractRuleRow[] = [];
+  for (const child of root.children) {
+    const row = basicRuleRow(child);
+    if (row) {
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+/** A lone IN or FUZZY_MATCH source predicate is restored on Report, not Extract. */
+function sourceLegacyRuleFields(spec: PredicateSpecWire | null | undefined): LegacyRuleFields {
+  const root = spec?.root;
+  if (root?.type === "PREDICATE" && (root.operator === "IN" || root.operator === "FUZZY_MATCH")) {
+    return emptyLegacyRuleFields();
+  }
+  return ruleFieldsFromSpec(spec);
+}
+
 /** Query Builder Extract tab — physical tables, attributes, keys, rules (no report-stage options). */
 export function hydrateExtractConfigFromRequest(req: RecordMatchRequest): ExtractConfig {
   const srcCrit = req.sourceCriteria[0];
@@ -208,13 +285,14 @@ export function hydrateExtractConfigFromRequest(req: RecordMatchRequest): Extrac
     req.sourceDisplayColumns?.[0] ?? (srcCrit ? refFrom(srcCrit) : EMPTY_EXTRACT_CONFIG.sourceRef);
   const sourceRef: CascadeValue = refFrom(displayRef);
   const targetRef: CascadeValue = tgtCrit ? refFrom(tgtCrit) : EMPTY_EXTRACT_CONFIG.targetRef;
-  const sourceRules = ruleFieldsFromSpec(req.sourceRules);
+  const sourceRules = sourceLegacyRuleFields(req.sourceRules);
   const targetRules = ruleFieldsFromSpec(req.targetRules);
 
   return {
     sourceRef,
     targetRef,
     displayCols: (req.sourceDisplayColumns ?? []).map((d) => d.column),
+    targetDisplayCols: (req.targetDisplayColumns ?? []).map((d) => d.column),
     joinKeySource: srcCrit?.column ?? "",
     joinKeyTarget: tgtCrit?.column ?? "",
     joinType: req.joinType ?? "INNER",
@@ -231,6 +309,8 @@ export function hydrateExtractConfigFromRequest(req: RecordMatchRequest): Extrac
     targetRuleColumn: targetRules.column,
     targetRuleOp: targetRules.operator,
     targetRuleValue: targetRules.value,
+    sourceRuleRows: basicRuleRowsFromSpec(req.sourceRules),
+    targetRuleRows: basicRuleRowsFromSpec(req.targetRules),
   };
 }
 
@@ -240,6 +320,91 @@ function comparisonConfigs(req: RecordMatchRequest): ComparisonPairConfig[] {
     targetColumn: g.target[0]?.column ?? "",
     fuzzyThresholdPercent: g.fuzzyThresholdPercent ?? 80,
   }));
+}
+
+/** One predicate root, or each child of an AND group. OR groups contribute nothing. */
+function sourceRuleCandidates(spec: PredicateSpecWire | null | undefined): PredicateNodeWire[] {
+  const root = spec?.root;
+  if (!root) return [];
+  if (root.type === "PREDICATE") return [root];
+  if (root.type === "GROUP" && root.op === "AND") {
+    return root.children.filter((child) => child.type === "PREDICATE");
+  }
+  return [];
+}
+
+type FuzzyMatchParts = {
+  name: string;
+  threshold: number;
+  ignoreSpaces: boolean;
+  caseSensitive: boolean;
+};
+
+/** Report fuzzy is the saved `[name, threshold, options]` tuple. */
+function fuzzyMatchParts(node: PredicateNodeWire): FuzzyMatchParts | null {
+  if (node.operator !== "FUZZY_MATCH" || !Array.isArray(node.value) || node.value.length < 3) {
+    return null;
+  }
+  const [name, threshold, options] = node.value;
+  if (typeof name !== "string" || typeof threshold !== "number") return null;
+  if (options === null || typeof options !== "object" || Array.isArray(options)) return null;
+  const opts = options as { ignoreSpaces?: boolean; caseSensitive?: boolean };
+  return {
+    name,
+    threshold,
+    ignoreSpaces:
+      typeof opts.ignoreSpaces === "boolean"
+        ? opts.ignoreSpaces
+        : EMPTY_REPORT_CONFIG.sourceFuzzyIgnoreSpaces,
+    caseSensitive:
+      typeof opts.caseSensitive === "boolean"
+        ? opts.caseSensitive
+        : EMPTY_REPORT_CONFIG.sourceFuzzyCaseSensitive,
+  };
+}
+
+/** First IN and first well-formed FUZZY_MATCH on source rules become Report filters. */
+function reportSourceFilters(spec: PredicateSpecWire | null | undefined): Pick<
+  ReportConfig,
+  | "sourceValueFilterEnabled"
+  | "sourceValueFilterColumn"
+  | "sourceValueFilterSpec"
+  | "sourceFuzzyEnabled"
+  | "sourceFuzzyColumn"
+  | "sourceFuzzyName"
+  | "sourceFuzzyThreshold"
+  | "sourceFuzzyIgnoreSpaces"
+  | "sourceFuzzyCaseSensitive"
+> {
+  let valueFilter: PredicateNodeWire | null = null;
+  let fuzzyColumn = "";
+  let fuzzy: FuzzyMatchParts | null = null;
+
+  for (const node of sourceRuleCandidates(spec)) {
+    if (!valueFilter && node.operator === "IN") {
+      valueFilter = node;
+    }
+    if (!fuzzy) {
+      const parts = fuzzyMatchParts(node);
+      if (parts) {
+        fuzzy = parts;
+        fuzzyColumn = node.column?.column ?? "";
+      }
+    }
+    if (valueFilter && fuzzy) break;
+  }
+
+  return {
+    sourceValueFilterEnabled: valueFilter != null,
+    sourceValueFilterColumn: valueFilter?.column?.column ?? EMPTY_REPORT_CONFIG.sourceValueFilterColumn,
+    sourceValueFilterSpec: valueFilter ? { root: valueFilter } : EMPTY_REPORT_CONFIG.sourceValueFilterSpec,
+    sourceFuzzyEnabled: fuzzy != null,
+    sourceFuzzyColumn: fuzzy ? fuzzyColumn : EMPTY_REPORT_CONFIG.sourceFuzzyColumn,
+    sourceFuzzyName: fuzzy?.name ?? EMPTY_REPORT_CONFIG.sourceFuzzyName,
+    sourceFuzzyThreshold: fuzzy?.threshold ?? EMPTY_REPORT_CONFIG.sourceFuzzyThreshold,
+    sourceFuzzyIgnoreSpaces: fuzzy?.ignoreSpaces ?? EMPTY_REPORT_CONFIG.sourceFuzzyIgnoreSpaces,
+    sourceFuzzyCaseSensitive: fuzzy?.caseSensitive ?? EMPTY_REPORT_CONFIG.sourceFuzzyCaseSensitive,
+  };
 }
 
 /** Query Builder Report tab — filters, fuzzy/join, grouping, comparisons. */
@@ -264,6 +429,7 @@ export function hydrateReportConfigFromRequest(req: RecordMatchRequest): ReportC
     joinFuzzyThresholdPercent: joinFuzzy,
     joinFuzzyIgnoreSpaces: fuzzyOpts?.ignoreSpaces ?? false,
     joinFuzzyCaseSensitive: fuzzyOpts?.caseSensitive ?? false,
+    ...reportSourceFilters(req.sourceRules),
   };
 }
 
