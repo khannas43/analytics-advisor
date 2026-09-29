@@ -1,0 +1,29 @@
+{
+  "shots": [
+    {
+      "file": "/Users/sameerkhanna/Documents/Projects/analytics-advisor/docs/screenshots-result-table-controls/1280-light.png",
+      "width": 1280,
+      "theme": "light",
+      "overflowOk": true
+    },
+    {
+      "file": "/Users/sameerkhanna/Documents/Projects/analytics-advisor/docs/screenshots-result-table-controls/1280-dark.png",
+      "width": 1280,
+      "theme": "dark",
+      "overflowOk": true
+    },
+    {
+      "file": "/Users/sameerkhanna/Documents/Projects/analytics-advisor/docs/screenshots-result-table-controls/390-light.png",
+      "width": 390,
+      "theme": "light",
+      "overflowOk": true
+    },
+    {
+      "file": "/Users/sameerkhanna/Documents/Projects/analytics-advisor/docs/screenshots-result-table-controls/390-dark.png",
+      "width": 390,
+      "theme": "dark",
+      "overflowOk": true
+    }
+  ],
+  "pass": true
+}
