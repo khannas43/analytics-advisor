@@ -778,8 +778,8 @@ export default function ReportAnalysisTab({
   // reintroduction of that backend guardrail: the true total is still
   // counted and shown even when not every row is rendered.
   const [matchTotalRows, setMatchTotalRows] = useState<number | null>(null);
-  // Set the moment the result outgrows MAX_DISPLAYED_ROWS: the grid switches
-  // to the CSV-only panel and the buffered rows are released.
+  // Set the moment the result outgrows MAX_DISPLAYED_ROWS: the grid keeps the
+  // first page-able preview and offers server exports for the complete result.
   const [matchTooManyToDisplay, setMatchTooManyToDisplay] = useState(false);
   // True when we stopped reading before the stream finished naturally, so
   // matchTotalRows (if set at all) is a lower bound, not an exact count.
@@ -1417,9 +1417,7 @@ export default function ReportAnalysisTab({
     if (pendingRowsRef.current.length > 0) {
       const batch = pendingRowsRef.current;
       pendingRowsRef.current = [];
-      // A flush already in flight when the limit was crossed must not put the
-      // dropped rows back.
-      setMatchRows((prev) => (rowsSeenRef.current > MAX_DISPLAYED_ROWS ? [] : [...prev, ...batch]));
+      setMatchRows((prev) => [...prev, ...batch].slice(0, MAX_DISPLAYED_ROWS));
     }
   }
 
@@ -1448,9 +1446,7 @@ export default function ReportAnalysisTab({
       pendingRowsRef.current.push(row);
       carriedRowsRef.current.push(row);
     } else if (rowsSeenRef.current === MAX_DISPLAYED_ROWS + 1) {
-      pendingRowsRef.current = [];
       setMatchTooManyToDisplay(true);
-      setMatchRows([]);
     }
     if (rowsSeenRef.current >= MAX_ROWS_TO_PARSE) {
       setMatchCountIsPartial(true);

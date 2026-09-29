@@ -129,7 +129,7 @@ function MatchRowCountCaption({
   if (tooManyToDisplay) {
     return (
       <>
-        {totalRows == null ? "Counting" : totalRows.toLocaleString()}
+        Showing first {rowsLength.toLocaleString()} of {totalRows == null ? "many" : totalRows.toLocaleString()}
         {totalRowsIsPartial ? "+" : ""} matching rows{streaming ? " (still counting…)" : ""}
       </>
     );
@@ -154,76 +154,30 @@ function TooManyRowsPanel({
   totalRows,
   totalRowsIsPartial,
   displayLimit,
-  streaming,
-  onDownloadFullCsv,
-  onDownloadFullExport,
   fullCsvDownloadNote,
   exportUsesServerOrder,
 }: Readonly<{
   totalRows: number | null | undefined;
   totalRowsIsPartial: boolean | undefined;
   displayLimit: number | undefined;
-  streaming: boolean;
-  onDownloadFullCsv?: () => Promise<void>;
-  onDownloadFullExport?: (format: "csv" | "json" | "xml" | "xlsx") => Promise<void>;
   fullCsvDownloadNote?: string;
   exportUsesServerOrder?: boolean;
 }>) {
-  const [downloading, setDownloading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function download(format: "csv" | "json" | "xml" | "xlsx" = "csv") {
-    if (!onDownloadFullExport && !onDownloadFullCsv) return;
-    setDownloading(true);
-    setError(null);
-    try {
-      if (onDownloadFullExport) {
-        await onDownloadFullExport(format);
-      } else if (format === "csv") {
-        await onDownloadFullCsv!();
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setDownloading(false);
-    }
-  }
-
   const limitLabel = (displayLimit ?? 10000).toLocaleString();
 
   return (
-    <div className="result-too-many-panel">
-      <p style={{ marginTop: 0, marginBottom: "0.5rem", fontWeight: 600 }}>Too many rows to display</p>
+    <div className="result-too-many-panel" role="status">
+      <p style={{ marginTop: 0, marginBottom: "0.5rem", fontWeight: 600 }}>Large result — showing a preview</p>
       <p className="srse-text-muted" style={{ marginTop: 0, lineHeight: 1.5 }}>
-        This match returned more than {limitLabel} rows
-        {totalRows != null && ` (${totalRows.toLocaleString()}${totalRowsIsPartial ? "+" : ""})`}, so the grid is
-        withheld. Download CSV or Excel for the complete server-side result.
+        The paginated table shows the first {limitLabel} rows from
+        {totalRows != null ? ` ${totalRows.toLocaleString()}${totalRowsIsPartial ? "+" : ""}` : " the complete result"}.
+        Download CSV or Excel for every row.
       </p>
       {exportUsesServerOrder && (
         <p className="result-table-export-note" style={{ marginTop: 0 }}>
           Downloads use the server query order (not the temporary sort applied on screen).
         </p>
       )}
-      <div className="result-table-toolbar-actions">
-        <button type="button" className="btn sm" disabled={downloading || streaming} onClick={() => void download("csv")} aria-label="Download CSV">
-          CSV
-        </button>
-        <button type="button" className="btn sm" disabled={downloading || streaming} onClick={() => void download("xlsx")} aria-label="Download Excel">
-          Excel
-        </button>
-        {onDownloadFullExport && (
-          <>
-            <button type="button" className="btn secondary sm" disabled={downloading || streaming} onClick={() => void download("json")}>
-              JSON
-            </button>
-            <button type="button" className="btn secondary sm" disabled={downloading || streaming} onClick={() => void download("xml")}>
-              XML
-            </button>
-          </>
-        )}
-      </div>
-      {downloading && <span className="srse-text-muted">Preparing export…</span>}
-      {error && <span className="srse-text-danger">{error}</span>}
       {fullCsvDownloadNote && <p className="srse-text-muted">{fullCsvDownloadNote}</p>}
     </div>
   );
@@ -429,25 +383,19 @@ export function AnalysisResultsGrid({
   return (
     <>
       <section className={proto ? "section result-table-section" : "srse-card result-table-section"} style={{ width: "100%" }}>
-        {tooManyToDisplay ? (
+        {tooManyToDisplay && (
           <TooManyRowsPanel
             totalRows={totalRows}
             totalRowsIsPartial={totalRowsIsPartial}
             displayLimit={displayLimit}
-            streaming={!!streaming}
-            onDownloadFullCsv={onDownloadFullCsv}
-            onDownloadFullExport={onDownloadFullExport}
             fullCsvDownloadNote={fullCsvDownloadNote}
             exportUsesServerOrder={exportUsesServer}
           />
-        ) : (
-          <>
-            {!tooManyToDisplay && rows.length === 0 ? (
-              <p className={muted}>{t("msgNoMatchRows")}</p>
-            ) : null}
+        )}
+        {rows.length === 0 ? <p className={muted}>{t("msgNoMatchRows")}</p> : null}
 
-            {rows.length > 0 && (
-              <>
+        {rows.length > 0 && (
+          <>
                 <div className="result-table-heading">{titleSection}</div>
                 <ResultTableToolbar
                   appearance={appearance}
@@ -541,8 +489,6 @@ export function AnalysisResultsGrid({
                     </tbody>
                   </table>
                 </div>
-              </>
-            )}
           </>
         )}
 

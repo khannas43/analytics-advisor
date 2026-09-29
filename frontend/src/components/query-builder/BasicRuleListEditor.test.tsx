@@ -14,6 +14,7 @@ vi.mock("@/components/shell/ShellProviders", () => ({
     t: (key: string) =>
       ({
         btnAddRule: "Add rule",
+        msgChooseTableBeforeRule: "Choose a table first so its columns can be used in a rule.",
         btnRemove: "Remove",
         msgNoRule: "No rule — all rows of the table are used.",
         lblColumn: "Column",
@@ -115,6 +116,19 @@ describe("BasicRuleListEditor", () => {
     expect(selectByLabel(container!, "Source rule 1 operator").value).toBe("EQ");
     expect(inputByLabel(container!, "Source rule 1 value").value).toBe("");
     expect(crypto.randomUUID).toHaveBeenCalledOnce();
+  });
+
+  it("disables adding a rule until table columns are available", async () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(<BasicRuleListEditor side="source" columns={[]} rows={[]} onChange={vi.fn()} />);
+    });
+
+    const add = buttonByLabel(container, "Add Source rule");
+    expect(add.disabled).toBe(true);
+    expect(container.textContent).toContain("Choose a table first");
   });
 
   it("updates column, operator, and value independently", async () => {

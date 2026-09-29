@@ -36,6 +36,7 @@ export function BasicRuleListEditor({
 }>) {
   const { t } = useShell();
   const sideLabel = side === "source" ? t("basicRuleSideSource") : t("basicRuleSideTarget");
+  const canAddRule = columns.length > 0;
 
   function addRule() {
     onChange([
@@ -148,10 +149,13 @@ export function BasicRuleListEditor({
         type="button"
         className="btn secondary sm basic-rule-list-add"
         aria-label={fillCatalog(t("ariaBasicRuleAdd"), { side: sideLabel })}
+        disabled={!canAddRule}
+        title={!canAddRule ? t("msgChooseTableBeforeRule") : undefined}
         onClick={addRule}
       >
         {t("btnAddRule")}
       </button>
+      {!canAddRule ? <p className="text-muted basic-rule-list-hint">{t("msgChooseTableBeforeRule")}</p> : null}
     </div>
   );
 }

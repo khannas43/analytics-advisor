@@ -341,7 +341,7 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
       return;
     }
     pendingRowsRef.current = [];
-    setMatchRows((prev) => (rowsSeenRef.current > MAX_DISPLAYED_ROWS ? [] : [...prev, ...batch]));
+    setMatchRows((prev) => [...prev, ...batch].slice(0, MAX_DISPLAYED_ROWS));
   }
 
   async function runExtract() {
@@ -382,7 +382,7 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
           },
           onRow: (row) => {
             rowsSeenRef.current += 1;
-            if (rowsSeenRef.current <= MAX_ROWS_TO_PARSE) {
+            if (rowsSeenRef.current <= MAX_DISPLAYED_ROWS) {
               pendingRowsRef.current.push(row);
             }
             if (carriedRowsRef.current.length < MAX_DISPLAYED_ROWS) {
@@ -394,8 +394,6 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
             }
             if (rowsSeenRef.current === MAX_DISPLAYED_ROWS + 1) {
               setMatchTooManyToDisplay(true);
-              pendingRowsRef.current = [];
-              setMatchRows([]);
             }
           },
           onDone: (totalRows) => {
@@ -481,6 +479,7 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
       (isCascadeComplete(sourceRef)
         ? "Ready to plan SQL — use Preview or Run Query."
         : "Select attributes and tables to see the query preview."));
+  const requestReady = buildExtractRequest(dualMode, extract) !== null;
 
   return (
     <div className="query-builder-embed" data-mode={dual ? "dual" : "single"}>
@@ -656,12 +655,18 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
             <button
               type="button"
               className="btn secondary"
-              disabled={sqlPreviewLoading || matchStatus === "loading"}
+              disabled={!requestReady || sqlPreviewLoading || matchStatus === "loading"}
               onClick={() => void previewSql()}
             >
               {sqlPreviewLoading ? t("btnPlanning") : t("btnPreviewSql")}
             </button>
-            <button type="button" className="btn" disabled={matchStatus === "loading"} onClick={() => void runExtract()}>
+            <button
+              type="button"
+              className="btn"
+              disabled={!requestReady || matchStatus === "loading"}
+              title={!requestReady ? t("msgCompleteQueryBeforeRun") : undefined}
+              onClick={() => void runExtract()}
+            >
               {matchStatus === "loading" ? t("btnRunning") : t("btnRunQuery")}
             </button>
             {onGoReport && matchStatus === "ok" && matchColumns.length > 0 && (
