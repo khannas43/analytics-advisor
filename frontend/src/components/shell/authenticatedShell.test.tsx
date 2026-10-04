@@ -13,6 +13,8 @@ vi.mock("@/lib/performLogout", () => ({
 }));
 
 vi.mock("@/lib/authToken", () => ({
+  isLocalAuthMode: () => false,
+  switchActiveRole: vi.fn(),
   fetchAuthSession: vi.fn().mockResolvedValue({
     username: "superadmin",
     roles: ["SUPER_ADMIN"],

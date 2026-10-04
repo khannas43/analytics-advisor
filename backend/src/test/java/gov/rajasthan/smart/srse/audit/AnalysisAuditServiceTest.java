@@ -121,6 +121,8 @@ class AnalysisAuditServiceTest {
                 null,
                 false,
                 List.of(),
-                List.of());
+                List.of(),
+                null,
+                false);
     }
 }

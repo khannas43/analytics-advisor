@@ -434,7 +434,16 @@ function ExternalSourceForm({
           {(types.length ? types : [fallback]).map((type) => <option key={type.code} value={type.code}>{type.label}</option>)}
         </select>
       </label>
-      <label className="field">Host<input className="srse-input" name="host" required placeholder="database.example.gov.in" /></label>
+      <label className="field">
+        Host
+        <input
+          className="srse-input"
+          name="host"
+          required
+          placeholder="hostname, IP, or jdbc:… URL"
+          title="Enter a hostname or IP, or paste a full jdbc: URL"
+        />
+      </label>
       <label className="field">Port<input className="srse-input" name="port" type="number" min={1} max={65535} value={port} onChange={(event) => setPort(Number(event.target.value))} required /></label>
       <label className="field">Database<input className="srse-input" name="database" required /></label>
       <label className="field">Username<input className="srse-input" name="username" autoComplete="username" required /></label>

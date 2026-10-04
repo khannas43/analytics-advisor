@@ -109,6 +109,24 @@ public class LocalAuthController {
         return ResponseEntity.ok(new MessageResponse("Contact verified."));
     }
 
+    @PostMapping("/switch-role")
+    public ResponseEntity<LoginResponse> switchRole(
+            @RequestBody SwitchRoleRequest request,
+            org.springframework.security.core.Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        try {
+            LocalAuthenticationService.LoginResult result = authenticationService.switchActiveRole(
+                    authentication.getName(), request.role());
+            return ResponseEntity.ok(new LoginResponse(
+                    result.token(), null, result.mustChangePassword(), null, null, null));
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new LoginResponse(null, ex.getMessage(), false, null, null, null));
+        }
+    }
+
     @PostMapping("/change-password")
     public ResponseEntity<MessageResponse> changePassword(
             @RequestBody ChangePasswordRequest request,
@@ -123,6 +141,9 @@ public class LocalAuthController {
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageResponse(ex.getMessage()));
         }
+    }
+
+    public record SwitchRoleRequest(String role) {
     }
 
     public record LoginRequest(String username, String password) {

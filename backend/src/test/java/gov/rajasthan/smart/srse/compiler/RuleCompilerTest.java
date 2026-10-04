@@ -38,7 +38,7 @@ class RuleCompilerTest {
     void setUp() {
         compiler = new RuleCompiler(
                 new RuleColumnResolver(registry),
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100));
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100, 100_000));
         lenient().when(registry.describeColumns(eq(TABLE), any()))
                 .thenAnswer(invocation -> {
                     @SuppressWarnings("unchecked")

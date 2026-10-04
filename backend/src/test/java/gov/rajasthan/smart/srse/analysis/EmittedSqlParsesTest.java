@@ -107,7 +107,7 @@ class EmittedSqlParsesTest {
                 .thenReturn(new gov.rajasthan.smart.srse.compiler.CompiledQuery("TRUE", List.of()));
         service = new RecordMatchService(
                 jdbc, registry, new GuardrailProperties(1000, 30, 50), columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100), new ObjectMapper(), scopeFrom,
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100, 100_000), new ObjectMapper(), scopeFrom,
                 ruleCompiler);
         lenient().when(scopeFrom.planFrom(any())).thenAnswer(inv -> {
             QualifiedTable table = inv.getArgument(0);
@@ -483,7 +483,9 @@ class EmittedSqlParsesTest {
                 List.of(), List.of(), List.of(), List.of(), List.of(), false, null, null, List.of(), false,
                 null, null, true,
                 List.of(new DisplayColumn(CATALOG, SCHEMA, "beneficiary", "district")),
-                List.of(new AggregateSpec(AggregateFunction.COUNT, null, false, null)));
+                List.of(new AggregateSpec(AggregateFunction.COUNT, null, false, null)),
+                null,
+                false);
         assertParsesWithBindableParams(req);
         assertTrue(service.planMatch(req).sql().contains(" GROUP BY "));
     }

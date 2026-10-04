@@ -75,7 +75,8 @@ public class ExternalDataSourceService {
             throw new IllegalArgumentException("A data source with this name already exists");
         }
         ExternalDataSourceType type = ExternalDataSourceType.parse(request.databaseType());
-        String jdbcUrl = type.jdbcUrl(request.host(), request.port(), request.database(), request.ssl());
+        String jdbcUrl = ExternalDataSourceType.resolveJdbcUrl(
+                type, request.host(), request.port(), request.database(), request.ssl());
         String username = required("Username", request.username());
         String federationCatalog = normaliseOptional(request.federationCatalog());
         if (federationCatalog != null) {

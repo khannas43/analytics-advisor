@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthenticatedUserBar } from "@/components/shell/AuthenticatedUserBar";
 import { AuthSessionProvider } from "@/components/shell/AuthSessionProvider";
@@ -77,7 +78,13 @@ export default function AdminLayout({ children }: Readonly<{ children: ReactNode
       <AuthSessionProvider>
         <div className="admin-standalone-shell">
           <header className="admin-standalone-top">
-            <BrandMark compact />
+            <div className="admin-standalone-top-left">
+              <Link href="/overview" className="admin-home-link" title="Back to Analytics Advisor">
+                <span aria-hidden="true">⌂</span>
+                <span>Home</span>
+              </Link>
+              <BrandMark compact />
+            </div>
             <AuthenticatedUserBar />
           </header>
           {children}

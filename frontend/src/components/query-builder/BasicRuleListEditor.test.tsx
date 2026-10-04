@@ -9,6 +9,11 @@ import { BasicRuleListEditor } from "@/components/query-builder/BasicRuleListEdi
 import type { RegisteredColumn } from "@/lib/analysisApi";
 import type { ExtractRuleRow } from "@/lib/queryBuilderPipelineTypes";
 
+vi.mock("@/components/query-builder/RuleColumnValuePicker", () => ({
+  RuleColumnValuePicker: () => null,
+  ruleSelectionFromInValues: () => [],
+}));
+
 vi.mock("@/components/shell/ShellProviders", () => ({
   useShell: () => ({
     t: (key: string) =>
@@ -48,9 +53,19 @@ const columns: RegisteredColumn[] = [
 
 const ADDED_ID = "00000000-0000-4000-8000-000000000001";
 
+const tableRef = { catalog: "c", schema: "s", table: "t", layer: null, sourceSystem: null, tableGroup: null };
+
 function Harness({ initial = [] }: { initial?: ExtractRuleRow[] }) {
   const [rows, setRows] = useState(initial);
-  return <BasicRuleListEditor side="source" columns={columns} rows={rows} onChange={setRows} />;
+  return (
+    <BasicRuleListEditor
+      side="source"
+      tableRef={tableRef}
+      columns={columns}
+      rows={rows}
+      onChange={setRows}
+    />
+  );
 }
 
 function selectByLabel(container: ParentNode, label: string): HTMLSelectElement {
@@ -123,7 +138,15 @@ describe("BasicRuleListEditor", () => {
     document.body.appendChild(container);
     root = createRoot(container);
     await act(async () => {
-      root?.render(<BasicRuleListEditor side="source" columns={[]} rows={[]} onChange={vi.fn()} />);
+      root?.render(
+        <BasicRuleListEditor
+          side="source"
+          tableRef={{ catalog: "", schema: "", table: "" }}
+          columns={[]}
+          rows={[]}
+          onChange={vi.fn()}
+        />,
+      );
     });
 
     const add = buttonByLabel(container, "Add Source rule");
@@ -139,14 +162,14 @@ describe("BasicRuleListEditor", () => {
     });
     expect(selectByLabel(container!, "Source rule 1 column").value).toBe("name");
     expect(selectByLabel(container!, "Source rule 1 operator").value).toBe("EQ");
-    expect(inputByLabel(container!, "Source rule 1 value").value).toBe("18");
+    expect(inputByLabel(container!, "Source rule 1 value").value).toBe("");
 
     await act(async () => {
       changeControl(selectByLabel(container!, "Source rule 1 operator"), "GT");
     });
     expect(selectByLabel(container!, "Source rule 1 column").value).toBe("name");
     expect(selectByLabel(container!, "Source rule 1 operator").value).toBe("GT");
-    expect(inputByLabel(container!, "Source rule 1 value").value).toBe("18");
+    expect(inputByLabel(container!, "Source rule 1 value").value).toBe("");
 
     await act(async () => {
       changeControl(inputByLabel(container!, "Source rule 1 value"), "21");

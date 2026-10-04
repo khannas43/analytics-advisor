@@ -1,7 +1,9 @@
 "use client";
 
 import { useAuthSession } from "@/components/shell/AuthSessionProvider";
+import { isLocalAuthMode, switchActiveRole } from "@/lib/authToken";
 import { sessionRoleLabel } from "@/lib/sessionRoleLabel";
+import { useState } from "react";
 
 function UserAvatarIcon() {
   return (
@@ -33,8 +35,16 @@ function LogoutIcon() {
   );
 }
 
+const ROLE_LABELS: Record<string, string> = {
+  SUPER_ADMIN: "Super Admin",
+  ADMIN: "Admin",
+  OFFICER: "Officer",
+  AUDIT_READER: "Audit reader",
+};
+
 export function AuthenticatedUserBar() {
-  const { session, loading, logout } = useAuthSession();
+  const { session, loading, logout, refreshSession } = useAuthSession();
+  const [switching, setSwitching] = useState(false);
 
   if (loading && !session) {
     return (
@@ -49,9 +59,46 @@ export function AuthenticatedUserBar() {
   }
 
   const role = sessionRoleLabel(session);
+  const switchableRoles =
+    isLocalAuthMode() && session.roles.length > 1 ? [...new Set(session.roles)] : [];
+
+  async function onSwitchRole(nextRole: string) {
+    setSwitching(true);
+    try {
+      await switchActiveRole(nextRole);
+      await refreshSession();
+      if (typeof window !== "undefined" && nextRole === "OFFICER" && window.location.pathname.startsWith("/admin456")) {
+        window.location.href = "/overview";
+      }
+    } finally {
+      setSwitching(false);
+    }
+  }
 
   return (
     <div className="app-user-bar">
+      {switchableRoles.length > 0 ? (
+        <label className="app-user-bar-role-switch">
+          <span className="sr-only">Switch role</span>
+          <select
+            aria-label="Switch role"
+            disabled={switching}
+            value=""
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value) void onSwitchRole(value);
+              e.target.value = "";
+            }}
+          >
+            <option value="">Switch role…</option>
+            {switchableRoles.map((code) => (
+              <option key={code} value={code}>
+                {ROLE_LABELS[code] ?? code}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       <div className="app-user-bar-identity" title={`${session.username} · ${role}`}>
         <UserAvatarIcon />
         <span className="app-user-bar-text">

@@ -154,6 +154,32 @@ public class LocalAuthenticationService {
         return LoginResult.success(token, mustChange);
     }
 
+    /**
+     * Re-issues a session token carrying only the authorities for one assigned role.
+     * Lets a multi-role user work as an officer without admin surfaces, or vice versa.
+     */
+    @Transactional(readOnly = true)
+    public LoginResult switchActiveRole(String username, String roleCode) {
+        if (roleCode == null || roleCode.isBlank()) {
+            throw new IllegalArgumentException("role is required");
+        }
+        AppUser user = userRepository.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new IllegalArgumentException(INVALID_CREDENTIALS_MESSAGE));
+        if (!user.isActive()) {
+            throw new IllegalArgumentException(INVALID_CREDENTIALS_MESSAGE);
+        }
+        List<String> assigned = userRoleRepository.findRoleCodesByUserId(user.getId());
+        String normalized = roleCode.trim().toUpperCase();
+        if (!assigned.contains(normalized)) {
+            throw new IllegalArgumentException("That role is not assigned to this user");
+        }
+        boolean mustChange = user.isMustChangePassword() || isPasswordExpired(user);
+        List<String> authorities = RoleAuthorityMapper.toAuthorities(List.of(normalized));
+        String token = sessionTokenService.issue(
+                user.getUsername(), authorities, user.getSessionVersion(), mustChange);
+        return LoginResult.success(token, mustChange);
+    }
+
     @Transactional
     public void changePassword(String username, String currentPassword, String newPassword) {
         AppUser user = userRepository.findByUsernameIgnoreCase(username)

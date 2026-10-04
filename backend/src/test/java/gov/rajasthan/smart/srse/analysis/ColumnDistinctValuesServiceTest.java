@@ -57,7 +57,7 @@ class ColumnDistinctValuesServiceTest {
                 jdbc,
                 registry,
                 scopeFrom,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 2));
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 2, 100_000));
     }
 
     @Test

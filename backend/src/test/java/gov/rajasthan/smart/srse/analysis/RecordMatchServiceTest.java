@@ -74,7 +74,7 @@ class RecordMatchServiceTest {
 
     /** queryTimeoutSeconds=30. */
     private final GuardrailProperties guardrails = new GuardrailProperties(1000, 30, 50);
-    private static final AnalysisProperties DEFAULT_ANALYSIS = new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100);
+    private static final AnalysisProperties DEFAULT_ANALYSIS = new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100, 100_000);
 
     private AnalysisProperties analysisProperties = DEFAULT_ANALYSIS;
 
@@ -1222,7 +1222,7 @@ class RecordMatchServiceTest {
 
     @Test
     void blockingPrefixLenComesFromAnalysisProperties() {
-        analysisProperties = new AnalysisProperties(5, 120, 4, 2, 10, 6, 50_000_000L, 10, 100);
+        analysisProperties = new AnalysisProperties(5, 120, 4, 2, 10, 6, 50_000_000L, 10, 100, 100_000);
         lenient().when(ruleCompiler.compile(any(), any()))
                 .thenReturn(new gov.rajasthan.smart.srse.compiler.CompiledQuery("TRUE", List.of()));
         service = new RecordMatchService(
@@ -1295,7 +1295,7 @@ class RecordMatchServiceTest {
 
     @Test
     void estimatedFanOutLowCardinalityKeyIsRefusedWithMessage() {
-        analysisProperties = new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100);
+        analysisProperties = new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100, 100_000);
         lenient().when(ruleCompiler.compile(any(), any()))
                 .thenReturn(new gov.rajasthan.smart.srse.compiler.CompiledQuery("TRUE", List.of()));
         service = new RecordMatchService(
@@ -1483,7 +1483,7 @@ class RecordMatchServiceTest {
 
     @Test
     void comparisonGroupsDoNotChangeFanOutEstimate() {
-        analysisProperties = new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100);
+        analysisProperties = new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100, 100_000);
         lenient().when(ruleCompiler.compile(any(), any()))
                 .thenReturn(new gov.rajasthan.smart.srse.compiler.CompiledQuery("TRUE", List.of()));
         service = new RecordMatchService(

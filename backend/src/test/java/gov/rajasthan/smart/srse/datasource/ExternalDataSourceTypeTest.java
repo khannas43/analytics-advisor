@@ -34,6 +34,18 @@ class ExternalDataSourceTypeTest {
     }
 
     @Test
+    void resolveJdbcUrlAcceptsFullUrlInHostField() {
+        assertEquals(
+                "jdbc:postgresql://10.0.0.5:5432/egov_db",
+                ExternalDataSourceType.resolveJdbcUrl(
+                        ExternalDataSourceType.POSTGRESQL,
+                        "jdbc:postgresql://10.0.0.5:5432/egov_db",
+                        999,
+                        "ignored",
+                        false));
+    }
+
+    @Test
     void rejectsUrlFragmentsInHostAndDatabase() {
         assertThrows(IllegalArgumentException.class,
                 () -> ExternalDataSourceType.POSTGRESQL.jdbcUrl("db/path", 5432, "egov", false));

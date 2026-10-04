@@ -146,14 +146,44 @@ public class RecordMatchService {
      * Validates the request and builds the Presto match query without executing it.
      */
     public MatchQuery planMatch(RecordMatchRequest req) {
+        validateExtractRunOptions(req);
+        MatchQuery query;
         if (req.singleSource()) {
-            MatchQuery query = buildSingleSourceQuery(req);
-            return route(query, List.of(tableForSingleSource(req)));
+            query = route(buildSingleSourceQuery(req), List.of(tableForSingleSource(req)));
+        } else {
+            JoinPlan join = normalizeJoin(req);
+            Sides sides = validateRequest(req, join);
+            query = route(buildMatchQuery(req, join, sides), List.of(sides.sourceTable(), sides.targetTable()));
         }
-        JoinPlan join = normalizeJoin(req);
-        Sides sides = validateRequest(req, join);
-        MatchQuery query = buildMatchQuery(req, join, sides);
-        return route(query, List.of(sides.sourceTable(), sides.targetTable()));
+        return applyExtractRunModifiers(query, req);
+    }
+
+    private void validateExtractRunOptions(RecordMatchRequest req) {
+        if (req.resultLimit() != null && req.resultLimit() > 0
+                && req.resultLimit() > analysisProperties.maxExtractResultLimit()) {
+            throw new IllegalArgumentException(
+                    "resultLimit exceeds the maximum of " + analysisProperties.maxExtractResultLimit());
+        }
+        if (req.countOnly() && req.grouped()) {
+            throw new IllegalArgumentException("countOnly cannot be combined with group-by aggregates");
+        }
+    }
+
+    private MatchQuery applyExtractRunModifiers(MatchQuery query, RecordMatchRequest req) {
+        if (!req.countOnly() && (req.resultLimit() == null || req.resultLimit() <= 0)) {
+            return query;
+        }
+        String sql = query.routedSql();
+        List<Object> params = new ArrayList<>(query.params());
+        List<String> columns = new ArrayList<>(query.columns());
+        if (req.countOnly()) {
+            sql = "SELECT COUNT(*) AS row_count FROM (" + sql + ") __cnt";
+            columns = List.of("row_count");
+        } else if (req.resultLimit() != null && req.resultLimit() > 0) {
+            sql = sql + " LIMIT ?";
+            params.add(req.resultLimit());
+        }
+        return new MatchQuery(sql, params, columns, sql, query.route());
     }
 
     private MatchQuery route(MatchQuery query, List<QualifiedTable> tables) {
@@ -634,7 +664,7 @@ public class RecordMatchService {
                     req, table, registry,
                     analysisProperties.maxGroupColumns(),
                     analysisProperties.maxGroupColumns());
-        } else if (req.sourceDisplayColumns().isEmpty()) {
+        } else if (req.sourceDisplayColumns().isEmpty() && !req.countOnly()) {
             throw new IllegalArgumentException("singleSource requires at least one display column");
         }
         if (!req.sourceDisplayColumns().isEmpty()) {
@@ -654,6 +684,9 @@ public class RecordMatchService {
         if (req.grouped()) {
             MatchGroupingSql.appendGroupedSelect(select, outerColumns, req, table, table,
                     MatchGroupingSql.aggregateColumnTypes(req, registry));
+        } else if (req.sourceDisplayColumns().isEmpty()) {
+            select.append("1 AS \"_row\"");
+            outerColumns.add("_row");
         } else {
             appendDisplaySelects(select, outerColumns, "src", "source_", req.sourceDisplayColumns());
         }
@@ -689,8 +722,31 @@ public class RecordMatchService {
                 return agg.column().qualifiedTable();
             }
         }
+        if (req.countOnly() && req.sourceRules() != null) {
+            return tableFromRules(req.sourceRules(), "sourceRules");
+        }
         throw new IllegalArgumentException(
-                "singleSource requires display columns, a group key, or an aggregate column");
+                "singleSource requires display columns, a group key, an aggregate column, or source rules");
+    }
+
+    private QualifiedTable tableFromRules(Ast.PredicateSpec spec, String label) {
+        if (spec == null || spec.root() == null) {
+            throw new IllegalArgumentException(label + " must not be empty");
+        }
+        return tableFromRuleNode(spec.root(), label);
+    }
+
+    private QualifiedTable tableFromRuleNode(Ast.Node node, String label) {
+        if (node instanceof Ast.GroupNode group) {
+            if (group.children().isEmpty()) {
+                throw new IllegalArgumentException(label + " must not be empty");
+            }
+            return tableFromRuleNode(group.children().get(0), label);
+        }
+        if (node instanceof Ast.PredicateNode predicate) {
+            return predicate.column().table();
+        }
+        throw new IllegalArgumentException("Unsupported rule node in " + label);
     }
 
     private record AppliedSideRules(

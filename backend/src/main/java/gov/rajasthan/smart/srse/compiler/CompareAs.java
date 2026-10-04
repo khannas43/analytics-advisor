@@ -40,7 +40,13 @@ public enum CompareAs {
      * code with meaningful leading zeros, or a column holding values that are
      * only sometimes numeric, where TRY_CAST would quietly null them out.
      */
-    TEXT;
+    TEXT,
+
+    /**
+     * Always compare as dates: non-temporal sides go through {@code TRY_CAST(... AS DATE)}.
+     * Use when both sides represent calendar dates stored in different physical types.
+     */
+    DATE;
 
     /** Null (an unset column, or a row written before this existed) reads as {@link #AUTO}. */
     public static CompareAs orAuto(CompareAs value) {
@@ -61,6 +67,9 @@ public enum CompareAs {
         CompareAs r = orAuto(right);
         if (l == TEXT || r == TEXT) {
             return TEXT;
+        }
+        if (l == DATE || r == DATE) {
+            return DATE;
         }
         if (l == NUMBER || r == NUMBER) {
             return NUMBER;

@@ -311,6 +311,8 @@ export function hydrateExtractConfigFromRequest(req: RecordMatchRequest): Extrac
     targetRuleValue: targetRules.value,
     sourceRuleRows: basicRuleRowsFromSpec(req.sourceRules),
     targetRuleRows: basicRuleRowsFromSpec(req.targetRules),
+    resultLimit: req.resultLimit ?? null,
+    countOnly: req.countOnly ?? false,
   };
 }
 

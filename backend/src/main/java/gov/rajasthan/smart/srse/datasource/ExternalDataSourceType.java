@@ -37,6 +37,29 @@ public enum ExternalDataSourceType {
         return driverClassName;
     }
 
+    /**
+     * When {@code host} is a full {@code jdbc:…} URL, it is validated and returned as-is
+     * (port/database/ssl are ignored). Otherwise builds the URL from parts.
+     */
+    public static String resolveJdbcUrl(
+            ExternalDataSourceType type, String host, Integer port, String database, boolean ssl) {
+        String trimmed = host == null ? "" : host.trim();
+        if (trimmed.regionMatches(true, 0, "jdbc:", 0, 5)) {
+            return requireSafeJdbcUrl(trimmed);
+        }
+        return type.jdbcUrl(host, port, database, ssl);
+    }
+
+    private static String requireSafeJdbcUrl(String url) {
+        if (url.length() > 2048 || url.indexOf('\n') >= 0 || url.indexOf('\r') >= 0) {
+            throw new IllegalArgumentException("JDBC URL is not valid");
+        }
+        if (!url.regionMatches(true, 0, "jdbc:", 0, 5)) {
+            throw new IllegalArgumentException("JDBC URL must start with jdbc:");
+        }
+        return url;
+    }
+
     public String jdbcUrl(String host, Integer port, String database, boolean ssl) {
         String safeHost = required("Host", host);
         String safeDatabase = required("Database", database);

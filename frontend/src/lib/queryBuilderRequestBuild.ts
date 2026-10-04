@@ -35,21 +35,37 @@ function buildPredicateNode(
   column: string,
   operator: RuleOperator,
   valueRaw: string,
+  inValues?: (string | number | null)[],
 ): PredicateNodeWire | null {
   if (!column) return null;
-  const opMeta = RULE_OPS.find((o) => o.value === operator);
-  if (!opMeta) return null;
+  let effectiveOp = operator;
+  if (inValues && inValues.length > 1) {
+    effectiveOp = "IN";
+  } else if (inValues && inValues.length === 1) {
+    effectiveOp = "EQ";
+  }
+  const opMeta = RULE_OPS.find((o) => o.value === effectiveOp);
+  const needsValue = effectiveOp === "IN" || (opMeta?.needsValue ?? false);
   const node: PredicateNodeWire = {
     type: "PREDICATE",
     column: {
       table: { catalog: ref.catalog, schema: ref.schema, table: ref.table },
       column,
     },
-    operator,
+    operator: effectiveOp,
   };
-  if (opMeta.needsValue) {
+  if (effectiveOp === "IN" && inValues && inValues.length > 0) {
+    node.value = inValues.map((v) => (typeof v === "string" ? parseRuleValue(v) : v));
+    return node;
+  }
+  if (needsValue) {
     // Fuzzy mode shares ruleColumn with the ordinary rule. Turning it off leaves
     // the default GT and a blank value, which would compile to `col > ''`.
+    if (inValues && inValues.length === 1) {
+      const one = inValues[0];
+      node.value = one === null ? null : typeof one === "string" ? parseRuleValue(one) : one;
+      return node;
+    }
     if (valueRaw.trim() === "") return null;
     node.value = parseRuleValue(valueRaw);
   }
@@ -70,7 +86,7 @@ function buildRuleSpec(
 function buildRulesFromRows(ref: TableRef, rows: readonly ExtractRuleRow[]): PredicateSpecWire | null {
   const children: PredicateNodeWire[] = [];
   for (const row of rows) {
-    const node = buildPredicateNode(ref, row.column, row.operator, row.value);
+    const node = buildPredicateNode(ref, row.column, row.operator, row.value, row.inValues);
     if (node) children.push(node);
   }
   if (children.length === 0) return null;
@@ -112,6 +128,23 @@ export function retainValidDisplayColumns(
   return selected.filter((name) => available.has(name));
 }
 
+function applyExtractRunOptions(req: RecordMatchRequest, extract: ExtractConfig): RecordMatchRequest {
+  const next = { ...req };
+  if (extract.resultLimit != null && extract.resultLimit > 0) {
+    next.resultLimit = extract.resultLimit;
+  }
+  if (extract.countOnly) {
+    next.countOnly = true;
+  }
+  return next;
+}
+
+/** Request for full export — never carries the on-screen row cap or count-only mode. */
+export function buildExtractExportRequest(dualMode: boolean, extract: ExtractConfig): RecordMatchRequest | null {
+  const withoutRunOptions = { ...extract, resultLimit: null, countOnly: false };
+  return buildExtractRequest(dualMode, withoutRunOptions);
+}
+
 /** Extract-stage request: tables, projections, keys, rules — no report grouping/comparisons. */
 export function buildExtractRequest(dualMode: boolean, extract: ExtractConfig): RecordMatchRequest | null {
   const ref = refAsTable(extract.sourceRef);
@@ -149,16 +182,19 @@ export function buildExtractRequest(dualMode: boolean, extract: ExtractConfig): 
   }
 
   if (!dualMode) {
-    if (displays.length === 0) return null;
-    return {
-      sourceCriteria: [],
-      targetCriteria: [],
-      sourceDisplayColumns: displays,
-      highlightDuplicates: false,
-      dedup: null,
-      sourceRules: sourceRules ?? undefined,
-      singleSource: true,
-    };
+    if (displays.length === 0 && !extract.countOnly) return null;
+    return applyExtractRunOptions(
+      {
+        sourceCriteria: [],
+        targetCriteria: [],
+        sourceDisplayColumns: displays,
+        highlightDuplicates: false,
+        dedup: null,
+        sourceRules: sourceRules ?? undefined,
+        singleSource: true,
+      },
+      extract,
+    );
   }
 
   const tgt = refAsTable(extract.targetRef);
@@ -168,7 +204,7 @@ export function buildExtractRequest(dualMode: boolean, extract: ExtractConfig): 
     ...tgt,
     column,
   }));
-  if (displays.length === 0 && targetDisplays.length === 0) return null;
+  if (displays.length === 0 && targetDisplays.length === 0 && !extract.countOnly) return null;
 
   const sourceCriteria: MatchCriterion[] = [
     { ...ref, column: extract.joinKeySource, fuzzyThresholdPercent: null },
@@ -197,7 +233,7 @@ export function buildExtractRequest(dualMode: boolean, extract: ExtractConfig): 
   if (extract.joinType !== "INNER") {
     req.joinType = extract.joinType;
   }
-  return req;
+  return applyExtractRunOptions(req, extract);
 }
 
 function buildComparisonGroups(

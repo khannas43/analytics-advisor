@@ -168,6 +168,10 @@ export type RecordMatchRequest = {
   singleSource?: boolean;
   groupByColumns?: DisplayColumn[];
   aggregates?: AggregateSpecWire[];
+  /** On-screen extract cap; omitted from export re-runs. */
+  resultLimit?: number | null;
+  /** COUNT(*) over the same shape instead of row projection. */
+  countOnly?: boolean;
 };
 
 export type HubSide = "SOURCE" | "TARGET";
@@ -195,6 +199,7 @@ export type AnalysisLimits = {
   multiMatchBudgetSeconds: number;
   maxGroupColumns: number;
   maxGroupingColumns: number;
+  maxExtractResultLimit?: number;
   maxAggregates: number;
   maxAnyOfGroupsPerSide: number;
   maxProbedPairs: number;
@@ -653,7 +658,7 @@ export type ColumnMetadata = TableRef & {
  * Two columns of the SAME family are always compared as they always were —
  * Presto coerces those itself, and this setting does not enter into it.
  */
-export type CompareAs = "AUTO" | "NUMBER" | "TEXT";
+export type CompareAs = "AUTO" | "NUMBER" | "TEXT" | "DATE";
 
 export async function listColumnMetadata(scope: AuthScope = "officer"): Promise<ColumnMetadata[]> {
   const res = await authorizedFetch(`${API_BASE}/api/analysis/column-metadata`, { credentials: "include" }, scope);

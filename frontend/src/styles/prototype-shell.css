@@ -2027,6 +2027,36 @@ tr:hover td { background: var(--bg-surface); }
   background: var(--bg-card);
   flex-wrap: wrap;
 }
+.admin-standalone-top-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.admin-home-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.admin-home-link:hover {
+  color: var(--accent);
+}
+.app-user-bar-role-switch select {
+  max-width: 140px;
+  font-size: 0.85rem;
+}
+.rule-distinct-picker-list {
+  max-height: 160px;
+  overflow: auto;
+  margin: 0.35rem 0;
+  padding: 0.35rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
 .admin-standalone-top-end {
   justify-content: flex-end;
 }

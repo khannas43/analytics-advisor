@@ -91,6 +91,30 @@ export function getAuthToken(scope: AuthScope = "officer"): Promise<string> {
   return cached;
 }
 
+export async function switchActiveRole(role: string): Promise<void> {
+  const token = readStoredToken();
+  if (!token) {
+    throw new SrseAuthRequiredError();
+  }
+  const res = await fetch(`${API_BASE}/api/auth/switch-role`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) {
+    throw new Error(`Switch role failed ${res.status}: ${await res.text()}`);
+  }
+  const body = (await res.json()) as { token?: string | null };
+  if (!body.token) {
+    throw new Error("Switch role did not return a token");
+  }
+  storeAuthToken(body.token);
+  tokenCache.clear();
+}
+
 export async function fetchAuthSession(): Promise<AuthSession | null> {
   let token: string;
   try {

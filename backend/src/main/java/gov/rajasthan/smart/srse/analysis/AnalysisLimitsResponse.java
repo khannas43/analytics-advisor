@@ -15,5 +15,6 @@ public record AnalysisLimitsResponse(
         int maxProbedPairs,
         int blockingPrefixLen,
         long maxEstimatedRows,
-        int maxColumnDistinctValues) {
+        int maxColumnDistinctValues,
+        int maxExtractResultLimit) {
 }

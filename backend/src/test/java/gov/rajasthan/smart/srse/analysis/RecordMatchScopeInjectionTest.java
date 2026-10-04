@@ -73,7 +73,7 @@ class RecordMatchScopeInjectionTest {
                 registry,
                 new GuardrailProperties(1000, 30, 50),
                 columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100),
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100, 100_000),
                 new ObjectMapper(),
                 scopeFrom,
                 ruleCompiler);

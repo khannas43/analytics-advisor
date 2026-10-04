@@ -56,6 +56,9 @@ public final class TypeCoercion {
         if (effective == CompareAs.NUMBER) {
             return new Aligned(asNumber(leftSql, leftType), asNumber(rightSql, rightType));
         }
+        if (effective == CompareAs.DATE) {
+            return new Aligned(asDate(leftSql, leftType), asDate(rightSql, rightType));
+        }
         if (leftType == rightType) {
             return new Aligned(leftSql, rightSql);
         }
@@ -95,6 +98,14 @@ public final class TypeCoercion {
             return sql;
         }
         return "TRY_CAST(" + sql + " AS DOUBLE)";
+    }
+
+    /** Calendar-date comparison; unparseable text becomes NULL for that row. */
+    public static String asDate(String sql, SqlTypeFamily type) {
+        if (type == SqlTypeFamily.TEMPORAL || type == SqlTypeFamily.UNKNOWN) {
+            return sql;
+        }
+        return "TRY_CAST(" + sql + " AS DATE)";
     }
 
     /**

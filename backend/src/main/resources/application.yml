@@ -88,6 +88,7 @@ srse:
     max-estimated-rows: ${SRSE_ANALYSIS_MAX_ESTIMATED_ROWS:50000000}
     join-key-distinctness-timeout-seconds: ${SRSE_ANALYSIS_JOIN_KEY_DISTINCTNESS_TIMEOUT_SECONDS:10}
     max-column-distinct-values: ${SRSE_ANALYSIS_MAX_COLUMN_DISTINCT_VALUES:100}
+    max-extract-result-limit: ${SRSE_ANALYSIS_MAX_EXTRACT_RESULT_LIMIT:100000}
   breakdown:
     age-band-column: ${SRSE_AGE_BAND_COLUMN:age_band}
 

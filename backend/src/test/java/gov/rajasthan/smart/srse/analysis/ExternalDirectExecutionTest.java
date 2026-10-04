@@ -104,7 +104,7 @@ class ExternalDirectExecutionTest {
         stubRegistration("addresses");
         service = new RecordMatchService(
                 presto, registry, new GuardrailProperties(1000, 30, 50), columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 2),
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 2, 100_000),
                 new ObjectMapper(), scopeFrom, ruleCompiler);
         ReflectionTestUtils.setField(service, "executionRouter",
                 new AnalysisExecutionRouter(registrations, sources, presto));
@@ -146,7 +146,7 @@ class ExternalDirectExecutionTest {
                 List.of(), List.of(),
                 List.of(new DisplayColumn("jdbc_7", "public", "people", "district")),
                 List.of(), List.of(), false, null, null, List.of(), false,
-                null, null, true, List.of(), List.of());
+                null, null, true, List.of(), List.of(), null, false);
 
         ByteArrayOutputStream csvOut = new ByteArrayOutputStream();
         StreamingResponseBody csv = service.matchCsv(request);

@@ -52,6 +52,15 @@ class TypeCoercionTest {
     }
 
     @Test
+    void dateOverrideCastsNonTemporalSides() {
+        TypeCoercion.Aligned aligned = TypeCoercion.align(
+                "src.dob", SqlTypeFamily.TEXT, "tgt.dob", SqlTypeFamily.TEMPORAL, CompareAs.DATE);
+
+        assertEquals("TRY_CAST(src.dob AS DATE)", aligned.left());
+        assertEquals("tgt.dob", aligned.right());
+    }
+
+    @Test
     void textOverrideForcesBothSidesToText() {
         TypeCoercion.Aligned aligned = TypeCoercion.align(
                 SRC, SqlTypeFamily.TEXT, TGT, SqlTypeFamily.NUMBER, CompareAs.TEXT);

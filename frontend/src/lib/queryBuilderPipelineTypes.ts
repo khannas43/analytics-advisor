@@ -20,6 +20,8 @@ export type ExtractRuleRow = {
   column: string;
   operator: RuleOperator;
   value: string;
+  /** Distinct-picker selections; when length > 1 the rule compiles as IN. */
+  inValues?: (string | number | null)[];
 };
 
 /** Extract Records tab — tables, attributes, keys, and row-level rules only. */
@@ -50,6 +52,10 @@ export type ExtractConfig = {
   sourceRuleRows: ExtractRuleRow[];
   /** Basic rules on the destination table. Empty until the multi-rule UI is wired. */
   targetRuleRows: ExtractRuleRow[];
+  /** Optional cap on rows returned for on-screen extract (export re-runs without this). */
+  resultLimit: number | null;
+  /** When true, run COUNT(*) instead of projecting rows. */
+  countOnly: boolean;
 };
 
 /** Report Analysis stage — filters, fuzzy/join options, grouping, comparisons. */
@@ -117,6 +123,8 @@ export const EMPTY_EXTRACT_CONFIG: ExtractConfig = {
   targetRuleValue: "",
   sourceRuleRows: [],
   targetRuleRows: [],
+  resultLimit: null,
+  countOnly: false,
 };
 
 export const EMPTY_REPORT_CONFIG: ReportConfig = {

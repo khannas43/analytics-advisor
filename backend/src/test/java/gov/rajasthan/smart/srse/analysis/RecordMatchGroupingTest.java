@@ -66,7 +66,7 @@ class RecordMatchGroupingTest {
     void setUp() {
         RuleCompiler ruleCompiler = new RuleCompiler(
                 new RuleColumnResolver(registry),
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100));
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100, 100_000));
         lenient().when(columnMetadata.findByCatalogNameAndSchemaNameAndTableNameAndColumnName(
                 anyString(), anyString(), anyString(), anyString())).thenReturn(Optional.empty());
         lenient().when(registry.hasColumns(any(), any())).thenReturn(true);
@@ -81,7 +81,7 @@ class RecordMatchGroupingTest {
                 registry,
                 new GuardrailProperties(1000, 30, 50),
                 columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100),
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100, 100_000),
                 new ObjectMapper(),
                 scopeFrom,
                 ruleCompiler);
@@ -207,7 +207,9 @@ class RecordMatchGroupingTest {
                 List.of(), List.of(), false, null, null, List.of(), false,
                 null, null, true,
                 List.of(),
-                List.of(new AggregateSpec(AggregateFunction.COUNT, null, false, null)));
+                List.of(new AggregateSpec(AggregateFunction.COUNT, null, false, null)),
+                null,
+                false);
         String sql = matchService.planMatch(req).sql();
         assertTrue(sql.contains("count(*)"));
         assertFalse(sql.contains(" GROUP BY "));
@@ -244,19 +246,21 @@ class RecordMatchGroupingTest {
                 registry,
                 new GuardrailProperties(1000, 30, 50),
                 columnMetadata,
-                new AnalysisProperties(5, 120, 4, 2, 10, 3, 1_000L, 10, 100),
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 1_000L, 10, 100, 100_000),
                 new ObjectMapper(),
                 scopeFrom,
                 new RuleCompiler(
                         new RuleColumnResolver(registry),
-                        new AnalysisProperties(5, 120, 4, 2, 10, 3, 1_000L, 10, 100)));
+                        new AnalysisProperties(5, 120, 4, 2, 10, 3, 1_000L, 10, 100, 100_000)));
         MatchCriterion src = new MatchCriterion("iceberg", "srse", "beneficiary", "district", null);
         MatchCriterion tgt = new MatchCriterion("iceberg", "srse", "beneficiary", "district", null);
         RecordMatchRequest req = new RecordMatchRequest(
                 List.of(src), List.of(tgt), null, null, List.of(), false, null, JoinType.INNER,
                 List.of(), false, null, null, false,
                 List.of(new DisplayColumn("iceberg", "srse", "beneficiary", "district")),
-                List.of(new AggregateSpec(AggregateFunction.COUNT, null, false, null)));
+                List.of(new AggregateSpec(AggregateFunction.COUNT, null, false, null)),
+                null,
+                false);
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> strictService.planMatch(req));
         assertTrue(ex.getMessage().contains("before grouping"), ex.getMessage());
     }
@@ -284,7 +288,7 @@ class RecordMatchGroupingTest {
         AnalysisAuditService audit = new AnalysisAuditService(
                 matchService,
                 new ColumnDistinctValuesService(jdbc, registry, scopeFrom,
-                        new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100)),
+                        new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100, 100_000)),
                 auditCapture,
                 scopeSummary);
         Ast.PredicateSpec rules = new Ast.PredicateSpec(
@@ -325,7 +329,7 @@ class RecordMatchGroupingTest {
             Ast.PredicateSpec rules) {
         return new RecordMatchRequest(
                 List.of(), List.of(), List.of(), List.of(), List.of(), false, null, null, List.of(), false,
-                rules, null, true, groupBy, aggregates);
+                rules, null, true, groupBy, aggregates, null, false);
     }
 
     private static QualifiedColumn col(String name) {

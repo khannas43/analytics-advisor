@@ -27,6 +27,7 @@ import {
 import { useQueryResultsStore } from "@/lib/queryResultsStore";
 import { useShell } from "@/components/shell/ShellProviders";
 import {
+  buildExtractExportRequest,
   buildExtractRequest,
   clearDisplayColumnSelection,
   retainValidDisplayColumns,
@@ -163,6 +164,8 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
   const extract = useQueryBuilderPipeline((s) => s.extract);
   const patchExtract = useQueryBuilderPipeline((s) => s.patchExtract);
   const commitExtractSuccess = useQueryBuilderPipeline((s) => s.commitExtractSuccess);
+  const extractResult = useQueryBuilderPipeline((s) => s.extractResult);
+  const baseExtractRequest = useQueryBuilderPipeline((s) => s.baseExtractRequest);
   const mode: "single" | "join" = dualMode ? "join" : "single";
 
   const {
@@ -181,6 +184,8 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
     targetRuleValue,
     sourceRuleRows,
     targetRuleRows,
+    resultLimit,
+    countOnly,
   } = extract;
 
   const [sourceColumns, setSourceColumns] = useState<RegisteredColumn[]>([]);
@@ -257,6 +262,7 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
   const [matchTooManyToDisplay, setMatchTooManyToDisplay] = useState(false);
   const [matchCountIsPartial, setMatchCountIsPartial] = useState(false);
   const lastRunRequestRef = useRef<RecordMatchRequest | null>(null);
+  const restoredFromPipelineRef = useRef(false);
   const pendingRowsRef = useRef<Record<string, unknown>[]>([]);
   const flushIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rowsSeenRef = useRef(0);
@@ -319,6 +325,57 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
     };
   }, [mode, targetRefKey, targetRef, patchExtract]);
 
+  /** Tab unmount drops local grid state; restore from the pipeline snapshot after Report Analysis. */
+  useEffect(() => {
+    if (restoredFromPipelineRef.current || !extractResult) {
+      return;
+    }
+    restoredFromPipelineRef.current = true;
+    setMatchColumns(extractResult.columns);
+    setMatchRows(extractResult.rows);
+    setMatchSql(extractResult.sql);
+    setSqlPreview(extractResult.sql);
+    setMatchTotalRows(extractResult.totalRows);
+    setMatchStatus("ok");
+    if (baseExtractRequest) {
+      lastRunRequestRef.current = baseExtractRequest;
+    }
+  }, [extractResult, baseExtractRequest]);
+
+  const requestReady = buildExtractRequest(dualMode, extract) !== null;
+
+  useEffect(() => {
+    if (!requestReady) {
+      setSqlPreview(null);
+      setSqlPreviewError(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      const req = buildExtractRequest(dualMode, extract);
+      if (!req || cancelled) return;
+      setSqlPreviewLoading(true);
+      setSqlPreviewError(null);
+      fetchMatchSql(req)
+        .then((sql) => {
+          if (!cancelled) setSqlPreview(sql);
+        })
+        .catch((err: unknown) => {
+          if (!cancelled) {
+            setSqlPreview(null);
+            setSqlPreviewError(err instanceof Error ? err.message : String(err));
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setSqlPreviewLoading(false);
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [dualMode, extract, requestReady]);
+
   const sourceColumnsDisplay = isCascadeComplete(sourceRef) ? sourceColumns : [];
   const targetColumnsDisplay = mode === "join" && isCascadeComplete(targetRef) ? targetColumns : [];
 
@@ -327,7 +384,8 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
   }
 
   function commitSuccess(req: RecordMatchRequest, totalRows: number | null, sql: string) {
-    commitExtractSuccess(req, {
+    const exportReq = buildExtractExportRequest(dualMode, extract) ?? req;
+    commitExtractSuccess(exportReq, {
       columns: streamColumnsRef.current,
       rows: carriedRowsRef.current,
       totalRows,
@@ -455,7 +513,10 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
   }
 
   async function downloadFullExport(format: MatchExportFormat) {
-    const req = lastRunRequestRef.current;
+    const req =
+      baseExtractRequest ??
+      buildExtractExportRequest(dualMode, extract) ??
+      lastRunRequestRef.current;
     if (!req) {
       throw new Error("Run a query first.");
     }
@@ -479,8 +540,6 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
       (isCascadeComplete(sourceRef)
         ? "Ready to plan SQL — use Preview or Run Query."
         : "Select attributes and tables to see the query preview."));
-  const requestReady = buildExtractRequest(dualMode, extract) !== null;
-
   return (
     <div className="query-builder-embed" data-mode={dual ? "dual" : "single"}>
       <section className="section">
@@ -616,6 +675,7 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
             <div className="ttl">{t("lblRuleSource")}</div>
             <BasicRuleListEditor
               side="source"
+              tableRef={sourceRef}
               columns={sourceColumnsDisplay}
               rows={basicRuleRowsForEditor(sourceRuleRows, "legacy-source", ruleColumn, ruleOp, ruleValue)}
               onChange={commitSourceRuleRows}
@@ -626,6 +686,7 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
             {dual ? (
               <BasicRuleListEditor
                 side="target"
+                tableRef={targetRef}
                 columns={targetColumnsDisplay}
                 rows={basicRuleRowsForEditor(
                   targetRuleRows,
@@ -642,6 +703,38 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
               </p>
             )}
           </div>
+        </div>
+      </section>
+
+      <section className="section">
+        <h4>
+          <span className="step-num">4</span>
+          Run options
+        </h4>
+        <div className="row" style={{ gap: 16, flexWrap: "wrap", alignItems: "flex-end" }}>
+          <label className="field" style={{ margin: 0 }}>
+            <span>Row limit (optional)</span>
+            <input
+              type="number"
+              min={1}
+              className="srse-input"
+              style={{ width: 120 }}
+              placeholder="No limit"
+              value={resultLimit ?? ""}
+              onChange={(e) => {
+                const raw = e.target.value.trim();
+                patchExtract({ resultLimit: raw === "" ? null : Math.max(1, Number.parseInt(raw, 10) || 1) });
+              }}
+            />
+          </label>
+          <label className="checkbox-row" style={{ margin: 0 }}>
+            <input
+              type="checkbox"
+              checked={countOnly}
+              onChange={(e) => patchExtract({ countOnly: e.target.checked })}
+            />
+            Count records only (no row preview)
+          </label>
         </div>
       </section>
 

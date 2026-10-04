@@ -411,6 +411,12 @@ const COMPARE_AS_OPTIONS: { value: CompareAs; label: string; title: string }[] =
     title:
       "Always compare as text — use when the text form is the truth, e.g. a code with meaningful leading zeros.",
   },
+  {
+    value: "DATE",
+    label: "Date",
+    title:
+      "Always compare as calendar dates — non-date sides go through TRY_CAST to DATE.",
+  },
 ];
 
 function CompareAsSelect({

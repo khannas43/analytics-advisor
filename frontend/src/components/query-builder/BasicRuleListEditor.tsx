@@ -2,7 +2,12 @@
 
 import { useShell } from "@/components/shell/ShellProviders";
 import type { I18nKey } from "@/lib/i18n/catalog";
-import type { RegisteredColumn, RuleOperator } from "@/lib/analysisApi";
+import {
+  RuleColumnValuePicker,
+  ruleSelectionFromInValues,
+} from "@/components/query-builder/RuleColumnValuePicker";
+import type { RegisteredColumn, RuleOperator, TableRef } from "@/lib/analysisApi";
+import { isCascadeComplete, type CascadeValue } from "@/components/LakehouseCascade";
 import type { ExtractRuleRow } from "@/lib/queryBuilderPipelineTypes";
 
 const BASIC_RULE_OPS: { value: RuleOperator; labelKey: I18nKey; needsValue: boolean }[] = [
@@ -25,11 +30,13 @@ function fillCatalog(template: string, values: Record<string, string | number>):
 
 export function BasicRuleListEditor({
   side,
+  tableRef,
   columns,
   rows,
   onChange,
 }: Readonly<{
   side: "source" | "target";
+  tableRef: CascadeValue;
   columns: RegisteredColumn[];
   rows: ExtractRuleRow[];
   onChange: (next: ExtractRuleRow[]) => void;
@@ -51,7 +58,11 @@ export function BasicRuleListEditor({
   }
 
   function updateColumn(rowId: string, column: string) {
-    onChange(rows.map((row) => (row.id === rowId ? { ...row, column } : row)));
+    onChange(
+      rows.map((row) =>
+        row.id === rowId ? { ...row, column, value: "", inValues: undefined } : row,
+      ),
+    );
   }
 
   function updateOperator(rowId: string, next: string) {
@@ -67,8 +78,26 @@ export function BasicRuleListEditor({
   }
 
   function updateValue(rowId: string, value: string) {
-    onChange(rows.map((row) => (row.id === rowId ? { ...row, value } : row)));
+    onChange(rows.map((row) => (row.id === rowId ? { ...row, value, inValues: undefined } : row)));
   }
+
+  function updateInValues(rowId: string, keys: string[]) {
+    onChange(
+      rows.map((row) =>
+        row.id === rowId
+          ? {
+              ...row,
+              inValues: keys.map((k) => (k === "__NULL__" ? null : k)),
+              value: keys.length === 1 && keys[0] !== "__NULL__" ? keys[0] : "",
+            }
+          : row,
+      ),
+    );
+  }
+
+  const qualifiedTable: TableRef | null = isCascadeComplete(tableRef)
+    ? (tableRef as TableRef)
+    : null;
 
   function removeRule(rowId: string) {
     onChange(rows.filter((row) => row.id !== rowId));
@@ -122,12 +151,27 @@ export function BasicRuleListEditor({
                 </select>
               </div>
               {needsValue ? (
-                <div className="field">
+                <div className="field basic-rule-value-field">
                   <label htmlFor={valueId}>{t("lblValue")}</label>
+                  {qualifiedTable && row.column && (row.operator === "EQ" || row.operator === "NE") ? (
+                    <RuleColumnValuePicker
+                      table={qualifiedTable}
+                      column={row.column}
+                      selectedValues={ruleSelectionFromInValues(row.inValues)}
+                      onChange={(keys) => updateInValues(row.id, keys)}
+                    />
+                  ) : null}
                   <input
                     id={valueId}
                     type="text"
+                    autoComplete="off"
+                    inputMode="text"
                     aria-label={fillCatalog(t("ariaBasicRuleValue"), { side: sideLabel, n })}
+                    placeholder={
+                      qualifiedTable && row.column && (row.operator === "EQ" || row.operator === "NE")
+                        ? "Or type a value"
+                        : undefined
+                    }
                     value={row.value}
                     onChange={(event) => updateValue(row.id, event.target.value)}
                   />
