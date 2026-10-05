@@ -1237,6 +1237,33 @@ class RecordMatchServiceTest {
         assertTrue(sql.contains(", 6)"), sql);
     }
 
+    @Test
+    void resultLimitIsLiteralIntegerNotBoundParameter() {
+        RecordMatchRequest base = exactMatchRequest();
+        RecordMatchRequest req = new RecordMatchRequest(
+                base.sourceCriteria(),
+                base.targetCriteria(),
+                base.sourceDisplayColumns(),
+                base.targetDisplayColumns(),
+                base.joinGroups(),
+                base.highlightDuplicates(),
+                base.dedup(),
+                base.joinType(),
+                base.comparisonGroups(),
+                base.mismatchOnly(),
+                base.sourceRules(),
+                base.targetRules(),
+                base.singleSource(),
+                base.groupByColumns(),
+                base.aggregates(),
+                25,
+                false);
+        RecordMatchService.MatchQuery planned = service.planMatch(req);
+        assertTrue(planned.sql().endsWith(" LIMIT 25"), planned.sql());
+        assertFalse(planned.sql().contains("LIMIT ?"), planned.sql());
+        assertFalse(planned.params().contains(25), planned.params().toString());
+    }
+
     /**
      * Stubs row counts and {@code approx_distinct} like
      * beneficiary (86k) ↔ bank_txn (20k) on the local Presto container.

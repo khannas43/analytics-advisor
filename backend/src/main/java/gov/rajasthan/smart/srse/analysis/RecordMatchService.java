@@ -180,8 +180,10 @@ public class RecordMatchService {
             sql = "SELECT COUNT(*) AS row_count FROM (" + sql + ") __cnt";
             columns = List.of("row_count");
         } else if (req.resultLimit() != null && req.resultLimit() > 0) {
-            sql = sql + " LIMIT ?";
-            params.add(req.resultLimit());
+            // Presto parses LIMIT as a grammar token — it must be a literal integer,
+            // not a bound parameter (see mismatched input '?' expecting integer).
+            int limit = req.resultLimit();
+            sql = sql + " LIMIT " + limit;
         }
         return new MatchQuery(sql, params, columns, sql, query.route());
     }
