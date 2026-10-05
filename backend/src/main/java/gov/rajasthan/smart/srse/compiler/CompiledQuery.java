@@ -1,5 +1,7 @@
 package gov.rajasthan.smart.srse.compiler;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -14,7 +16,7 @@ public record CompiledQuery(String predicateSql, List<Object> params, FuzzyScore
 
     public record FuzzyScoreProjection(String selectExpr, List<Object> params) {
         public FuzzyScoreProjection {
-            params = List.copyOf(params);
+            params = copyParamList(params);
         }
     }
 
@@ -23,6 +25,14 @@ public record CompiledQuery(String predicateSql, List<Object> params, FuzzyScore
     }
 
     public CompiledQuery {
-        params = List.copyOf(params);
+        params = copyParamList(params);
+    }
+
+    /** Bound parameters may be SQL NULL — {@link List#copyOf} rejects null elements. */
+    private static List<Object> copyParamList(List<Object> params) {
+        if (params == null || params.isEmpty()) {
+            return List.of();
+        }
+        return Collections.unmodifiableList(new ArrayList<>(params));
     }
 }

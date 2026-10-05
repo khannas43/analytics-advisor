@@ -709,7 +709,7 @@ public class RecordMatchService {
         if (!groupBy.isEmpty()) {
             sql += " GROUP BY " + groupBy;
         }
-        return new MatchQuery(sql, List.copyOf(params), List.copyOf(outerColumns));
+        return new MatchQuery(sql, params, List.copyOf(outerColumns));
     }
 
     private QualifiedTable tableForSingleSource(RecordMatchRequest req) {
@@ -1028,7 +1028,7 @@ public class RecordMatchService {
             List<Object> matchBindValues) {
 
         ComparisonPlan {
-            matchBindValues = matchBindValues == null ? List.of() : List.copyOf(matchBindValues);
+            matchBindValues = MatchQuery.copyBindParams(matchBindValues);
         }
     }
 
@@ -1343,6 +1343,17 @@ public class RecordMatchService {
             AnalysisExecutionRoute route) {
         public MatchQuery(String sql, List<Object> params, List<String> columns) {
             this(sql, params, columns, sql, AnalysisExecutionRoute.presto());
+        }
+
+        public MatchQuery {
+            params = copyBindParams(params);
+        }
+
+        private static List<Object> copyBindParams(List<Object> params) {
+            if (params == null || params.isEmpty()) {
+                return List.of();
+            }
+            return java.util.Collections.unmodifiableList(new java.util.ArrayList<>(params));
         }
     }
 
@@ -1742,8 +1753,14 @@ public class RecordMatchService {
     }
 
     private String literal(Object value) {
+        if (value == null) {
+            return "NULL";
+        }
         if (value instanceof Number) {
             return value.toString();
+        }
+        if (value instanceof Boolean b) {
+            return b ? "TRUE" : "FALSE";
         }
         return "'" + value.toString().replace("'", "''") + "'";
     }

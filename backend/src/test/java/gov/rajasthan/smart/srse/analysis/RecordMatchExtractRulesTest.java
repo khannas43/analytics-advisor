@@ -25,6 +25,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -219,6 +220,26 @@ class RecordMatchExtractRulesTest {
                 query.params().toArray());
         assertEquals((int) query.sql().chars().filter(c -> c == '?').count(), query.params().size(),
                 "placeholders and parameters must agree, or Presto rejects the statement");
+    }
+
+    @Test
+    void displaySqlInlinesNullInListRuleWithoutNpe() {
+        DisplayColumn district = new DisplayColumn("iceberg", "srse", "beneficiary", "district");
+        List<Object> inValues = new ArrayList<>();
+        inValues.add("Jaipur");
+        inValues.add(null);
+        Ast.PredicateSpec rules = new Ast.PredicateSpec(new Ast.PredicateNode(
+                col("district"), Ast.Operator.IN, inValues));
+        RecordMatchRequest req = new RecordMatchRequest(
+                List.of(), List.of(),
+                List.of(district), List.of(),
+                List.of(), false, null, null, List.of(), false,
+                rules, null, true, List.of(), List.of(), null, false);
+        RecordMatchService.MatchQuery query = matchService.planMatch(req);
+        String display = matchService.renderQueryForDisplay(query);
+        assertTrue(display.contains("'Jaipur'"));
+        assertTrue(display.contains("NULL"));
+        assertFalse(display.contains("?"), display);
     }
 
     @Test

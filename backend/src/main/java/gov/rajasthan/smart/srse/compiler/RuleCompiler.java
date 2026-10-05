@@ -79,10 +79,10 @@ public class RuleCompiler {
             case IS_NULL  -> colRef + " IS NULL";
             case NOT_NULL -> colRef + " IS NOT NULL";
 
-            case IN     -> emitIn(colRef, (List<Object>) p.value(), params, false);
-            case NOT_IN -> emitIn(colRef, (List<Object>) p.value(), params, true);
+            case IN     -> emitIn(colRef, requireListValue(p.value(), "IN"), params, false);
+            case NOT_IN -> emitIn(colRef, requireListValue(p.value(), "NOT_IN"), params, true);
 
-            case BETWEEN -> emitBetween(colRef, (List<Object>) p.value(), params);
+            case BETWEEN -> emitBetween(colRef, requireListValue(p.value(), "BETWEEN"), params);
 
             case FUZZY_MATCH -> emitFuzzyMatch(p.column().column(), colRef, (List<Object>) p.value(), params, fuzzyCtx);
         };
@@ -121,6 +121,14 @@ public class RuleCompiler {
             params.add(v);
         }
         return col + (negate ? " NOT IN " : " IN ") + ph;
+    }
+
+    /** Jackson may bind JSON arrays as {@code List<?>}; avoid a raw cast that becomes ClassCastException → 500. */
+    private static List<Object> requireListValue(Object value, String operator) {
+        if (!(value instanceof List<?> list)) {
+            throw new IllegalArgumentException(operator + " requires a list value");
+        }
+        return new ArrayList<>(list);
     }
 
     private String emitBetween(String col, List<Object> bounds, List<Object> params) {

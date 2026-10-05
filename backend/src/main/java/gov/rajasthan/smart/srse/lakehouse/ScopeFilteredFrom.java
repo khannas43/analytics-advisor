@@ -1,5 +1,7 @@
 package gov.rajasthan.smart.srse.lakehouse;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -28,7 +30,15 @@ public record ScopeFilteredFrom(String qualifiedName, String whereSql, List<Obje
     }
 
     public static ScopeFilteredFrom filtered(String qualifiedName, String whereSql, List<Object> bindValues) {
-        return new ScopeFilteredFrom(qualifiedName, whereSql, List.copyOf(bindValues));
+        return new ScopeFilteredFrom(qualifiedName, whereSql, copyBindValues(bindValues));
+    }
+
+    /** Bind values may be SQL NULL — {@link List#copyOf} rejects null elements. */
+    private static List<Object> copyBindValues(List<Object> bindValues) {
+        if (bindValues == null || bindValues.isEmpty()) {
+            return List.of();
+        }
+        return Collections.unmodifiableList(new ArrayList<>(bindValues));
     }
 
     /** Merges officer rule predicates into the scope derived-table WHERE (§4.5 / AA-13). */

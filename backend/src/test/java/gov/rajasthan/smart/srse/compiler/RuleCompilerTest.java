@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -108,6 +109,19 @@ class RuleCompilerTest {
         CompiledQuery q = compiler.compile(new Ast.PredicateSpec(node), TABLE);
         assertEquals("t.district IN (?, ?)", q.predicateSql());
         assertEquals(List.of("Jaipur", "Udaipur"), q.params());
+    }
+
+    @Test
+    void inListAllowsSqlNullElement() {
+        List<Object> values = new ArrayList<>();
+        values.add("Jaipur");
+        values.add(null);
+        var node = new Ast.PredicateNode(col("district"), Ast.Operator.IN, values);
+        CompiledQuery q = compiler.compile(new Ast.PredicateSpec(node), TABLE);
+        assertEquals("t.district IN (?, ?)", q.predicateSql());
+        assertEquals(2, q.params().size());
+        assertEquals("Jaipur", q.params().get(0));
+        assertEquals(null, q.params().get(1));
     }
 
     @Test
