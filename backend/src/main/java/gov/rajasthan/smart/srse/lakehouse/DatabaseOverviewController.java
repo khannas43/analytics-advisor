@@ -47,6 +47,6 @@ public class DatabaseOverviewController {
             @PathVariable String catalog,
             @PathVariable String schema,
             @PathVariable String table) {
-        return registry.listColumns(catalog, schema, table);
+        return registry.listColumnsLive(catalog, schema, table);
     }
 }

@@ -385,6 +385,21 @@ export function listAnalysisColumns(ref: TableRef): Promise<RegisteredColumn[]> 
   );
 }
 
+export type ColumnMetadataStatus = {
+  syncedAt: string | null;
+  source: "SNAPSHOT" | "LIVE";
+  degraded: boolean;
+};
+
+export function fetchColumnMetadataStatus(ref: TableRef): Promise<ColumnMetadataStatus> {
+  const q = new URLSearchParams({
+    catalog: ref.catalog,
+    schema: ref.schema,
+    table: ref.table,
+  });
+  return analysisGet<ColumnMetadataStatus>(`/api/analysis/metadata-status?${q}`);
+}
+
 /**
  * The COMPLETE match result as a CSV blob, streamed from the backend.
  *

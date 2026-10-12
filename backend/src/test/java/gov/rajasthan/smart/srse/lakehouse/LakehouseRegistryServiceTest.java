@@ -228,7 +228,7 @@ class LakehouseRegistryServiceTest {
                 .thenReturn(List.of());
 
         List<LakehouseRegistryService.RegisteredColumn> columns =
-                service.listColumns(CATALOG, SCHEMA, TABLE);
+                service.listColumnsForDisplay(CATALOG, SCHEMA, TABLE);
 
         assertEquals(List.of("bank_id", "m_id", "account_no", "bank_branch_id"),
                 columns.stream().map(LakehouseRegistryService.RegisteredColumn::name).toList());
@@ -243,7 +243,7 @@ class LakehouseRegistryServiceTest {
                         1L, new QualifiedColumn(CATALOG, SCHEMA, TABLE, "account_no"),
                         "Account Number", true, true)));
 
-        LakehouseRegistryService.RegisteredColumn account = service.listColumns(CATALOG, SCHEMA, TABLE)
+        LakehouseRegistryService.RegisteredColumn account = service.listColumnsForDisplay(CATALOG, SCHEMA, TABLE)
                 .stream().filter(c -> c.name().equals("account_no")).findFirst().orElseThrow();
 
         assertEquals("Account Number", account.businessName());
@@ -259,7 +259,7 @@ class LakehouseRegistryServiceTest {
                         1L, new QualifiedColumn(CATALOG, SCHEMA, TABLE, "m_id"),
                         null, false, false)));
 
-        assertEquals(List.of("bank_id"), service.listColumns(CATALOG, SCHEMA, TABLE).stream()
+        assertEquals(List.of("bank_id"), service.listColumnsForDisplay(CATALOG, SCHEMA, TABLE).stream()
                 .map(LakehouseRegistryService.RegisteredColumn::name).toList());
     }
 
@@ -277,7 +277,7 @@ class LakehouseRegistryServiceTest {
                         1L, new QualifiedColumn(CATALOG, SCHEMA, TABLE, "dropped_column"),
                         "Gone", false, true)));
 
-        assertEquals(List.of("bank_id"), service.listColumns(CATALOG, SCHEMA, TABLE).stream()
+        assertEquals(List.of("bank_id"), service.listColumnsForDisplay(CATALOG, SCHEMA, TABLE).stream()
                 .map(LakehouseRegistryService.RegisteredColumn::name).toList());
     }
 

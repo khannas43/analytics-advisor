@@ -42,6 +42,7 @@ import { AnalysisResultsGrid } from "@/components/AnalysisResultsGrid";
 import { ComparisonPairsEditor } from "@/components/ComparisonPairsEditor";
 import { ReportSourceFilters } from "@/components/query-builder/ReportSourceFilters";
 import { MultiTargetJoinCanvas, createInitialJoinCanvas } from "@/components/MultiTargetJoinCanvas";
+import { MetadataColumnStatus } from "@/components/query-builder/MetadataColumnStatus";
 import {
   buildMatchGroup,
   isCriterionRowFilled,
@@ -2176,6 +2177,12 @@ export default function ReportAnalysisTab({
               ? ` · join ${pipelineExtract.joinKeySource} ↔ ${pipelineExtract.joinKeyTarget}`
               : ""}
           </p>
+          {isCascadeComplete(pipelineExtract.sourceRef) ? (
+            <MetadataColumnStatus tableRef={pipelineExtract.sourceRef} />
+          ) : null}
+          {pipelineDualMode && isCascadeComplete(pipelineExtract.targetRef) ? (
+            <MetadataColumnStatus tableRef={pipelineExtract.targetRef} />
+          ) : null}
           {onGoExtract && (
             <button type="button" className="btn secondary sm" onClick={onGoExtract}>
               {t("btnBackExtract")}

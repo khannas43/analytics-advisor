@@ -75,7 +75,7 @@ public class LakehouseCatalogController {
     public List<LakehouseRegistryService.RegisteredColumn> columns(@PathVariable String catalog,
                                                                    @PathVariable String schema,
                                                                    @PathVariable String table) {
-        return registry.listColumns(catalog, schema, table);
+        return registry.listColumnsForDisplay(catalog, schema, table);
     }
 
     /** Display tags only — never part of match / extract request payloads. */

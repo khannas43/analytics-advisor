@@ -99,7 +99,7 @@ class JoinKeySuggestServiceTest {
 
     @Test
     void unregisteredTableRejectedByRegistry() {
-        when(registry.listColumns(CATALOG, SCHEMA, SRC))
+        when(registry.listColumnsLive(CATALOG, SCHEMA, SRC))
                 .thenThrow(new IllegalArgumentException("Table is not registered for SRSE"));
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
                 () -> service.suggest(request(false)));
@@ -107,9 +107,9 @@ class JoinKeySuggestServiceTest {
 
     @Test
     void hiddenColumnsNeverSuggested() {
-        when(registry.listColumns(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
                 new RegisteredColumn("visible_id", "bigint", null, false, true)));
-        when(registry.listColumns(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
                 new RegisteredColumn("visible_id", "bigint", null, false, true)));
 
         List<JoinKeySuggestion> suggestions = service.suggest(request(false));
@@ -119,10 +119,10 @@ class JoinKeySuggestServiceTest {
 
     @Test
     void unknownFamilyExcluded() {
-        when(registry.listColumns(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
                 new RegisteredColumn("row_col", "row(x bigint)", null, false, true),
                 new RegisteredColumn("acct", "bigint", null, false, true)));
-        when(registry.listColumns(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
                 new RegisteredColumn("acct", "bigint", null, false, true)));
 
         List<JoinKeySuggestion> suggestions = service.suggest(request(false));
@@ -146,8 +146,8 @@ class JoinKeySuggestServiceTest {
         for (char c = 'a'; c <= 'z'; c++) {
             target.add(new RegisteredColumn("other_" + c, "varchar", null, false, true));
         }
-        when(registry.listColumns(CATALOG, SCHEMA, SRC)).thenReturn(source);
-        when(registry.listColumns(CATALOG, SCHEMA, TGT)).thenReturn(target);
+        when(registry.listColumnsLive(CATALOG, SCHEMA, SRC)).thenReturn(source);
+        when(registry.listColumnsLive(CATALOG, SCHEMA, TGT)).thenReturn(target);
 
         List<JoinKeySuggestion> suggestions = service.suggest(request(false));
         int idIndex = -1;
@@ -163,11 +163,11 @@ class JoinKeySuggestServiceTest {
 
     @Test
     void sameFamilyIdentifierPairOutranksCrossFamilyIdentifierPair() {
-        when(registry.listColumns(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
                 new RegisteredColumn("id", "bigint", null, false, true),
                 new RegisteredColumn("district", "varchar", null, false, true),
                 new RegisteredColumn("father_name", "varchar", null, false, true)));
-        when(registry.listColumns(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
                 new RegisteredColumn("m_id", "bigint", null, false, true),
                 new RegisteredColumn("bank_id", "varchar", null, false, true),
                 new RegisteredColumn("bank_branch_id", "varchar", null, false, true),
@@ -195,10 +195,10 @@ class JoinKeySuggestServiceTest {
 
     @Test
     void temporalColumnNeverPairedWithNonTemporal() {
-        when(registry.listColumns(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
                 new RegisteredColumn("age_band", "varchar", null, false, true),
                 new RegisteredColumn("age_years", "integer", null, false, true)));
-        when(registry.listColumns(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
                 new RegisteredColumn("date_of_birth", "date", null, false, true),
                 new RegisteredColumn("account_no", "varchar", null, false, true)));
 
@@ -209,10 +209,10 @@ class JoinKeySuggestServiceTest {
 
     @Test
     void exactNameSameFamilyRanksFirst() {
-        when(registry.listColumns(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
                 new RegisteredColumn("z_col", "varchar", null, false, true),
                 new RegisteredColumn("member_id", "bigint", null, false, true)));
-        when(registry.listColumns(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
                 new RegisteredColumn("member_id", "bigint", null, false, true),
                 new RegisteredColumn("z_col", "varchar", null, false, true)));
 
@@ -233,9 +233,9 @@ class JoinKeySuggestServiceTest {
 
     @Test
     void probeFailureDegradesToMetadataOnly() {
-        when(registry.listColumns(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
                 new RegisteredColumn("id", "bigint", null, false, true)));
-        when(registry.listColumns(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
                 new RegisteredColumn("id", "bigint", null, false, true)));
         when(jdbc.query(anyString(), any(RowMapper.class))).thenReturn(List.of(Map.of("id", 1.0)));
         when(jdbc.queryForObject(anyString(), eq(Double.class)))
@@ -248,10 +248,10 @@ class JoinKeySuggestServiceTest {
 
     @Test
     void distinctnessFailureDegradesToMetadataOnly() {
-        when(registry.listColumns(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
                 new RegisteredColumn("id", "bigint", null, false, true),
                 new RegisteredColumn("district", "varchar", null, false, true)));
-        when(registry.listColumns(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
                 new RegisteredColumn("m_id", "bigint", null, false, true),
                 new RegisteredColumn("district", "varchar", null, false, true)));
         when(jdbc.query(anyString(), any(RowMapper.class)))
@@ -270,9 +270,9 @@ class JoinKeySuggestServiceTest {
 
     @Test
     void metadataOnlyDoesNotQueryPresto() {
-        when(registry.listColumns(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
                 new RegisteredColumn("id", "bigint", null, false, true)));
-        when(registry.listColumns(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, TGT)).thenReturn(List.of(
                 new RegisteredColumn("id", "bigint", null, false, true)));
 
         service.suggest(request(false));

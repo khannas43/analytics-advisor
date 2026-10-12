@@ -13,9 +13,13 @@ import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService.RegisteredColumn;
 import gov.rajasthan.smart.srse.lakehouse.QualifiedTable;
 import gov.rajasthan.smart.srse.lakehouse.RegisteredTable;
+import gov.rajasthan.smart.srse.datasource.ExternalDataSourceMetadataService;
+import gov.rajasthan.smart.srse.lakehouse.LakehouseBrowseService;
 import gov.rajasthan.smart.srse.lakehouse.RegisteredTableRepository;
 import gov.rajasthan.smart.srse.lakehouse.ScopeFilteredFrom;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
+import gov.rajasthan.smart.srse.metadata.sync.MetadataSyncService;
+import org.springframework.core.task.SyncTaskExecutor;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
@@ -26,6 +30,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import java.sql.DriverManager;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -298,6 +303,49 @@ class ExternalDirectRealEngineIT {
         IllegalArgumentException fuzzy = assertThrows(IllegalArgumentException.class,
                 () -> csv(h.match, join(e, "NAME", "OWNER_NAME", JoinType.INNER, 70.0)));
         assertTrue(fuzzy.getMessage().contains("Presto-only"), fuzzy.getMessage());
+    }
+
+    @ParameterizedTest
+    @EnumSource(Engine.class)
+    void metadataSyncIntrospectionMatchesEngineReportedIdentifiers(Engine e) throws Exception {
+        JdbcTemplate db = jdbcFor(e.url, e.user, e.password);
+        load(e, db);
+        ExternalDataSourceService sources = mock(ExternalDataSourceService.class);
+        ExternalDataSource source = mock(ExternalDataSource.class);
+        when(source.getDatabaseType()).thenReturn(e.type);
+        when(sources.requireActiveInternal(7L)).thenReturn(source);
+        when(sources.openInternal(source)).thenAnswer(inv -> DriverManager.getConnection(e.url, e.user, e.password));
+
+        ExternalDataSourceMetadataService externalMeta = new ExternalDataSourceMetadataService(sources);
+        MetadataSyncService sync = new MetadataSyncService(
+                mock(RegisteredTableRepository.class),
+                mock(LakehouseBrowseService.class),
+                externalMeta,
+                mock(gov.rajasthan.smart.srse.metadata.sync.MetadataSyncRunRepository.class),
+                mock(gov.rajasthan.smart.srse.metadata.sync.MetadataSyncTableResultRepository.class),
+                mock(gov.rajasthan.smart.srse.metadata.sync.TableColumnSnapshotRepository.class),
+                new SyncTaskExecutor());
+
+        RegisteredTable people = new RegisteredTable(1L, "jdbc_7", e.schema, e.id("PEOPLE"), "GOLD");
+        people.attachExternalSource(7L, null);
+        RegisteredTable addresses = new RegisteredTable(2L, "jdbc_7", e.schema, e.id("ADDRESSES"), "GOLD");
+        addresses.attachExternalSource(7L, null);
+
+        @SuppressWarnings("unchecked")
+        List<LakehouseBrowseService.ColumnInfo> peopleCols = (List<LakehouseBrowseService.ColumnInfo>)
+                ReflectionTestUtils.invokeMethod(sync, "introspect", people);
+        @SuppressWarnings("unchecked")
+        List<LakehouseBrowseService.ColumnInfo> addressCols = (List<LakehouseBrowseService.ColumnInfo>)
+                ReflectionTestUtils.invokeMethod(sync, "introspect", addresses);
+
+        assertEquals(
+                List.of(e.id("ID"), e.id("NAME"), e.id("DISTRICT"), e.id("DISTRICT_CODE")),
+                peopleCols.stream().map(LakehouseBrowseService.ColumnInfo::name).toList());
+        assertEquals(
+                List.of(e.id("PERSON_ID"), e.id("PERSON_REF"), e.id("OWNER_NAME"), e.id("CITY"), e.id("DISTRICT_CODE")),
+                addressCols.stream().map(LakehouseBrowseService.ColumnInfo::name).toList());
+        assertFalse(peopleCols.isEmpty());
+        assertTrue(peopleCols.stream().allMatch(c -> c.dataType() != null && !c.dataType().isBlank()));
     }
 
     /** PostgreSQL only: PrestoDB 0.297 ships no DB2 connector, so DB2 can never take this route. */

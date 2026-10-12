@@ -1,0 +1,155 @@
+databaseChangeLog:
+  - changeSet:
+      id: 015-metadata-sync-run
+      author: analytics-advisor
+      changes:
+        - createTable:
+            tableName: metadata_sync_run
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: started_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: finished_at
+                  type: TIMESTAMP
+              - column:
+                  name: sync_trigger
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: overall_outcome
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: metadata_sync_run
+            indexName: ix_metadata_sync_run_started
+            columns:
+              - column:
+                  name: started_at
+
+  - changeSet:
+      id: 015-metadata-sync-table-result
+      author: analytics-advisor
+      changes:
+        - createTable:
+            tableName: metadata_sync_table_result
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: run_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_metadata_sync_table_result_run
+                    references: metadata_sync_run(id)
+              - column:
+                  name: catalog_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: schema_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: table_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: table_outcome
+                  type: VARCHAR(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: error_message
+                  type: VARCHAR(512)
+
+  - changeSet:
+      id: 015-table-column-snapshot
+      author: analytics-advisor
+      changes:
+        - createTable:
+            tableName: table_column_snapshot
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: catalog_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: schema_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: table_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: column_name
+                  type: VARCHAR(128)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data_type
+                  type: VARCHAR(256)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ordinal_position
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: synced_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: run_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_table_column_snapshot_run
+                    references: metadata_sync_run(id)
+        - addUniqueConstraint:
+            tableName: table_column_snapshot
+            columnNames: catalog_name, schema_name, table_name, column_name
+            constraintName: uq_table_column_snapshot
+        - createIndex:
+            tableName: table_column_snapshot
+            indexName: ix_table_column_snapshot_table
+            columns:
+              - column:
+                  name: catalog_name
+              - column:
+                  name: schema_name
+              - column:
+                  name: table_name

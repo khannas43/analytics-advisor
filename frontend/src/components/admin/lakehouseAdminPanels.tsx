@@ -12,8 +12,12 @@ import {
   listAdminTableGroups,
   renameSourceSystemLabel,
   renameTableGroupLabel,
+  downloadMetadataManifest,
   exportAdminConfig,
+  getMetadataSyncStatus,
   importAdminConfig,
+  startMetadataSync,
+  type MetadataSyncRunStatus,
   registerTable,
   unregisterTable,
   updateAnalyticalConnection,
@@ -1334,6 +1338,90 @@ export function LakehouseRegistryPanel({
             </tbody>
           </table>
         </div>
+      )}
+    </section>
+  );
+}
+
+export function MetadataSnapshotAdminPanel() {
+  const [status, setStatus] = useState<MetadataSyncRunStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      setStatus(await getMetadataSyncStatus());
+      setError(null);
+    } catch (err: unknown) {
+      setError(errorMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  async function onSyncNow() {
+    setSyncing(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const started = await startMetadataSync();
+      setMessage(started.skippedOverlapping ? "Skipped — a sync is already running." : "Sync started.");
+      await reload();
+    } catch (err: unknown) {
+      setError(errorMessage(err));
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function onDownloadManifest() {
+    setError(null);
+    try {
+      const json = await downloadMetadataManifest();
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `metadata-manifest-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      setError(errorMessage(err));
+    }
+  }
+
+  return (
+    <section className="srse-card" style={{ marginTop: "1.5rem" }}>
+      <h3 className="srse-card-title" style={{ marginTop: 0 }}>
+        Column metadata sync
+      </h3>
+      <p className="srse-text-muted">
+        Refresh stored column names and types for all registered tables (Super Admin only).
+      </p>
+      <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
+        <button type="button" className="srse-btn srse-btn-primary" disabled={syncing} onClick={() => void onSyncNow()}>
+          {syncing ? "Sync started…" : "Sync now"}
+        </button>
+        <button type="button" className="srse-btn srse-btn-secondary" onClick={() => void onDownloadManifest()}>
+          Download JSON manifest
+        </button>
+      </div>
+      {message && <p className="srse-text-muted">{message}</p>}
+      {error && <p className="srse-text-danger">{error}</p>}
+      {loading && <p className="srse-text-muted">Loading last run…</p>}
+      {!loading && status?.runId != null && (
+        <p className="srse-text-muted" style={{ fontFamily: "monospace", fontSize: "0.85rem" }}>
+          Last run #{status.runId} · {status.trigger ?? "—"} · {status.outcome ?? "—"}
+          {status.startedAt ? ` · started ${status.startedAt}` : ""}
+          {status.finishedAt ? ` · finished ${status.finishedAt}` : ""}
+        </p>
       )}
     </section>
   );

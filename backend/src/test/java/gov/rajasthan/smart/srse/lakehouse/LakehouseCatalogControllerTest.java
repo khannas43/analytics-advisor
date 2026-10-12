@@ -118,7 +118,7 @@ class LakehouseCatalogControllerTest {
 
     @Test
     void columnsCarryBusinessNameAndFuzzyFlag() throws Exception {
-        when(registry.listColumns(CATALOG, SCHEMA, TABLE)).thenReturn(List.of(
+        when(registry.listColumnsForDisplay(CATALOG, SCHEMA, TABLE)).thenReturn(List.of(
                 new LakehouseRegistryService.RegisteredColumn(
                         "account_no", "varchar", "Account Number", true, true)));
 
@@ -131,14 +131,14 @@ class LakehouseCatalogControllerTest {
                 .andExpect(jsonPath("$[0].businessName").value("Account Number"))
                 .andExpect(jsonPath("$[0].fuzzyMatchable").value(true));
 
-        verify(registry).listColumns(CATALOG, SCHEMA, TABLE);
+        verify(registry).listColumnsForDisplay(CATALOG, SCHEMA, TABLE);
     }
 
     /** Asking for an unregistered table is a client error, not a server error. */
     @Test
     void columnsOfAnUnregisteredTableAreABadRequest() throws Exception {
         doThrow(new IllegalArgumentException("Table is not registered for SRSE: a.b.c"))
-                .when(registry).listColumns(eq(CATALOG), eq(SCHEMA), eq("not_registered"));
+                .when(registry).listColumnsForDisplay(eq(CATALOG), eq(SCHEMA), eq("not_registered"));
 
         mockMvc.perform(get(
                         "/api/analysis/lakehouse/catalogs/{c}/schemas/{s}/tables/{t}/columns",

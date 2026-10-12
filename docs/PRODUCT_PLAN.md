@@ -147,11 +147,13 @@ Sync **physical column names and types** for **registered tables only** (plus
 
 | # | Activity | Type | Est |
 |---|---|---|---|
-| 2.5.1 | Liquibase: snapshot header + column rows (plain types); sync run log (success/failure per table) | N | 2 |
-| 2.5.2 | `MetadataSyncService`: sync all registered tables; on table registration; cron default weekly | N | 3 |
-| 2.5.3 | `LakehouseRegistryService.listColumns`: scope + registration first; then snapshot if fresh else live | R+ | 3 |
-| 2.5.4 | Super Admin: “Sync now”, last run status, optional JSON manifest download | N | 2 |
-| 2.5.5 | QB UI: “Metadata as of …”, warning if last sync failed | N | 1 |
+| 2.5.1 | Liquibase: snapshot header + column rows (plain types); sync run log (success/failure per table) | **Y** (changelog `015`) | 2 |
+| 2.5.2 | `MetadataSyncService`: sync all registered tables; on table registration; cron default weekly | **Y** | 3 |
+| 2.5.3 | `LakehouseRegistryService.listColumnsForDisplay`: scope + registration first; then snapshot if fresh else live; execution paths stay on `listColumnsLive` | **Y** | 3 |
+| 2.5.4 | Super Admin: “Sync now”, last run status, optional JSON manifest download | **Y** (Table Registry admin section) | 2 |
+| 2.5.5 | QB UI: “Metadata as of …”, warning if last sync failed | **Y** | 1 |
+
+**Known limits (2.5):** Database Overview column expand stays **live** (`listColumnsLive`). Manifest and officer status expose no credentials; stale snapshot columns may still appear in pickers until TTL or re-sync — `validateColumn` / match still gate on live. Overlapping sync runs on multiple backend instances skip when another run is `RUNNING` and younger than 120 minutes (single-instance default today).
 
 ### 2.3 How source systems connect
 

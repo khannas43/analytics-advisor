@@ -11,9 +11,18 @@ import gov.rajasthan.smart.srse.lakehouse.LakehouseCatalogController;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.lakehouse.RegisteredTable;
 import gov.rajasthan.smart.srse.lakehouse.TableScopeRegistrationService;
+import gov.rajasthan.smart.srse.audit.AuditService;
+import gov.rajasthan.smart.srse.identity.AdminAccessDeniedException;
+import gov.rajasthan.smart.srse.identity.AdminAuthorizationService;
+import gov.rajasthan.smart.srse.identity.AppUser;
+import gov.rajasthan.smart.srse.identity.AuthenticatedUserService;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadata;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataController;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
+import gov.rajasthan.smart.srse.metadata.sync.MetadataAdminController;
+import gov.rajasthan.smart.srse.metadata.sync.MetadataManifestService;
+import gov.rajasthan.smart.srse.metadata.sync.MetadataSyncService;
+import gov.rajasthan.smart.srse.metadata.sync.MetadataSyncTrigger;
 import gov.rajasthan.smart.srse.security.Authorities;
 import gov.rajasthan.smart.srse.security.SessionBearerAuthenticationFilter;
 import gov.rajasthan.smart.srse.security.SessionTokenService;
@@ -39,6 +48,8 @@ import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import java.util.UUID;
 
@@ -59,7 +70,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         LakehouseCatalogController.class,
         AnalysisColumnMetadataController.class,
         ConnectionInfoController.class,
-        AdminConfigController.class
+        AdminConfigController.class,
+        MetadataAdminController.class
 })
 @Import({ApiExceptionHandler.class, SecurityConfig.class, MockJwtService.class,
         SessionTokenService.class, SessionBearerAuthenticationFilter.class})
@@ -107,6 +119,21 @@ class SecurityConfigRbacTest {
     @MockBean
     private ExternalDataSourceMetadataService externalDataSourceMetadataService;
 
+    @MockBean
+    private MetadataSyncService metadataSyncService;
+
+    @MockBean
+    private MetadataManifestService metadataManifestService;
+
+    @MockBean
+    private AdminAuthorizationService adminAuthorizationService;
+
+    @MockBean
+    private AuthenticatedUserService authenticatedUserService;
+
+    @MockBean
+    private AuditService auditService;
+
     private String officerToken;
     private String adminToken;
 
@@ -138,6 +165,12 @@ class SecurityConfigRbacTest {
         when(operational.getUsername()).thenReturn("db2inst1");
         when(operational.getDriverClassName()).thenReturn("com.ibm.db2.jcc.DB2Driver");
         when(presto.queryForObject("SELECT 1", Integer.class)).thenReturn(1);
+
+        AppUser adminUser = new AppUser("admin", "hash");
+        when(authenticatedUserService.requireCurrentUser()).thenReturn(adminUser);
+        when(metadataSyncService.startSyncAll(MetadataSyncTrigger.MANUAL))
+                .thenReturn(new MetadataSyncService.SyncStartResult(1L, false));
+        when(metadataManifestService.buildManifestJson()).thenReturn("{\"tables\":[]}");
     }
 
     @Test
@@ -293,6 +326,30 @@ class SecurityConfigRbacTest {
         mockMvc.perform(get("/api/analysis/column-metadata")
                         .header("Authorization", "Bearer " + UUID.randomUUID()))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void officerForbiddenOnMetadataAdminSync() throws Exception {
+        mockMvc.perform(post("/api/admin/metadata/sync")
+                        .header("Authorization", "Bearer " + officerToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminNotSuperForbiddenOnMetadataAdminStatus() throws Exception {
+        doThrow(new AdminAccessDeniedException("SuperAdmin only"))
+                .when(adminAuthorizationService).assertSuperAdminOnly(any(AppUser.class));
+        mockMvc.perform(get("/api/admin/metadata/status")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void superAdminPermittedOnMetadataAdminManifest() throws Exception {
+        doNothing().when(adminAuthorizationService).assertSuperAdminOnly(any(AppUser.class));
+        mockMvc.perform(get("/api/admin/metadata/manifest")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
     }
 
     @Test

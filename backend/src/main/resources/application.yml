@@ -83,6 +83,12 @@ srse:
     trusted-proxies: []
     # Reported to the audit viewer; no purge job runs in this release (§7.3.2).
     retention-days: ${SRSE_AUDIT_RETENTION_DAYS:365}
+  metadata:
+    sync:
+      enabled: ${SRSE_METADATA_SYNC_ENABLED:true}
+      cron: ${SRSE_METADATA_SYNC_CRON:0 0 2 * * SUN}
+    snapshot:
+      ttl-days: ${SRSE_METADATA_SNAPSHOT_TTL_DAYS:7}
   scope:
     max-in-values: ${SRSE_SCOPE_MAX_IN_VALUES:1000}
   analysis:

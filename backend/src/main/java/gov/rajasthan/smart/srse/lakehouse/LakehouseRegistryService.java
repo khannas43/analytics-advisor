@@ -8,6 +8,8 @@ import gov.rajasthan.smart.srse.datasource.ExternalDataSourceService;
 import gov.rajasthan.smart.srse.datasource.ExternalDataSourceType;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadata;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
+import gov.rajasthan.smart.srse.metadata.sync.MetadataSnapshotService;
+import gov.rajasthan.smart.srse.metadata.sync.MetadataSyncService;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,6 +66,8 @@ public class LakehouseRegistryService {
     private final AuditService auditService;
     private final ExternalDataSourceMetadataService externalMetadata;
     private final ExternalDataSourceService externalSources;
+    private final MetadataSnapshotService metadataSnapshotService;
+    private final MetadataSyncService metadataSyncService;
 
     @Autowired
     public LakehouseRegistryService(
@@ -76,7 +80,9 @@ public class LakehouseRegistryService {
             AuthenticatedUserService authenticatedUserService,
             AuditService auditService,
             ExternalDataSourceMetadataService externalMetadata,
-            ExternalDataSourceService externalSources) {
+            ExternalDataSourceService externalSources,
+            @Autowired(required = false) MetadataSnapshotService metadataSnapshotService,
+            @Autowired(required = false) MetadataSyncService metadataSyncService) {
         this.registrations = registrations;
         this.columnMetadata = columnMetadata;
         this.browse = browse;
@@ -87,6 +93,8 @@ public class LakehouseRegistryService {
         this.auditService = auditService;
         this.externalMetadata = externalMetadata;
         this.externalSources = externalSources;
+        this.metadataSnapshotService = metadataSnapshotService;
+        this.metadataSyncService = metadataSyncService;
     }
 
     /** Test-compatible constructor for native-Presto registry scenarios. */
@@ -100,7 +108,24 @@ public class LakehouseRegistryService {
             AuthenticatedUserService authenticatedUserService,
             AuditService auditService) {
         this(registrations, columnMetadata, browse, officerScope, scopeCatalog,
-                tableScopeRegistrationService, authenticatedUserService, auditService, null, null);
+                tableScopeRegistrationService, authenticatedUserService, auditService, null, null, null, null);
+    }
+
+    /** Test-compatible constructor for external-source registration scenarios. */
+    public LakehouseRegistryService(
+            RegisteredTableRepository registrations,
+            AnalysisColumnMetadataRepository columnMetadata,
+            LakehouseBrowseService browse,
+            OfficerRegistryScopeService officerScope,
+            RegisteredTableScopeCatalog scopeCatalog,
+            TableScopeRegistrationService tableScopeRegistrationService,
+            AuthenticatedUserService authenticatedUserService,
+            AuditService auditService,
+            ExternalDataSourceMetadataService externalMetadata,
+            ExternalDataSourceService externalSources) {
+        this(registrations, columnMetadata, browse, officerScope, scopeCatalog,
+                tableScopeRegistrationService, authenticatedUserService, auditService,
+                externalMetadata, externalSources, null, null);
     }
 
     // ---- admin: registration ----
@@ -140,6 +165,7 @@ public class LakehouseRegistryService {
                     authenticatedUserService.requireCurrentUser(),
                     saved.toQualifiedTable().qualifiedName(),
                     "registration updated");
+            triggerMetadataSync(saved);
             return saved;
         }
         RegisteredTable saved = registrations.save(new RegisteredTable(
@@ -149,6 +175,7 @@ public class LakehouseRegistryService {
                 authenticatedUserService.requireCurrentUser(),
                 saved.toQualifiedTable().qualifiedName(),
                 "registered");
+        triggerMetadataSync(saved);
         return saved;
     }
 
@@ -203,6 +230,7 @@ public class LakehouseRegistryService {
                 authenticatedUserService.requireCurrentUser(),
                 saved.toQualifiedTable().qualifiedName(),
                 "external source=" + source.getName());
+        triggerMetadataSync(saved);
         return saved;
     }
 
@@ -304,6 +332,7 @@ public class LakehouseRegistryService {
         RegisteredTable existing = registrations.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("No such registration: " + id));
         String qualified = existing.toQualifiedTable().qualifiedName();
+        deleteMetadataSnapshots(existing);
         tableScopeRegistrationService.deleteScopeDataForRegistration(id);
         registrations.deleteById(id);
         auditService.recordRegistryEvent(
@@ -328,8 +357,10 @@ public class LakehouseRegistryService {
             existing.setLayer(LakehouseLayers.normaliseForImport(layer));
             return registrations.save(existing);
         }
-        return registrations.save(
+        RegisteredTable saved = registrations.save(
                 new RegisteredTable(null, catalog, schema, table, LakehouseLayers.normaliseForImport(layer)));
+        triggerMetadataSync(saved);
+        return saved;
     }
 
     public List<RegisteredTable> listRegistrations() {
@@ -526,40 +557,37 @@ public class LakehouseRegistryService {
     }
 
     /**
-     * Live columns of a registered table, decorated with admin metadata and
-     * with columns the admin opted out already filtered away.
+     * Officer-facing column list for Query Builder pickers — snapshot when fresh,
+     * otherwise live. Execution paths use {@link #listColumnsLive} instead.
      */
-    public List<RegisteredColumn> listColumns(String catalog, String schema, String table) {
+    public List<RegisteredColumn> listColumnsForDisplay(String catalog, String schema, String table) {
         RegisteredTable registration = requireVisibleRegistration(catalog, schema, table);
-        Map<String, AnalysisColumnMetadata> byColumn = columnMetadata
-                .findByCatalogNameAndSchemaNameAndTableName(catalog, schema, table).stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        AnalysisColumnMetadata::getColumnName, Function.identity()));
-
-        java.util.stream.Stream<LakehouseBrowseService.ColumnInfo> liveColumns;
-        if (registration.isExternal()) {
-            if (externalMetadata == null) {
-                throw new IllegalStateException("External metadata service is unavailable");
+        Map<String, AnalysisColumnMetadata> byColumn = loadColumnMetadata(catalog, schema, table);
+        java.util.stream.Stream<LakehouseBrowseService.ColumnInfo> physical;
+        if (metadataSnapshotService != null) {
+            var snapshot = metadataSnapshotService.freshSnapshot(catalog, schema, table);
+            if (snapshot.isPresent()) {
+                physical = metadataSnapshotService.toColumnInfos(snapshot.get().columns()).stream();
+                return decorateAndFilterVisible(physical, byColumn);
             }
-            liveColumns = externalMetadata.registeredColumns(
-                            registration.getExternalDataSourceId(), registration.getExternalCatalog(), schema, table)
-                    .stream()
-                    .map(c -> new LakehouseBrowseService.ColumnInfo(c.name(), c.dataType()));
-        } else {
-            liveColumns = browse.listColumns(catalog, schema, table).stream();
         }
-        return liveColumns
-                .map(c -> {
-                    AnalysisColumnMetadata meta = byColumn.get(c.name());
-                    return new RegisteredColumn(
-                            c.name(), c.dataType(),
-                            meta != null ? meta.getBusinessName() : null,
-                            meta != null && meta.isFuzzyMatchable(),
-                            meta == null || meta.isVisible(),
-                            meta != null && meta.isValuePickerEnabled());
-                })
-                .filter(RegisteredColumn::visible)
-                .toList();
+        physical = livePhysicalColumns(registration).stream();
+        return decorateAndFilterVisible(physical, byColumn);
+    }
+
+    /**
+     * Live columns for execution, join-key hints and type coercion — never the snapshot.
+     */
+    public List<RegisteredColumn> listColumnsLive(String catalog, String schema, String table) {
+        RegisteredTable registration = requireVisibleRegistration(catalog, schema, table);
+        Map<String, AnalysisColumnMetadata> byColumn = loadColumnMetadata(catalog, schema, table);
+        return decorateAndFilterVisible(livePhysicalColumns(registration).stream(), byColumn);
+    }
+
+    /** @deprecated use {@link #listColumnsForDisplay} or {@link #listColumnsLive} explicitly */
+    @Deprecated
+    public List<RegisteredColumn> listColumns(String catalog, String schema, String table) {
+        return listColumnsForDisplay(catalog, schema, table);
     }
 
     /**
@@ -576,7 +604,8 @@ public class LakehouseRegistryService {
      * hand-typed mapping, while the lakehouse reports its own casing.
      */
     public boolean hasColumns(QualifiedTable table, Collection<String> columns) {
-        Set<String> live = listColumns(table.catalog(), table.schema(), table.table()).stream()
+        RegisteredTable registration = requireVisibleRegistration(table);
+        Set<String> live = livePhysicalColumns(registration).stream()
                 .map(c -> c.name().toLowerCase(java.util.Locale.ROOT))
                 .collect(java.util.stream.Collectors.toSet());
         return columns.stream().allMatch(c -> live.contains(c.toLowerCase(java.util.Locale.ROOT)));
@@ -651,7 +680,7 @@ public class LakehouseRegistryService {
      */
     public Map<String, RegisteredColumn> describeColumns(QualifiedTable table, Collection<String> columns) {
         validateRegistered(table);
-        Map<String, RegisteredColumn> available = listColumns(
+        Map<String, RegisteredColumn> available = listColumnsLive(
                 table.catalog(), table.schema(), table.table()).stream()
                 .collect(java.util.stream.Collectors.toMap(RegisteredColumn::name, Function.identity()));
         Map<String, RegisteredColumn> described = new LinkedHashMap<>();
@@ -667,9 +696,65 @@ public class LakehouseRegistryService {
         return described;
     }
 
+    private Map<String, AnalysisColumnMetadata> loadColumnMetadata(String catalog, String schema, String table) {
+        return columnMetadata.findByCatalogNameAndSchemaNameAndTableName(catalog, schema, table).stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        AnalysisColumnMetadata::getColumnName, Function.identity()));
+    }
+
+    List<LakehouseBrowseService.ColumnInfo> livePhysicalColumns(RegisteredTable registration) {
+        if (registration.isExternal()) {
+            if (externalMetadata == null) {
+                throw new IllegalStateException("External metadata service is unavailable");
+            }
+            return externalMetadata.registeredColumns(
+                            registration.getExternalDataSourceId(),
+                            registration.getExternalCatalog(),
+                            registration.getSchemaName(),
+                            registration.getTableName())
+                    .stream()
+                    .map(c -> new LakehouseBrowseService.ColumnInfo(c.name(), c.dataType()))
+                    .toList();
+        }
+        return browse.listColumns(
+                registration.getCatalogName(),
+                registration.getSchemaName(),
+                registration.getTableName());
+    }
+
+    private static List<RegisteredColumn> decorateAndFilterVisible(
+            java.util.stream.Stream<LakehouseBrowseService.ColumnInfo> physical,
+            Map<String, AnalysisColumnMetadata> byColumn) {
+        return physical
+                .map(c -> {
+                    AnalysisColumnMetadata meta = byColumn.get(c.name());
+                    return new RegisteredColumn(
+                            c.name(), c.dataType(),
+                            meta != null ? meta.getBusinessName() : null,
+                            meta != null && meta.isFuzzyMatchable(),
+                            meta == null || meta.isVisible(),
+                            meta != null && meta.isValuePickerEnabled());
+                })
+                .filter(RegisteredColumn::visible)
+                .toList();
+    }
+
+    private void triggerMetadataSync(RegisteredTable table) {
+        if (metadataSyncService != null) {
+            metadataSyncService.scheduleSyncAfterRegistration(table);
+        }
+    }
+
+    private void deleteMetadataSnapshots(RegisteredTable table) {
+        if (metadataSnapshotService != null) {
+            metadataSnapshotService.deleteSnapshotsForTable(
+                    table.getCatalogName(), table.getSchemaName(), table.getTableName());
+        }
+    }
+
     /**
-     * @param visible retained on the record so {@link #listColumns} can filter
-     *                on it; always {@code true} in what that method returns.
+     * @param visible retained on the record so display/live lists can filter
+     *                on it; always {@code true} in what those methods return.
      */
     public record RegisteredColumn(String name, String dataType, String businessName,
                                    boolean fuzzyMatchable, boolean visible, boolean valuePickerEnabled) {

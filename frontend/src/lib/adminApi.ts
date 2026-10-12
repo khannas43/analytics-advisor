@@ -310,6 +310,57 @@ export async function exportAdminConfig(): Promise<AdminConfigBundle> {
   return res.json();
 }
 
+export type MetadataSyncRunStatus = {
+  runId: number | null;
+  trigger: "SCHEDULED" | "REGISTRATION" | "MANUAL" | null;
+  outcome: "SUCCESS" | "DEGRADED" | "FAILED" | "RUNNING" | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  tables: {
+    catalog: string;
+    schema: string;
+    table: string;
+    outcome: "SUCCESS" | "FAILED";
+    errorMessage: string | null;
+  }[];
+};
+
+export type MetadataSyncStartResponse = {
+  runId: number;
+  skippedOverlapping: boolean;
+};
+
+export async function startMetadataSync(): Promise<MetadataSyncStartResponse> {
+  const res = await authorizedFetch(`${API_BASE}/api/admin/metadata/sync`, {
+    method: "POST",
+    credentials: "include",
+  }, "admin");
+  if (!res.ok) {
+    throw new Error(`Metadata sync failed ${res.status}: ${await res.text()}`);
+  }
+  return res.json();
+}
+
+export async function getMetadataSyncStatus(): Promise<MetadataSyncRunStatus> {
+  const res = await authorizedFetch(`${API_BASE}/api/admin/metadata/status`, {
+    credentials: "include",
+  }, "admin");
+  if (!res.ok) {
+    throw new Error(`Metadata status failed ${res.status}: ${await res.text()}`);
+  }
+  return res.json();
+}
+
+export async function downloadMetadataManifest(): Promise<string> {
+  const res = await authorizedFetch(`${API_BASE}/api/admin/metadata/manifest`, {
+    credentials: "include",
+  }, "admin");
+  if (!res.ok) {
+    throw new Error(`Metadata manifest failed ${res.status}: ${await res.text()}`);
+  }
+  return res.text();
+}
+
 export async function importAdminConfig(
   bundle: AdminConfigBundle,
   options?: { testConnections?: boolean },

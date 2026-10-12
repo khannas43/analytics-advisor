@@ -109,9 +109,9 @@ public class JoinKeySuggestService {
                     "Join key suggestions are not available for connected database tables yet");
         }
 
-        List<RegisteredColumn> sourceCols = registry.listColumns(
+        List<RegisteredColumn> sourceCols = registry.listColumnsLive(
                 source.catalog(), source.schema(), source.table());
-        List<RegisteredColumn> targetCols = registry.listColumns(
+        List<RegisteredColumn> targetCols = registry.listColumnsLive(
                 target.catalog(), target.schema(), target.table());
 
         List<ScoredPair> ranked = rankMetadataPairs(source, target, sourceCols, targetCols, Map.of());

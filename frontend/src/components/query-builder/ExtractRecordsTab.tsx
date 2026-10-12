@@ -34,6 +34,7 @@ import {
   selectAllDisplayColumns,
   toggleDisplayColumnSelection,
 } from "@/lib/queryBuilderRequestBuild";
+import { MetadataColumnStatus } from "@/components/query-builder/MetadataColumnStatus";
 import { useQueryBuilderPipeline } from "@/lib/queryBuilderPipelineStore";
 import type { ExtractRuleRow } from "@/lib/queryBuilderPipelineTypes";
 
@@ -583,6 +584,7 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
             {isCascadeComplete(sourceRef) && (
               <div className="pick">
                 <div className="ttl">{t("lblSourceAttr")}</div>
+                <MetadataColumnStatus tableRef={sourceRef} />
                 <AttributeMultiSelect
                   id="extract-source-attrs"
                   label={t("lblSourceAttributes")}
@@ -595,6 +597,7 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
             {dual && isCascadeComplete(targetRef) && (
               <div className="pick dest-only">
                 <div className="ttl">{t("lblDestAttr")}</div>
+                <MetadataColumnStatus tableRef={targetRef} />
                 <AttributeMultiSelect
                   id="extract-dest-attrs"
                   label={t("lblDestAttributes")}

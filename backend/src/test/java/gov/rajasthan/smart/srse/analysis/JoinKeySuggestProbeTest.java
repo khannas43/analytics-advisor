@@ -89,10 +89,10 @@ class JoinKeySuggestProbeTest {
 
     @Test
     void highDistinctnessKeyOutranksLowCardinalityAttributeWithProbe() {
-        when(registry.listColumns(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
                 new RegisteredColumn("district", "varchar", null, false, true),
                 new RegisteredColumn("id", "bigint", null, false, true)));
-        when(registry.listColumns(TGT_CATALOG, TGT_SCHEMA, TGT)).thenReturn(List.of(
+        when(registry.listColumnsLive(TGT_CATALOG, TGT_SCHEMA, TGT)).thenReturn(List.of(
                 new RegisteredColumn("district", "varchar", null, false, true),
                 new RegisteredColumn("m_id", "bigint", null, false, true)));
 
@@ -166,10 +166,10 @@ class JoinKeySuggestProbeTest {
 
     @Test
     void zeroOverlapRanksBelowMeasuredOverlap() {
-        when(registry.listColumns(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
+        when(registry.listColumnsLive(CATALOG, SCHEMA, SRC)).thenReturn(List.of(
                 new RegisteredColumn("district", "varchar", null, false, true),
                 new RegisteredColumn("id", "bigint", null, false, true)));
-        when(registry.listColumns(TGT_CATALOG, TGT_SCHEMA, TGT)).thenReturn(List.of(
+        when(registry.listColumnsLive(TGT_CATALOG, TGT_SCHEMA, TGT)).thenReturn(List.of(
                 new RegisteredColumn("district", "varchar", null, false, true),
                 new RegisteredColumn("m_id", "bigint", null, false, true)));
 

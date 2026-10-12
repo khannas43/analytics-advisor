@@ -281,6 +281,14 @@ Copy `.env.example` to `.env` and set values per environment.
 
 > **Three different databases.** The operational store holds the application's own users and configuration (PostgreSQL by default; `SRSE_OPERATIONAL_JDBC_URL` in `.env.example`). Presto (this section) queries the lakehouse. A business database added in Admin → Data Sources is a third connection: read-only JDBC for questions that stay inside that one database, and an optional Presto catalog alias when a question must combine it with another source. Putting a business database's host into `SRSE_OPERATIONAL_JDBC_URL` would point the application at the wrong store. Do not do that.
 
+### 5.3.1 Registered-table metadata snapshot (Aa1)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SRSE_METADATA_SYNC_ENABLED` | `true` | When false, scheduled sync is off; officers still get live column lists when snapshot is missing or expired |
+| `SRSE_METADATA_SYNC_CRON` | `0 0 2 * * SUN` | Spring six-field cron for the weekly full sync |
+| `SRSE_METADATA_SNAPSHOT_TTL_DAYS` | `7` | Display path uses snapshot column names/types only while `synced_at` is within this many days |
+
 ### 5.4 Guardrails
 
 | Variable | Default | Description |

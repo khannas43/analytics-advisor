@@ -18,6 +18,7 @@ import {
   ConfigBackupPanel,
   ConnectionsPanel,
   LakehouseRegistryPanel,
+  MetadataSnapshotAdminPanel,
 } from "@/components/admin/lakehouseAdminPanels";
 import { AuditLogPanel } from "@/components/AuditLogPanel";
 import { OtpGatewayPanel } from "@/components/OtpGatewayPanel";
@@ -127,13 +128,16 @@ export function AdminWorkspace() {
         {section === "connections" && <ConnectionsPanel />}
         {section === "data-sources" && session.superAdmin ? <ExternalDataSourcesPanel /> : null}
         {section === "registry" && (
-          <LakehouseRegistryPanel
-            registrations={registrations}
-            columnMetadata={columnMetadata}
-            loading={loading}
-            error={error}
-            onChanged={refreshLakehouse}
-          />
+          <>
+            <LakehouseRegistryPanel
+              registrations={registrations}
+              columnMetadata={columnMetadata}
+              loading={loading}
+              error={error}
+              onChanged={refreshLakehouse}
+            />
+            {session.superAdmin ? <MetadataSnapshotAdminPanel /> : null}
+          </>
         )}
         {section === "columns" && (
           <ColumnMetadataPanel

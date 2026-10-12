@@ -70,6 +70,10 @@ services:
       # Required on first boot when app_user is empty (7.1b). Change after login.
       - SRSE_BOOTSTRAP_SUPER_ADMIN_USERNAME=${SRSE_BOOTSTRAP_SUPER_ADMIN_USERNAME:-superadmin}
       - SRSE_BOOTSTRAP_SUPER_ADMIN_PASSWORD=${SRSE_BOOTSTRAP_SUPER_ADMIN_PASSWORD:-}
+      # Registered-table column metadata snapshot (Aa1 / §2.5)
+      - SRSE_METADATA_SYNC_ENABLED=${SRSE_METADATA_SYNC_ENABLED:-true}
+      - SRSE_METADATA_SYNC_CRON=${SRSE_METADATA_SYNC_CRON:-0 0 2 * * SUN}
+      - SRSE_METADATA_SNAPSHOT_TTL_DAYS=${SRSE_METADATA_SNAPSHOT_TTL_DAYS:-7}
     volumes:
       - connection-overrides:/app/config
     depends_on:
