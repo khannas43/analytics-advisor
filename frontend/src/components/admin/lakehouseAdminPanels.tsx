@@ -456,10 +456,12 @@ function ColumnMetadataRowEditor({
   const [fuzzyMatchable, setFuzzyMatchable] = useState(row.fuzzyMatchable);
   const [visible, setVisible] = useState(row.visible);
   const [compareAs, setCompareAs] = useState<CompareAs>(row.compareAs ?? "AUTO");
+  const [valuePickerEnabled, setValuePickerEnabled] = useState(row.valuePickerEnabled ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const dirty =
+    valuePickerEnabled !== (row.valuePickerEnabled ?? false) ||
     businessName !== (row.businessName ?? "") ||
     fuzzyMatchable !== row.fuzzyMatchable ||
     visible !== row.visible ||
@@ -480,6 +482,7 @@ function ColumnMetadataRowEditor({
         fuzzyMatchable,
         visible,
         compareAs,
+        valuePickerEnabled,
       );
       onChanged();
     } catch (err: unknown) {
@@ -535,6 +538,22 @@ function ColumnMetadataRowEditor({
       </td>
       <td>
         <CompareAsSelect id={`col-meta-compare-${rowId}`} value={compareAs} onChange={setCompareAs} />
+      </td>
+      <td>
+        <label
+          className="srse-checkbox-label"
+          htmlFor={`col-meta-picker-${rowId}`}
+          title="Offer officers a list of this column's distinct values. Runs a SELECT DISTINCT on the engine, so enable it only for low-cardinality reference columns (state, status, gender), not names or IDs."
+        >
+          <input
+            id={`col-meta-picker-${rowId}`}
+            type="checkbox"
+            checked={valuePickerEnabled}
+            onChange={(e) => setValuePickerEnabled(e.target.checked)}
+          />
+          {" "}
+          Value list
+        </label>
       </td>
       <td>
         <label className="srse-checkbox-label" htmlFor={`col-meta-visible-${rowId}`} title="Uncheck to hide this column from officers in the Analysis tab">
@@ -764,6 +783,7 @@ export function ColumnMetadataPanel({
                 <th>Business name</th>
                 <th>Fuzzy matchable</th>
                 <th>Compare as</th>
+                <th>Value list</th>
                 <th>Visible</th>
                 <th />
               </tr>

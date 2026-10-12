@@ -69,13 +69,20 @@ export function ReportSourceFilters({
                 ))}
               </select>
             </div>
-            <ValueFilterPicker
-              key={report.sourceValueFilterColumn}
-              table={table}
-              column={report.sourceValueFilterColumn}
-              hydratedSpec={report.sourceValueFilterSpec}
-              onChange={(spec) => onPatch({ sourceValueFilterSpec: spec })}
-            />
+            {report.sourceValueFilterColumn
+              && !columns.find((c) => c.name === report.sourceValueFilterColumn)?.valuePickerEnabled ? (
+              <p className="srse-text-muted" role="note">
+                {t("msgValuePickerOff")}
+              </p>
+            ) : (
+              <ValueFilterPicker
+                key={report.sourceValueFilterColumn}
+                table={table}
+                column={report.sourceValueFilterColumn}
+                hydratedSpec={report.sourceValueFilterSpec}
+                onChange={(spec) => onPatch({ sourceValueFilterSpec: spec })}
+              />
+            )}
           </>
         ) : null}
       </div>

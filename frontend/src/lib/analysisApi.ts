@@ -40,6 +40,9 @@ export type RegisteredColumn = {
   dataType: string;
   businessName: string | null;
   fuzzyMatchable: boolean;
+  // Admin opt-in (Aa1): officers get a distinct-values list for this column only when true.
+  // Off by default; typing a value always works.
+  valuePickerEnabled: boolean;
 };
 
 // A fully-qualified table address. Used as the identity of a picked table
@@ -641,6 +644,7 @@ export type ColumnMetadata = TableRef & {
   fuzzyMatchable: boolean;
   visible: boolean;
   compareAs: CompareAs;
+  valuePickerEnabled: boolean;
 };
 
 /**
@@ -692,12 +696,14 @@ export async function upsertColumnMetadata(
   fuzzyMatchable: boolean,
   visible: boolean = true,
   compareAs: CompareAs = "AUTO",
+  // undefined = leave the stored value alone (the server keeps it when the field is absent)
+  valuePickerEnabled?: boolean,
 ): Promise<ColumnMetadata> {
   const res = await authorizedFetch(`${API_BASE}/api/analysis/column-metadata`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ ...ref, column, businessName, fuzzyMatchable, visible, compareAs }),
+    body: JSON.stringify({ ...ref, column, businessName, fuzzyMatchable, visible, compareAs, valuePickerEnabled }),
   }, "admin");
   if (!res.ok) {
     throw new Error(`Analysis service error ${res.status}: ${await res.text()}`);

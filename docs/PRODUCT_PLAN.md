@@ -206,7 +206,7 @@ works exactly this way in SRSE.
 | 3.1.3 | ✅ (AA-15) Browse hierarchy driven by labels, addresses unchanged underneath | R+ | 2 |
 | 3.1.4 | ✅ (AA-15) Database Overview page — drill down to attributes and data types | N | 3 |
 | 3.1.5 | ✅ Column metadata: business name, hide, fuzzy flag, comparison mode | R | 0 |
-| 3.1.6 | (Aa1 / 0.11) `value_picker_enabled` on column metadata; admin UI + sync job cardinality **suggestions** (never auto-enable) | N | 2 |
+| 3.1.6 | ◐ (Aa1 / 0.11) `value_picker_enabled` on column metadata; admin UI + sync job cardinality **suggestions** (never auto-enable). *Flag, gate and UI done 2026-10-12: `analysis_column_metadata.value_picker_enabled` (changelog 014, default false); `column-values` is refused with a 400 ("Type the value instead…") for any column without it, after the registered/live/not-hidden check and before any scope or SQL work; the admin column editor has a "Value list" checkbox; the Extract rule picker and the Report value-filter picker hide for disabled columns (typed values still work in rules; the Report filter shows a note, en + hi); an admin PUT or a config restore that omits the field keeps the stored value, and the config bundle now carries it. **Behaviour change to announce:** every picker is OFF until an admin enables it per column, including on existing deployments. **Not done:** cardinality suggestions (needs the AA-21 snapshot/sync job); the Report value filter has no typed-value alternative, so a column without a list cannot be filtered there.* | N | 2 |
 
 ---
 

@@ -61,6 +61,7 @@ public class ColumnDistinctValuesService {
         QualifiedColumn column = new QualifiedColumn(
                 req.catalog(), req.schema(), req.table(), req.column());
         registry.validateColumn(column);
+        registry.requireValuePickerEnabled(column);
         QualifiedTable table = column.table();
         ScopeFilteredFrom scope = scopeFrom.planFrom(table);
         if (scope.isEmptyResult()) {

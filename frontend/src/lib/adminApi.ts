@@ -286,6 +286,7 @@ export type AdminConfigBundle = {
     fuzzyMatchable: boolean;
     visible: boolean;
     compareAs: CompareAs;
+    valuePickerEnabled?: boolean;
   }[];
 };
 

@@ -200,11 +200,10 @@ public class AdminConfigService {
     }
 
     private void upsertColumnMetadata(AdminConfigBundle.AnalysisColumnMetadataEntry entry) {
-        Long existingId = columnMetadataRepository
+        var existing = columnMetadataRepository
                 .findByCatalogNameAndSchemaNameAndTableNameAndColumnName(
-                        entry.catalog(), entry.schema(), entry.table(), entry.column())
-                .map(AnalysisColumnMetadata::getId)
-                .orElse(null);
+                        entry.catalog(), entry.schema(), entry.table(), entry.column());
+        Long existingId = existing.map(AnalysisColumnMetadata::getId).orElse(null);
         AnalysisColumnMetadata entity = new AnalysisColumnMetadata(
                 existingId,
                 new QualifiedColumn(entry.catalog(), entry.schema(), entry.table(), entry.column()),
@@ -212,6 +211,10 @@ public class AdminConfigService {
                 Boolean.valueOf(entry.fuzzyMatchable()),
                 Boolean.valueOf(entry.visible()));
         entity.setCompareAs(CompareAs.orAuto(entry.compareAs()));
+        // A restore must not silently switch pickers off: an older bundle has no flag, so keep what is stored.
+        entity.setValuePickerEnabled(entry.valuePickerEnabled() != null
+                ? entry.valuePickerEnabled()
+                : existing.map(AnalysisColumnMetadata::isValuePickerEnabled).orElse(false));
         columnMetadataRepository.save(entity);
     }
 
@@ -224,7 +227,8 @@ public class AdminConfigService {
                 entity.getBusinessName(),
                 entity.isFuzzyMatchable(),
                 entity.isVisible(),
-                entity.getCompareAs());
+                entity.getCompareAs(),
+                entity.isValuePickerEnabled());
     }
 
     private static AdminConfigBundle.ConnectionPlane planeFromOverrides(

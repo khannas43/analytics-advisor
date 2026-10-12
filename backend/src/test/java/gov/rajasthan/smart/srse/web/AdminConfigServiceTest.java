@@ -240,6 +240,34 @@ class AdminConfigServiceTest {
         verify(registeredTableRepository, never()).deleteAll();
     }
 
+    @Test
+    void restoreKeepsAStoredValuePickerFlagForAnOlderBundleAndAppliesAnExplicitOne() {
+        when(registeredTableRepository.findAll()).thenReturn(List.of(
+                new RegisteredTable(1L, "iceberg", "srse", "stay", "GOLD")));
+        AnalysisColumnMetadata stored = columnEntity("stay", "col", "Label", false, true, CompareAs.AUTO);
+        stored.setValuePickerEnabled(true);
+        when(columnMetadataRepository.findByCatalogNameAndSchemaNameAndTableNameAndColumnName(
+                anyString(), anyString(), anyString(), anyString())).thenReturn(Optional.of(stored));
+        when(columnMetadataRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        org.mockito.ArgumentCaptor<AnalysisColumnMetadata> saved =
+                org.mockito.ArgumentCaptor.forClass(AnalysisColumnMetadata.class);
+
+        // a bundle exported before the flag existed: no field
+        service.importConfig(new AdminConfigBundle("2.0", Instant.now(), "synthetic", null, null,
+                List.of(new AdminConfigBundle.AnalysisColumnMetadataEntry(
+                        "iceberg", "srse", "stay", "col", "Label", false, true, CompareAs.AUTO))),
+                new AdminConfigService.ImportOptions(false));
+        // an explicit false in a current bundle
+        service.importConfig(new AdminConfigBundle("2.0", Instant.now(), "synthetic", null, null,
+                List.of(new AdminConfigBundle.AnalysisColumnMetadataEntry(
+                        "iceberg", "srse", "stay", "col", "Label", false, true, CompareAs.AUTO, false))),
+                new AdminConfigService.ImportOptions(false));
+
+        verify(columnMetadataRepository, org.mockito.Mockito.times(2)).save(saved.capture());
+        assertTrue(saved.getAllValues().get(0).isValuePickerEnabled());
+        org.junit.jupiter.api.Assertions.assertFalse(saved.getAllValues().get(1).isValuePickerEnabled());
+    }
+
     private static AnalysisColumnMetadata columnEntity(
             String table, String column, String businessName,
             boolean fuzzy, boolean visible, CompareAs compareAs) {

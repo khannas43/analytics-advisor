@@ -38,3 +38,6 @@ databaseChangeLog:
   - include:
       file: changes/013-session-last-activity.yaml
       relativeToChangelogFile: true
+  - include:
+      file: changes/014-value-picker-flag.yaml
+      relativeToChangelogFile: true

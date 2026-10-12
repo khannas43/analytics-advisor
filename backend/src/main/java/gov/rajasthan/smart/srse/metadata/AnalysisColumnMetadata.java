@@ -100,6 +100,15 @@ public class AnalysisColumnMetadata {
     @Column(name = "compare_as", length = 16)
     private CompareAs compareAs;
 
+    /**
+     * Whether officers may be offered a list of this column's distinct values (rule and value-filter
+     * pickers). Default FALSE and boxed like its neighbours: a picker is a {@code SELECT DISTINCT} on
+     * the analytical engine, so it is opt-in per column, for low-cardinality reference columns only
+     * (Aa1 / decision 0.11). Typing a value always works whatever this says.
+     */
+    @Column(name = "value_picker_enabled")
+    private Boolean valuePickerEnabled = Boolean.FALSE;
+
     protected AnalysisColumnMetadata() {
     }
 
@@ -157,6 +166,14 @@ public class AnalysisColumnMetadata {
     }
 
     /** Never null — an unset column reads as {@link CompareAs#AUTO}. */
+    public boolean isValuePickerEnabled() {
+        return Boolean.TRUE.equals(valuePickerEnabled);
+    }
+
+    public void setValuePickerEnabled(Boolean valuePickerEnabled) {
+        this.valuePickerEnabled = Boolean.TRUE.equals(valuePickerEnabled);
+    }
+
     public CompareAs getCompareAs() {
         return CompareAs.orAuto(compareAs);
     }

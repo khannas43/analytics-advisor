@@ -47,6 +47,13 @@ public record AdminConfigBundle(
             String businessName,
             boolean fuzzyMatchable,
             boolean visible,
-            CompareAs compareAs) {
+            CompareAs compareAs,
+            Boolean valuePickerEnabled) {
+        /** Bundles written before the value-picker flag existed: absent means "leave what is stored". */
+        public AnalysisColumnMetadataEntry(
+                String catalog, String schema, String table, String column, String businessName,
+                boolean fuzzyMatchable, boolean visible, CompareAs compareAs) {
+            this(catalog, schema, table, column, businessName, fuzzyMatchable, visible, compareAs, null);
+        }
     }
 }

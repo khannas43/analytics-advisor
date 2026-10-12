@@ -1,0 +1,14 @@
+databaseChangeLog:
+  - changeSet:
+      id: 014-column-metadata-value-picker
+      author: analytics-advisor
+      changes:
+        - addColumn:
+            tableName: analysis_column_metadata
+            columns:
+              - column:
+                  name: value_picker_enabled
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false

@@ -153,7 +153,8 @@ export function BasicRuleListEditor({
               {needsValue ? (
                 <div className="field basic-rule-value-field">
                   <label htmlFor={valueId}>{t("lblValue")}</label>
-                  {qualifiedTable && row.column && (row.operator === "EQ" || row.operator === "NE") ? (
+                  {qualifiedTable && row.column && (row.operator === "EQ" || row.operator === "NE")
+                    && columns.find((c) => c.name === row.column)?.valuePickerEnabled ? (
                     <RuleColumnValuePicker
                       table={qualifiedTable}
                       column={row.column}
@@ -169,6 +170,7 @@ export function BasicRuleListEditor({
                     aria-label={fillCatalog(t("ariaBasicRuleValue"), { side: sideLabel, n })}
                     placeholder={
                       qualifiedTable && row.column && (row.operator === "EQ" || row.operator === "NE")
+                        && columns.find((c) => c.name === row.column)?.valuePickerEnabled
                         ? "Or type a value"
                         : undefined
                     }

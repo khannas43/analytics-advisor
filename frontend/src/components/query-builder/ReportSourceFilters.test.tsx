@@ -64,8 +64,8 @@ vi.mock("@/components/ValueFilterPicker", () => ({
 const table: TableRef = { catalog: "iceberg", schema: "srse", table: "beneficiary" };
 
 const columns: RegisteredColumn[] = [
-  { name: "district", dataType: "varchar", businessName: "District", fuzzyMatchable: false },
-  { name: "full_name", dataType: "varchar", businessName: null, fuzzyMatchable: true },
+  { name: "district", dataType: "varchar", businessName: "District", fuzzyMatchable: false, valuePickerEnabled: true },
+  { name: "full_name", dataType: "varchar", businessName: null, fuzzyMatchable: true, valuePickerEnabled: true },
 ];
 
 const districtSpec: PredicateSpecWire = {
@@ -89,15 +89,17 @@ const appliedSpec: PredicateSpecWire = {
 function Harness({
   initial = EMPTY_REPORT_CONFIG,
   onPatch,
+  columnList = columns,
 }: {
   initial?: ReportConfig;
   onPatch: (patch: Partial<ReportConfig>) => void;
+  columnList?: RegisteredColumn[];
 }) {
   const [report, setReport] = useState(initial);
   return (
     <ReportSourceFilters
       table={table}
-      columns={columns}
+      columns={columnList}
       report={report}
       onPatch={(patch) => {
         onPatch(patch);
@@ -149,13 +151,13 @@ describe("ReportSourceFilters", () => {
     host = null;
   });
 
-  function render(initial?: ReportConfig) {
+  function render(initial?: ReportConfig, columnList?: RegisteredColumn[]) {
     const onPatch = vi.fn();
     host = document.createElement("div");
     document.body.appendChild(host);
     root = createRoot(host);
     act(() => {
-      root?.render(<Harness initial={initial} onPatch={onPatch} />);
+      root?.render(<Harness initial={initial} onPatch={onPatch} columnList={columnList} />);
     });
     return onPatch;
   }
@@ -230,6 +232,17 @@ describe("ReportSourceFilters", () => {
     if (!(nextPicker instanceof HTMLButtonElement)) throw new Error("Missing value filter picker");
     expect(nextPicker.dataset.column).toBe("full_name");
     expect(nextPicker.dataset.spec).toBe("empty");
+  });
+
+  it("shows a note instead of a value list for a column an admin has not enabled", () => {
+    const noList = columns.map((column) => ({ ...column, valuePickerEnabled: false }));
+    render(
+      { ...EMPTY_REPORT_CONFIG, sourceValueFilterEnabled: true, sourceValueFilterColumn: "district" },
+      noList,
+    );
+    const valueGroup = group(host!, "Filter (Optional)");
+    expect(valueGroup.querySelector("[data-testid='value-filter-picker']")).toBeNull();
+    expect(valueGroup.querySelector("[role='note']")?.textContent).toBe("msgValuePickerOff");
   });
 
   it("enables the fuzzy filter and patches each fuzzy field", () => {

@@ -26,8 +26,8 @@ vi.mock("@/components/shell/ShellProviders", () => ({
 }));
 
 const columns: RegisteredColumn[] = [
-  { name: "age", dataType: "integer", businessName: "Age", fuzzyMatchable: false },
-  { name: "name", dataType: "varchar", businessName: null, fuzzyMatchable: false },
+  { name: "age", dataType: "integer", businessName: "Age", fuzzyMatchable: false, valuePickerEnabled: false },
+  { name: "name", dataType: "varchar", businessName: null, fuzzyMatchable: false, valuePickerEnabled: false },
 ];
 
 function Harness() {

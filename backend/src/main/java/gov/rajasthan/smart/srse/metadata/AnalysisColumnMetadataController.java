@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Admin API for the Analysis tab's per-column overrides — business name,
@@ -52,15 +53,19 @@ public class AnalysisColumnMetadataController {
         registry.validateRegistered(req.catalog(), req.schema(), req.table());
         browse.validateColumn(req.catalog(), req.schema(), req.table(), req.column());
 
-        Long existingId = repository
+        Optional<AnalysisColumnMetadata> existing = repository
                 .findByCatalogNameAndSchemaNameAndTableNameAndColumnName(
-                        req.catalog(), req.schema(), req.table(), req.column())
-                .map(AnalysisColumnMetadata::getId)
-                .orElse(null);
+                        req.catalog(), req.schema(), req.table(), req.column());
+        Long existingId = existing.map(AnalysisColumnMetadata::getId).orElse(null);
         AnalysisColumnMetadata entity = new AnalysisColumnMetadata(
                 existingId, new QualifiedColumn(req.catalog(), req.schema(), req.table(), req.column()),
                 req.businessName(), req.fuzzyMatchable(), req.visible());
         entity.setCompareAs(req.compareAs());
+        // This PUT rebuilds the whole row, so an absent flag must keep what is stored — otherwise
+        // any client that predates the field would silently switch a picker off on every save.
+        entity.setValuePickerEnabled(req.valuePickerEnabled() != null
+                ? req.valuePickerEnabled()
+                : existing.map(AnalysisColumnMetadata::isValuePickerEnabled).orElse(false));
         return ColumnMetadataResponse.from(repository.save(entity));
     }
 
@@ -84,7 +89,13 @@ public class AnalysisColumnMetadataController {
 
     public record UpsertColumnMetadataRequest(String catalog, String schema, String table, String column,
                                               String businessName, boolean fuzzyMatchable, Boolean visible,
-                                              CompareAs compareAs) {
+                                              CompareAs compareAs, Boolean valuePickerEnabled) {
+        public UpsertColumnMetadataRequest(String catalog, String schema, String table, String column,
+                                           String businessName, boolean fuzzyMatchable, Boolean visible,
+                                           CompareAs compareAs) {
+            this(catalog, schema, table, column, businessName, fuzzyMatchable, visible, compareAs, null);
+        }
+
         /**
          * Null {@code visible} reads as visible and null {@code compareAs} as
          * AUTO — see {@link AnalysisColumnMetadata}. Normalised here so a
@@ -98,12 +109,13 @@ public class AnalysisColumnMetadataController {
 
     public record ColumnMetadataResponse(String catalog, String schema, String table, String column,
                                          String businessName, boolean fuzzyMatchable, boolean visible,
-                                         CompareAs compareAs) {
+                                         CompareAs compareAs, boolean valuePickerEnabled) {
         static ColumnMetadataResponse from(AnalysisColumnMetadata entity) {
             return new ColumnMetadataResponse(
                     entity.getCatalogName(), entity.getSchemaName(), entity.getTableName(),
                     entity.getColumnName(), entity.getBusinessName(),
-                    entity.isFuzzyMatchable(), entity.isVisible(), entity.getCompareAs());
+                    entity.isFuzzyMatchable(), entity.isVisible(), entity.getCompareAs(),
+                    entity.isValuePickerEnabled());
         }
     }
 }

@@ -555,7 +555,8 @@ public class LakehouseRegistryService {
                             c.name(), c.dataType(),
                             meta != null ? meta.getBusinessName() : null,
                             meta != null && meta.isFuzzyMatchable(),
-                            meta == null || meta.isVisible());
+                            meta == null || meta.isVisible(),
+                            meta != null && meta.isValuePickerEnabled());
                 })
                 .filter(RegisteredColumn::visible)
                 .toList();
@@ -671,7 +672,32 @@ public class LakehouseRegistryService {
      *                on it; always {@code true} in what that method returns.
      */
     public record RegisteredColumn(String name, String dataType, String businessName,
-                                   boolean fuzzyMatchable, boolean visible) {
+                                   boolean fuzzyMatchable, boolean visible, boolean valuePickerEnabled) {
+        /** Picker off — what every column is until an admin enables it. */
+        public RegisteredColumn(String name, String dataType, String businessName,
+                                boolean fuzzyMatchable, boolean visible) {
+            this(name, dataType, businessName, fuzzyMatchable, visible, false);
+        }
+    }
+
+    /**
+     * The server-side gate behind the value pickers (Aa1 / 0.11): a distinct-values query runs only for
+     * a column an admin has switched the picker on for. Enforced here, not just in the UI, because the
+     * endpoint is callable directly. Call after {@link #validateColumn}, so an unregistered or hidden
+     * column is reported as such first.
+     */
+    public void requireValuePickerEnabled(QualifiedColumn column) {
+        boolean enabled = columnMetadata
+                .findByCatalogNameAndSchemaNameAndTableNameAndColumnName(
+                        column.table().catalog(), column.table().schema(),
+                        column.table().table(), column.column())
+                .map(AnalysisColumnMetadata::isValuePickerEnabled)
+                .orElse(false);
+        if (!enabled) {
+            throw new IllegalArgumentException(
+                    "A value list is not available for column " + column.column()
+                            + ". Type the value instead, or ask an admin to enable the value picker for this column.");
+        }
     }
 
     List<RegisteredTable> officerVisible(List<RegisteredTable> rows) {
