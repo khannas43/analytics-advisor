@@ -502,6 +502,8 @@ before 7.3.2 is built.
 | 7.3.9 | (Aa1 / 0.12) Record **query duration** — `QUERY_FINISHED` + `duration_ms`; column-values on the same row | **Y** | 1 |
 | 7.3.10 | (Aa1 / 0.12) Super Admin **active queries** panel — in-memory registry; table names only | **Y** | 3 |
 
+**Verification note 2026-10-12 (7.3.9/7.3.10):** the first version recorded SUCCESS for a query that hit the engine timeout. The NDJSON match stream and the multi-target stream report engine failures in-band (an `error` line) and then return normally, so a monitor that only watches for exceptions never saw them. Fixed with a `QueryOutcomeProbe` on the ticket that those streams signal; `StreamFailureOutcomeTest` pins it. Known limits: a stream's duration includes the time spent writing to the client; a multi-target run with any failed target is recorded as FAILURE; the registry is per backend instance.
+
 **Known limits (7.3.9–10):** Registry and dashboard are **this JVM only** (0.12). Audit CSV/viewer unchanged (duration not added to UI). `QUERY_PREVIEWED` / planning-only paths do not emit `QUERY_FINISHED`. Excel row-count runs before the export stream and appears as separate `ESTIMATE` registry entries when fan-out/count helpers run during planning.
 
 ---

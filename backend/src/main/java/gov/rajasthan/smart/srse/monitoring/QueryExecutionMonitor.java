@@ -60,7 +60,12 @@ public class QueryExecutionMonitor {
             long start = System.nanoTime();
             try {
                 inner.writeTo(outputStream);
-                complete(ticket, registered, start, AuditOutcome.SUCCESS, ActiveQueryState.SUCCESS);
+                if (ticket != null && ticket.probe().hasFailed()) {
+                    // reported in-band by the stream (e.g. the engine timeout): not a success
+                    complete(ticket, registered, start, AuditOutcome.FAILURE, ActiveQueryState.FAILURE);
+                } else {
+                    complete(ticket, registered, start, AuditOutcome.SUCCESS, ActiveQueryState.SUCCESS);
+                }
             } catch (IOException ex) {
                 complete(ticket, registered, start, AuditOutcome.CANCELLED, ActiveQueryState.CANCELLED);
                 throw ex;

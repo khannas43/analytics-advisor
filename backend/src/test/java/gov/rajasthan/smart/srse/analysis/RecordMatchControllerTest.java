@@ -96,7 +96,7 @@ class RecordMatchControllerTest {
         };
         RecordMatchService.MatchQuery query = stubQuery();
         when(analysisAuditService.planMatchAudited(any())).thenReturn(audited(query));
-        when(matchService.match(query)).thenReturn(body);
+        when(matchService.match(eq(query), any())).thenReturn(body);
 
         MvcResult mvcResult = mockMvc.perform(post("/api/analysis/match")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -197,7 +197,7 @@ class RecordMatchControllerTest {
         };
         RecordMatchService.MatchQuery query = stubQuery();
         when(analysisAuditService.planMatchAudited(any())).thenReturn(audited(query));
-        when(matchService.match(query)).thenReturn(body);
+        when(matchService.match(eq(query), any())).thenReturn(body);
 
         String bodyJson = """
                 {"sourceCriteria":[{"catalog":"c","schema":"s","table":"beneficiary","column":"district","fuzzyThresholdPercent":null}],
@@ -234,7 +234,7 @@ class RecordMatchControllerTest {
         };
         when(analysisAuditService.planMultiMatchAudited(any())).thenReturn(new AuditedMultiMatch(
                 new QueryExecutionTicket("multi-id", ActiveQueryKind.MULTI_MATCH, "c.s.t", 1L, "tester", "BYPASS", true)));
-        when(multiMatchService.matchMulti(any())).thenReturn(body);
+        when(multiMatchService.matchMulti(any(), any())).thenReturn(body);
 
         String bodyJson = """
                 {"hubCriteria":[{"catalog":"c","schema":"s","table":"golden","column":"id","fuzzyThresholdPercent":null}],

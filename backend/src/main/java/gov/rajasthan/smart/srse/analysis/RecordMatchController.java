@@ -61,7 +61,8 @@ public class RecordMatchController {
     @PostMapping(value = "/match", produces = "application/x-ndjson")
     public StreamingResponseBody match(@RequestBody RecordMatchRequest req) {
         AuditedMatchQuery audited = analysisAuditService.planMatchAudited(req);
-        return queryMonitor.trackStream(audited.ticket(), matchService.match(audited.query()));
+        return queryMonitor.trackStream(
+                audited.ticket(), matchService.match(audited.query(), audited.ticket().probe()::failed));
     }
 
     /**
@@ -181,7 +182,8 @@ public class RecordMatchController {
     @PostMapping(value = "/match-multi", produces = "application/x-ndjson")
     public StreamingResponseBody matchMulti(@RequestBody MultiTargetRecordMatchRequest req) {
         AuditedMultiMatch audited = analysisAuditService.planMultiMatchAudited(req);
-        return queryMonitor.trackStream(audited.ticket(), multiMatchService.matchMulti(req));
+        return queryMonitor.trackStream(
+                audited.ticket(), multiMatchService.matchMulti(req, audited.ticket().probe()::failed));
     }
 
     /**

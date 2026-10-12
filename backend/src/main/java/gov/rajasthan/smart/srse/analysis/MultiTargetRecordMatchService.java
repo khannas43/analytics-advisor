@@ -78,6 +78,12 @@ public class MultiTargetRecordMatchService {
     }
 
     public StreamingResponseBody matchMulti(MultiTargetRecordMatchRequest req) {
+        return matchMulti(req, failure -> { });
+    }
+
+    /** @param onTargetFailure told for each target that fails (reported in-band; the stream still completes). */
+    public StreamingResponseBody matchMulti(
+            MultiTargetRecordMatchRequest req, java.util.function.Consumer<Throwable> onTargetFailure) {
         QualifiedTable hubTable = validateBeforeStream(req);
         MergedLayout layout = MergedLayout.build(req, recordMatchService::isComparisonGroupFuzzy);
         return outputStream -> {
@@ -139,6 +145,7 @@ public class MultiTargetRecordMatchService {
                             "phase", "done",
                             "rows", targetRows));
                 } catch (Exception e) {
+                    onTargetFailure.accept(e);
                     String message = e.getMessage() != null ? e.getMessage() : e.toString();
                     perTargetSummary.add(Map.of(
                             "label", target.label(),

@@ -213,11 +213,21 @@ public class RecordMatchService {
     }
 
     public StreamingResponseBody match(RecordMatchRequest req) {
-        return streamResults(planMatch(req));
+        return streamResults(planMatch(req), failure -> { });
     }
 
     public StreamingResponseBody match(RecordMatchService.MatchQuery query) {
-        return streamResults(query);
+        return streamResults(query, failure -> { });
+    }
+
+    /**
+     * @param onEngineFailure told when the engine fails mid-stream. The failure is also reported to the
+     *     client in-band, and the stream then returns NORMALLY - so a caller that only watches for
+     *     exceptions (the query monitor) needs this to learn the query did not succeed.
+     */
+    public StreamingResponseBody match(
+            RecordMatchService.MatchQuery query, java.util.function.Consumer<Throwable> onEngineFailure) {
+        return streamResults(query, onEngineFailure);
     }
 
     /**
@@ -1245,7 +1255,8 @@ public class RecordMatchService {
                 + "FROM (" + baseSql + ") base) ranked WHERE rn = 1";
     }
 
-    private StreamingResponseBody streamResults(MatchQuery query) {
+    private StreamingResponseBody streamResults(
+            MatchQuery query, java.util.function.Consumer<Throwable> onEngineFailure) {
         String displaySql = renderForDisplay(query.routedSql(), query.params());
         return outputStream -> {
             writeLine(outputStream, Map.of("type", "meta", "columns", query.columns(), "sql", displaySql));
@@ -1267,6 +1278,7 @@ public class RecordMatchService {
             } catch (UncheckedIOException e) {
                 throw e.getCause();
             } catch (Exception e) {
+                onEngineFailure.accept(e);
                 String message = e.getMessage() != null ? e.getMessage() : e.toString();
                 writeLine(outputStream, Map.of("type", "error", "message", message));
             }
