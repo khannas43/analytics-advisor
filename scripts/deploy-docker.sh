@@ -20,6 +20,7 @@ Optional environment variables:
   SRSE_BOOTSTRAP_SUPER_ADMIN_PASSWORD  First-start admin password (generated when absent)
   SRSE_OPERATIONAL_PASSWORD            PostgreSQL application password (generated when absent)
   SRSE_EXTERNAL_SOURCE_SECRET_KEY      Encrypts external DB passwords (generated when absent)
+  SRSE_SESSION_SIGNING_KEY             Signs session tokens (generated when absent)
   NEXT_PUBLIC_API_BASE                 Browser-visible backend URL (default: http://localhost:8080)
   SRSE_FRONTEND_ORIGINS                Allowed frontend origin (default: http://localhost:3000)
 
@@ -125,6 +126,11 @@ if [[ -z "${external_source_key}" ]]; then
   external_source_key="$(generate_encryption_key)"
 fi
 
+session_signing_key="${SRSE_SESSION_SIGNING_KEY:-$(read_env_value SRSE_SESSION_SIGNING_KEY)}"
+if [[ -z "${session_signing_key}" ]]; then
+  session_signing_key="$(openssl rand -base64 48 | tr -d '\n')"
+fi
+
 api_base="${NEXT_PUBLIC_API_BASE:-$(read_env_value NEXT_PUBLIC_API_BASE)}"
 api_base="${api_base:-http://localhost:8080}"
 frontend_origin="${SRSE_FRONTEND_ORIGINS:-$(read_env_value SRSE_FRONTEND_ORIGINS)}"
@@ -139,6 +145,7 @@ upsert_env_value SRSE_BOOTSTRAP_SUPER_ADMIN_USERNAME "${admin_username}"
 upsert_env_value SRSE_BOOTSTRAP_SUPER_ADMIN_PASSWORD "${admin_password}"
 upsert_env_value SRSE_OPERATIONAL_PASSWORD "${operational_password}"
 upsert_env_value SRSE_EXTERNAL_SOURCE_SECRET_KEY "${external_source_key}"
+upsert_env_value SRSE_SESSION_SIGNING_KEY "${session_signing_key}"
 chmod 600 "${ENV_FILE}"
 
 echo "Building Analytics Advisor and installing its Docker services..."

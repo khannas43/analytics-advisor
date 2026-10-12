@@ -59,6 +59,8 @@ srse:
     absolute-lifetime: ${SRSE_SESSION_ABSOLUTE_LIFETIME:8h}
     idle-timeout: ${SRSE_SESSION_IDLE_TIMEOUT:30m}
     activity-write-interval: ${SRSE_SESSION_ACTIVITY_WRITE_INTERVAL:1m}
+    # Base64, >= 32 bytes. Required when auth-mode=local; blank = random per boot (mock only).
+    signing-key: ${SRSE_SESSION_SIGNING_KEY:}
   identity:
     lockout:
       max-failed-attempts: ${SRSE_IDENTITY_LOCKOUT_MAX_ATTEMPTS:5}

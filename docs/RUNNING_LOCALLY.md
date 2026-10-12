@@ -69,6 +69,10 @@ cd ../frontend
 NEXT_PUBLIC_AUTH_MODE=local NEXT_PUBLIC_API_BASE=http://localhost:8080 npm run dev
 ```
 
+`SRSE_AUTH_MODE=local` also needs `SRSE_SESSION_SIGNING_KEY` (the backend refuses to start
+without it). `scripts/deploy-docker.sh` generates one into `.env`; by hand:
+`echo "SRSE_SESSION_SIGNING_KEY=$(openssl rand -base64 48 | tr -d '\n')" >> .env`.
+
 If the frontend dev server uses a port other than 3000, add that origin on the backend
 (CORS is deny-by-default):
 
