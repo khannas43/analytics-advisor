@@ -58,6 +58,7 @@ public class ExternalDataSourceService {
     public List<SourceTypeView> supportedTypes() {
         requireSuperAdmin();
         return Arrays.stream(ExternalDataSourceType.values())
+                .filter(ExternalDataSourceType::supported)
                 .map(type -> new SourceTypeView(type.name(), type.label(), type.defaultPort()))
                 .toList();
     }
@@ -74,7 +75,7 @@ public class ExternalDataSourceService {
         if (repository.findByNameIgnoreCase(name).isPresent()) {
             throw new IllegalArgumentException("A data source with this name already exists");
         }
-        ExternalDataSourceType type = ExternalDataSourceType.parse(request.databaseType());
+        ExternalDataSourceType type = ExternalDataSourceType.parseSupported(request.databaseType());
         String jdbcUrl = ExternalDataSourceType.resolveJdbcUrl(
                 type, request.host(), request.port(), request.database(), request.ssl());
         String username = required("Username", request.username());

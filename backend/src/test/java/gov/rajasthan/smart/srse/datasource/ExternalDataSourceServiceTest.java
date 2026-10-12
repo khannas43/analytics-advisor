@@ -11,6 +11,8 @@ import gov.rajasthan.smart.srse.lakehouse.RegisteredTableRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -135,6 +137,25 @@ class ExternalDataSourceServiceTest {
         assertEquals(1L, views.get(0).registrationCount());
         assertFalse(views.get(0).toString().contains(SECRET));
         assertFalse(views.get(0).toString().contains("ciphertext-value"));
+    }
+
+    @Test
+    void onlyPostgresqlAndDb2AreOffered() {
+        var offered = service.supportedTypes().stream().map(t -> t.code()).toList();
+        assertEquals(java.util.List.of("POSTGRESQL", "DB2"), offered);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"MYSQL", "mariadb", "SQLSERVER", "Oracle"})
+    void dormantTypesAreRefusedByTheApiNotJustHiddenInTheDropdown(String type) throws Exception {
+        var request = new ExternalDataSourceDtos.CreateRequest(
+                "Legacy", type, "db.internal", null, "app", "reader", SECRET, false, null);
+
+        var failure = assertThrows(IllegalArgumentException.class, () -> service.create(request));
+
+        assertTrue(failure.getMessage().contains("not supported"), failure.getMessage());
+        verify(repository, never()).save(any());
+        verify(jdbcAccess, never()).open(any(), any());
     }
 
     private static ExternalDataSource source() {

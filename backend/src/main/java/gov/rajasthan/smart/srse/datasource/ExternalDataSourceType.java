@@ -3,14 +3,21 @@ package gov.rajasthan.smart.srse.datasource;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-/** JDBC source types bundled with this release. Add drivers here, never from browser uploads. */
+/**
+ * JDBC source types bundled with this release. Add drivers here, never from browser uploads.
+ *
+ * <p>Only {@link #supported()} types may be connected (PRODUCT_PLAN decision 0.13:
+ * PostgreSQL, DB2 and the Lakehouse). The other four are dormant — kept so their
+ * URL builders and SQL adaptation are not lost, but neither offered in Admin nor
+ * accepted by the API, and not covered by any verification.
+ */
 public enum ExternalDataSourceType {
-    POSTGRESQL("PostgreSQL", 5432, "org.postgresql.Driver"),
-    DB2("IBM DB2", 50000, "com.ibm.db2.jcc.DB2Driver"),
-    MYSQL("MySQL", 3306, "com.mysql.cj.jdbc.Driver"),
-    MARIADB("MariaDB", 3306, "org.mariadb.jdbc.Driver"),
-    SQLSERVER("Microsoft SQL Server", 1433, "com.microsoft.sqlserver.jdbc.SQLServerDriver"),
-    ORACLE("Oracle", 1521, "oracle.jdbc.OracleDriver");
+    POSTGRESQL("PostgreSQL", 5432, "org.postgresql.Driver", true),
+    DB2("IBM DB2", 50000, "com.ibm.db2.jcc.DB2Driver", true),
+    MYSQL("MySQL", 3306, "com.mysql.cj.jdbc.Driver", false),
+    MARIADB("MariaDB", 3306, "org.mariadb.jdbc.Driver", false),
+    SQLSERVER("Microsoft SQL Server", 1433, "com.microsoft.sqlserver.jdbc.SQLServerDriver", false),
+    ORACLE("Oracle", 1521, "oracle.jdbc.OracleDriver", false);
 
     private static final Pattern SAFE_HOST = Pattern.compile("^[A-Za-z0-9._:-]+$");
     private static final Pattern SAFE_DATABASE = Pattern.compile("^[A-Za-z0-9._-]+$");
@@ -18,11 +25,18 @@ public enum ExternalDataSourceType {
     private final String label;
     private final int defaultPort;
     private final String driverClassName;
+    private final boolean supported;
 
-    ExternalDataSourceType(String label, int defaultPort, String driverClassName) {
+    ExternalDataSourceType(String label, int defaultPort, String driverClassName, boolean supported) {
         this.label = label;
         this.defaultPort = defaultPort;
         this.driverClassName = driverClassName;
+        this.supported = supported;
+    }
+
+    /** False for dormant types (decision 0.13): not offered, and refused on create. */
+    public boolean supported() {
+        return supported;
     }
 
     public String label() {
@@ -99,6 +113,16 @@ public enum ExternalDataSourceType {
         } catch (IllegalArgumentException ex) {
             throw new IllegalArgumentException("Unsupported database type: " + value);
         }
+    }
+
+    /** {@link #parse} plus the 0.13 gate — the one entry point for a new connection. */
+    public static ExternalDataSourceType parseSupported(String value) {
+        ExternalDataSourceType type = parse(value);
+        if (!type.supported()) {
+            throw new IllegalArgumentException(
+                    type.label() + " connections are not supported in this release. Supported: PostgreSQL, IBM DB2.");
+        }
+        return type;
     }
 
     private static String required(String label, String value) {
