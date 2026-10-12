@@ -6,10 +6,14 @@ import gov.rajasthan.smart.srse.audit.AuditEventDraft;
 import gov.rajasthan.smart.srse.audit.AuditOutcome;
 import gov.rajasthan.smart.srse.audit.AuditScopeSummaryService;
 import gov.rajasthan.smart.srse.audit.QueryShapeAudit;
-import gov.rajasthan.smart.srse.analysis.TargetMatchSpec;
+import gov.rajasthan.smart.srse.monitoring.ActiveQueryKind;
+import gov.rajasthan.smart.srse.monitoring.QueryExecutionTicket;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.util.StringJoiner;
+import java.util.UUID;
 
 /**
  * Analysis audit choke point (§7.3 / AA-11). Records {@code query.sql()} with
@@ -34,29 +38,23 @@ public class AnalysisAuditService {
         this.scopeSummary = scopeSummary;
     }
 
-    public RecordMatchService.MatchQuery planMatchAudited(RecordMatchRequest req) {
-        return plan(req, AuditActionType.QUERY_EXECUTED);
+    public AuditedMatchQuery planMatchAudited(RecordMatchRequest req) {
+        return planAudited(req, AuditActionType.QUERY_EXECUTED, ActiveQueryKind.MATCH);
     }
 
     public RecordMatchService.MatchQuery planPreviewAudited(RecordMatchRequest req) {
-        return plan(req, AuditActionType.QUERY_PREVIEWED);
-    }
-
-    public ColumnDistinctValuesService.ColumnValuesResponse columnValuesAudited(
-            ColumnDistinctValuesService.ColumnValuesRequest req) {
-        ColumnDistinctValuesService.PlannedColumnValues planned = columnValuesService.plan(req);
         try {
-            ColumnDistinctValuesService.ColumnValuesResponse response = columnValuesService.execute(planned);
+            RecordMatchService.MatchQuery query = matchService.planMatch(req);
             auditCapture.recordBestEffort(new AuditEventDraft(
-                    AuditActionType.QUERY_EXECUTED,
+                    AuditActionType.QUERY_PREVIEWED,
                     AuditOutcome.SUCCESS,
                     scopeSummary.currentActorUserId(),
                     null,
-                    "column distinct values",
-                    req.catalog() + "." + req.schema() + "." + req.table(),
-                    QueryShapeAudit.queryShapeFromSql(planned.sql()),
+                    null,
+                    QueryShapeAudit.targetTablesFrom(req),
+                    QueryShapeAudit.queryShapeFromSql(query.sql()),
                     scopeSummary.summarizeCurrentOfficer()));
-            return response;
+            return query;
         } catch (RuntimeException ex) {
             auditCapture.recordBestEffort(new AuditEventDraft(
                     AuditActionType.QUERY_REFUSED,
@@ -64,20 +62,86 @@ public class AnalysisAuditService {
                     scopeSummary.currentActorUserId(),
                     null,
                     truncate(ex.getMessage(), 512),
-                    req.catalog() + "." + req.schema() + "." + req.table(),
-                    QueryShapeAudit.queryShapeFromSql(planned.sql()),
+                    QueryShapeAudit.targetTablesFrom(req),
+                    null,
                     scopeSummary.summarizeCurrentOfficer()));
             throw ex;
         }
     }
 
+    public AuditedMultiMatch planMultiMatchAudited(MultiTargetRecordMatchRequest req) {
+        QueryExecutionTicket ticket = newTicket(ActiveQueryKind.MULTI_MATCH, QueryShapeAudit.targetTablesFrom(req));
+        try {
+            StringJoiner shapes = new StringJoiner("\n---\n");
+            if (req.targets() != null) {
+                for (TargetMatchSpec target : req.targets()) {
+                    RecordMatchService.MatchQuery query =
+                            matchService.planMatch(MultiTargetRecordMatchService.toSingleMatch(req, target));
+                    shapes.add(query.sql());
+                }
+            }
+            auditCapture.recordBestEffort(new AuditEventDraft(
+                    AuditActionType.QUERY_EXECUTED,
+                    AuditOutcome.SUCCESS,
+                    ticket.actorUserId(),
+                    null,
+                    withQueryId("multi-target match", ticket.queryId()),
+                    ticket.qualifiedTables(),
+                    QueryShapeAudit.queryShapeFromSql(shapes.toString()),
+                    ticket.scopeSummary()));
+            return new AuditedMultiMatch(ticket);
+        } catch (RuntimeException ex) {
+            auditCapture.recordBestEffort(new AuditEventDraft(
+                    AuditActionType.QUERY_REFUSED,
+                    AuditOutcome.REFUSED,
+                    ticket.actorUserId(),
+                    null,
+                    truncate(ex.getMessage(), 512),
+                    ticket.qualifiedTables(),
+                    null,
+                    ticket.scopeSummary()));
+            throw ex;
+        }
+    }
+
+    public ColumnDistinctValuesService.ColumnValuesResponse columnValuesAudited(
+            ColumnDistinctValuesService.ColumnValuesRequest req) {
+        ColumnDistinctValuesService.PlannedColumnValues planned = columnValuesService.plan(req);
+        String tables = req.catalog() + "." + req.schema() + "." + req.table();
+        QueryExecutionTicket ticket = newTicket(ActiveQueryKind.COLUMN_VALUES, tables);
+        long start = System.nanoTime();
+        try {
+            ColumnDistinctValuesService.ColumnValuesResponse response = columnValuesService.execute(planned);
+            long durationMs = (System.nanoTime() - start) / 1_000_000L;
+            auditCapture.recordBestEffort(new AuditEventDraft(
+                    AuditActionType.QUERY_EXECUTED,
+                    AuditOutcome.SUCCESS,
+                    ticket.actorUserId(),
+                    null,
+                    withQueryId("column distinct values", ticket.queryId()),
+                    tables,
+                    QueryShapeAudit.queryShapeFromSql(planned.sql()),
+                    ticket.scopeSummary(),
+                    durationMs));
+            return response;
+        } catch (RuntimeException ex) {
+            long durationMs = (System.nanoTime() - start) / 1_000_000L;
+            auditCapture.recordBestEffort(new AuditEventDraft(
+                    AuditActionType.QUERY_REFUSED,
+                    AuditOutcome.REFUSED,
+                    ticket.actorUserId(),
+                    null,
+                    truncate(ex.getMessage(), 512),
+                    tables,
+                    QueryShapeAudit.queryShapeFromSql(planned.sql()),
+                    ticket.scopeSummary(),
+                    durationMs));
+            throw ex;
+        }
+    }
+
     public void recordExport(RecordMatchRequest req, RecordMatchService.MatchQuery query, String formatLabel) {
-        auditCapture.recordExportRequired(buildDraft(
-                AuditActionType.EXPORT,
-                AuditOutcome.SUCCESS,
-                req,
-                query,
-                formatLabel + " export"));
+        auditCapture.recordExportRequired(exportDraft(req, query, formatLabel + " export"));
     }
 
     public void recordExport(RecordMatchRequest req, RecordMatchService.MatchQuery query) {
@@ -96,53 +160,73 @@ public class AnalysisAuditService {
                 scopeSummary.summarizeCurrentOfficer()));
     }
 
-    public void planMultiMatchAudited(MultiTargetRecordMatchRequest req) {
-        try {
-            StringJoiner shapes = new StringJoiner("\n---\n");
-            if (req.targets() != null) {
-                for (TargetMatchSpec target : req.targets()) {
-                    RecordMatchService.MatchQuery query =
-                            matchService.planMatch(MultiTargetRecordMatchService.toSingleMatch(req, target));
-                    shapes.add(query.sql());
-                }
-            }
-            auditCapture.recordBestEffort(new AuditEventDraft(
-                    AuditActionType.QUERY_EXECUTED,
-                    AuditOutcome.SUCCESS,
-                    scopeSummary.currentActorUserId(),
-                    null,
-                    "multi-target match",
-                    QueryShapeAudit.targetTablesFrom(req),
-                    QueryShapeAudit.queryShapeFromSql(shapes.toString()),
-                    scopeSummary.summarizeCurrentOfficer()));
-        } catch (RuntimeException ex) {
-            auditCapture.recordBestEffort(new AuditEventDraft(
-                    AuditActionType.QUERY_REFUSED,
-                    AuditOutcome.REFUSED,
-                    scopeSummary.currentActorUserId(),
-                    null,
-                    truncate(ex.getMessage(), 512),
-                    QueryShapeAudit.targetTablesFrom(req),
-                    null,
-                    scopeSummary.summarizeCurrentOfficer()));
-            throw ex;
-        }
+    public void recordQueryFinished(QueryExecutionTicket ticket, AuditOutcome outcome, long durationMs) {
+        auditCapture.recordBestEffort(new AuditEventDraft(
+                AuditActionType.QUERY_FINISHED,
+                outcome,
+                ticket.actorUserId(),
+                null,
+                "queryId=" + ticket.queryId(),
+                ticket.qualifiedTables(),
+                null,
+                ticket.scopeSummary(),
+                durationMs));
     }
 
-    private RecordMatchService.MatchQuery plan(RecordMatchRequest req, AuditActionType action) {
+    public QueryExecutionTicket newStandaloneTicket(ActiveQueryKind kind, String qualifiedTables, String username) {
+        return new QueryExecutionTicket(
+                UUID.randomUUID().toString(),
+                kind,
+                qualifiedTables,
+                scopeSummary.currentActorUserId(),
+                username == null || username.isBlank() ? "system" : username,
+                scopeSummary.summarizeCurrentOfficer(),
+                false);
+    }
+
+    private AuditedMatchQuery planAudited(
+            RecordMatchRequest req, AuditActionType action, ActiveQueryKind kind) {
+        QueryExecutionTicket ticket = newTicket(kind, QueryShapeAudit.targetTablesFrom(req));
         try {
             RecordMatchService.MatchQuery query = matchService.planMatch(req);
-            auditCapture.recordBestEffort(buildDraft(action, AuditOutcome.SUCCESS, req, query, null));
-            return query;
+            auditCapture.recordBestEffort(buildDraft(action, AuditOutcome.SUCCESS, req, query, null, ticket));
+            return new AuditedMatchQuery(query, ticket);
         } catch (RuntimeException ex) {
             auditCapture.recordBestEffort(buildDraft(
                     AuditActionType.QUERY_REFUSED,
                     AuditOutcome.REFUSED,
                     req,
                     null,
-                    truncate(ex.getMessage(), 512)));
+                    truncate(ex.getMessage(), 512),
+                    ticket));
             throw ex;
         }
+    }
+
+    private QueryExecutionTicket newTicket(ActiveQueryKind kind, String qualifiedTables) {
+        return new QueryExecutionTicket(
+                UUID.randomUUID().toString(),
+                kind,
+                qualifiedTables,
+                scopeSummary.currentActorUserId(),
+                currentUsername(),
+                scopeSummary.summarizeCurrentOfficer(),
+                true);
+    }
+
+    private AuditEventDraft exportDraft(
+            RecordMatchRequest req,
+            RecordMatchService.MatchQuery query,
+            String detail) {
+        return new AuditEventDraft(
+                AuditActionType.EXPORT,
+                AuditOutcome.SUCCESS,
+                scopeSummary.currentActorUserId(),
+                null,
+                detail,
+                QueryShapeAudit.targetTablesFrom(req),
+                QueryShapeAudit.queryShapeFromSql(query.sql()),
+                scopeSummary.summarizeCurrentOfficer());
     }
 
     private AuditEventDraft buildDraft(
@@ -150,16 +234,33 @@ public class AnalysisAuditService {
             AuditOutcome outcome,
             RecordMatchRequest req,
             RecordMatchService.MatchQuery query,
-            String detail) {
+            String detail,
+            QueryExecutionTicket ticket) {
         return new AuditEventDraft(
                 action,
                 outcome,
-                scopeSummary.currentActorUserId(),
+                ticket.actorUserId(),
                 null,
-                detail,
-                QueryShapeAudit.targetTablesFrom(req),
+                withQueryId(detail, ticket.queryId()),
+                ticket.qualifiedTables(),
                 query == null ? null : QueryShapeAudit.queryShapeFromSql(query.sql()),
-                scopeSummary.summarizeCurrentOfficer());
+                ticket.scopeSummary());
+    }
+
+    private static String withQueryId(String detail, String queryId) {
+        String suffix = "queryId=" + queryId;
+        if (detail == null || detail.isBlank()) {
+            return suffix;
+        }
+        return detail + "; " + suffix;
+    }
+
+    private static String currentUsername() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || authentication.getName() == null) {
+            return "system";
+        }
+        return authentication.getName();
     }
 
     private static String truncate(String message, int max) {

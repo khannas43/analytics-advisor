@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: 016-audit-query-duration
+      author: analytics-advisor
+      changes:
+        - addColumn:
+            tableName: audit_event
+            columns:
+              - column:
+                  name: duration_ms
+                  type: bigint
+                  constraints:
+                    nullable: true

@@ -52,7 +52,8 @@ class AuditCsvMatchesViewerTest {
                 "127.0.0.1",
                 "t",
                 "SELECT ?",
-                "BYPASS");
+                "BYPASS",
+                null);
         try {
             var idField = AuditEvent.class.getDeclaredField("id");
             idField.setAccessible(true);

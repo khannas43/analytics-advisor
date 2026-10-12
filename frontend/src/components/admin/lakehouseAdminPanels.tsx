@@ -14,7 +14,9 @@ import {
   renameTableGroupLabel,
   downloadMetadataManifest,
   exportAdminConfig,
+  getActiveQueries,
   getMetadataSyncStatus,
+  type ActiveQueryView,
   importAdminConfig,
   startMetadataSync,
   type MetadataSyncRunStatus,
@@ -1339,6 +1341,86 @@ export function LakehouseRegistryPanel({
           </table>
         </div>
       )}
+    </section>
+  );
+}
+
+function ActiveQueryTable({ rows, emptyLabel }: Readonly<{ rows: ActiveQueryView[]; emptyLabel: string }>) {
+  if (rows.length === 0) {
+    return <p className="srse-text-muted">{emptyLabel}</p>;
+  }
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table className="srse-table">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Kind</th>
+            <th>Tables</th>
+            <th>Started</th>
+            <th>Duration</th>
+            <th>State</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.queryId + row.startedAt}>
+              <td>{row.username}</td>
+              <td>{row.kind}</td>
+              <td style={{ fontFamily: "monospace", fontSize: "0.85rem" }}>{row.qualifiedTables}</td>
+              <td>{row.startedAt}</td>
+              <td>{row.durationMs ?? "—"}</td>
+              <td>{row.state}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function ActiveQueriesAdminPanel() {
+  const [running, setRunning] = useState<ActiveQueryView[]>([]);
+  const [recent, setRecent] = useState<ActiveQueryView[]>([]);
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function poll() {
+      try {
+        const data = await getActiveQueries();
+        if (cancelled) return;
+        setRunning(data.running);
+        setRecent(data.recent);
+        setNote(data.instanceNote);
+        setError(null);
+      } catch (err: unknown) {
+        if (!cancelled) setError(errorMessage(err));
+      }
+    }
+    void poll();
+    const id = window.setInterval(() => void poll(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  return (
+    <section className="srse-card" style={{ marginTop: "1.5rem" }}>
+      <h3 className="srse-card-title" style={{ marginTop: 0 }}>
+        Active queries
+      </h3>
+      <p className="srse-text-muted">
+        Analytical work started on this backend instance (refreshes every 5 seconds while this section is open).
+      </p>
+      {note ? <p className="srse-text-muted" style={{ fontSize: "0.85rem" }}>{note}</p> : null}
+      {error ? <p className="srse-text-danger">{error}</p> : null}
+      <h4 style={{ marginBottom: "0.35rem" }}>Running</h4>
+      <ActiveQueryTable rows={running} emptyLabel="No queries running or recently finished on this instance." />
+      <h4 style={{ marginTop: "1rem", marginBottom: "0.35rem" }}>Recent</h4>
+      <ActiveQueryTable rows={recent} emptyLabel="No queries running or recently finished on this instance." />
     </section>
   );
 }

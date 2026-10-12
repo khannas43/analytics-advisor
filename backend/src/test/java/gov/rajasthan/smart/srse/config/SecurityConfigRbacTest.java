@@ -23,6 +23,9 @@ import gov.rajasthan.smart.srse.metadata.sync.MetadataAdminController;
 import gov.rajasthan.smart.srse.metadata.sync.MetadataManifestService;
 import gov.rajasthan.smart.srse.metadata.sync.MetadataSyncService;
 import gov.rajasthan.smart.srse.metadata.sync.MetadataSyncTrigger;
+import gov.rajasthan.smart.srse.monitoring.ActiveQueriesAdminController;
+import gov.rajasthan.smart.srse.monitoring.ActiveQueryRegistry;
+import gov.rajasthan.smart.srse.monitoring.QueryExecutionMonitor;
 import gov.rajasthan.smart.srse.security.Authorities;
 import gov.rajasthan.smart.srse.security.SessionBearerAuthenticationFilter;
 import gov.rajasthan.smart.srse.security.SessionTokenService;
@@ -71,7 +74,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         AnalysisColumnMetadataController.class,
         ConnectionInfoController.class,
         AdminConfigController.class,
-        MetadataAdminController.class
+        MetadataAdminController.class,
+        ActiveQueriesAdminController.class
 })
 @Import({ApiExceptionHandler.class, SecurityConfig.class, MockJwtService.class,
         SessionTokenService.class, SessionBearerAuthenticationFilter.class})
@@ -134,6 +138,9 @@ class SecurityConfigRbacTest {
     @MockBean
     private AuditService auditService;
 
+    @MockBean
+    private QueryExecutionMonitor queryExecutionMonitor;
+
     private String officerToken;
     private String adminToken;
 
@@ -171,6 +178,8 @@ class SecurityConfigRbacTest {
         when(metadataSyncService.startSyncAll(MetadataSyncTrigger.MANUAL))
                 .thenReturn(new MetadataSyncService.SyncStartResult(1L, false));
         when(metadataManifestService.buildManifestJson()).thenReturn("{\"tables\":[]}");
+        when(queryExecutionMonitor.snapshot()).thenReturn(
+                new ActiveQueryRegistry.ActiveQueriesSnapshot(List.of(), List.of()));
     }
 
     @Test
@@ -348,6 +357,30 @@ class SecurityConfigRbacTest {
     void superAdminPermittedOnMetadataAdminManifest() throws Exception {
         doNothing().when(adminAuthorizationService).assertSuperAdminOnly(any(AppUser.class));
         mockMvc.perform(get("/api/admin/metadata/manifest")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void officerForbiddenOnActiveQueriesDashboard() throws Exception {
+        mockMvc.perform(get("/api/admin/queries/active")
+                        .header("Authorization", "Bearer " + officerToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void adminNotSuperForbiddenOnActiveQueriesDashboard() throws Exception {
+        doThrow(new AdminAccessDeniedException("SuperAdmin only"))
+                .when(adminAuthorizationService).assertSuperAdminOnly(any(AppUser.class));
+        mockMvc.perform(get("/api/admin/queries/active")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void superAdminPermittedOnActiveQueriesDashboard() throws Exception {
+        doNothing().when(adminAuthorizationService).assertSuperAdminOnly(any(AppUser.class));
+        mockMvc.perform(get("/api/admin/queries/active")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk());
     }

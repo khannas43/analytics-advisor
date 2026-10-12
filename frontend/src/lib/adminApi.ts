@@ -351,6 +351,32 @@ export async function getMetadataSyncStatus(): Promise<MetadataSyncRunStatus> {
   return res.json();
 }
 
+export type ActiveQueryView = {
+  queryId: string;
+  username: string;
+  kind: string;
+  qualifiedTables: string;
+  state: string;
+  startedAt: string;
+  durationMs: number | null;
+};
+
+export type ActiveQueriesResponse = {
+  instanceNote: string;
+  running: ActiveQueryView[];
+  recent: ActiveQueryView[];
+};
+
+export async function getActiveQueries(): Promise<ActiveQueriesResponse> {
+  const res = await authorizedFetch(`${API_BASE}/api/admin/queries/active`, {
+    credentials: "include",
+  }, "admin");
+  if (!res.ok) {
+    throw new Error(`Active queries failed ${res.status}: ${await res.text()}`);
+  }
+  return res.json();
+}
+
 export async function downloadMetadataManifest(): Promise<string> {
   const res = await authorizedFetch(`${API_BASE}/api/admin/metadata/manifest`, {
     credentials: "include",

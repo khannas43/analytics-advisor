@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import gov.rajasthan.smart.srse.monitoring.ActiveQueryKind;
+import gov.rajasthan.smart.srse.monitoring.QueryExecutionMonitor;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.nio.charset.StandardCharsets;
@@ -24,15 +26,18 @@ public class RecordMatchController {
     private final AnalysisAuditService analysisAuditService;
     private final MultiTargetRecordMatchService multiMatchService;
     private final JoinKeySuggestService joinKeySuggestService;
+    private final QueryExecutionMonitor queryMonitor;
 
     public RecordMatchController(RecordMatchService matchService,
                                  AnalysisAuditService analysisAuditService,
                                  MultiTargetRecordMatchService multiMatchService,
-                                 JoinKeySuggestService joinKeySuggestService) {
+                                 JoinKeySuggestService joinKeySuggestService,
+                                 QueryExecutionMonitor queryMonitor) {
         this.matchService = matchService;
         this.analysisAuditService = analysisAuditService;
         this.multiMatchService = multiMatchService;
         this.joinKeySuggestService = joinKeySuggestService;
+        this.queryMonitor = queryMonitor;
     }
 
     /** Scoped distinct values for the value-filter picker (§5.1) — audited as QUERY_EXECUTED. */
@@ -55,8 +60,8 @@ public class RecordMatchController {
      */
     @PostMapping(value = "/match", produces = "application/x-ndjson")
     public StreamingResponseBody match(@RequestBody RecordMatchRequest req) {
-        RecordMatchService.MatchQuery query = analysisAuditService.planMatchAudited(req);
-        return matchService.match(query);
+        AuditedMatchQuery audited = analysisAuditService.planMatchAudited(req);
+        return queryMonitor.trackStream(audited.ticket(), matchService.match(audited.query()));
     }
 
     /**
@@ -85,16 +90,16 @@ public class RecordMatchController {
 
     @PostMapping(value = "/match.xlsx", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     public ResponseEntity<StreamingResponseBody> matchExcel(@RequestBody RecordMatchRequest req) {
-        RecordMatchService.MatchQuery query = analysisAuditService.planMatchAudited(req);
-        matchService.assertExcelExportAllowed(query);
+        AuditedMatchQuery audited = analysisAuditService.planMatchAudited(req);
+        matchService.assertExcelExportAllowed(audited.query());
         return exportMatchWithQuery(
                 req,
-                query,
+                audited.query(),
                 "Excel",
                 "analysis-match.xlsx",
                 "application",
                 "vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                matchService::matchExcel);
+                q -> queryMonitor.trackStream(audited.ticket().withKind(ActiveQueryKind.EXPORT), matchService.matchExcel(q)));
     }
 
     private ResponseEntity<StreamingResponseBody> exportMatch(
@@ -104,8 +109,16 @@ public class RecordMatchController {
             String mediaType,
             String mediaSubtype,
             java.util.function.Function<RecordMatchService.MatchQuery, StreamingResponseBody> bodyFactory) {
-        RecordMatchService.MatchQuery query = analysisAuditService.planMatchAudited(req);
-        return exportMatchWithQuery(req, query, formatLabel, filename, mediaType, mediaSubtype, bodyFactory);
+        AuditedMatchQuery audited = analysisAuditService.planMatchAudited(req);
+        return exportMatchWithQuery(
+                req,
+                audited.query(),
+                formatLabel,
+                filename,
+                mediaType,
+                mediaSubtype,
+                q -> queryMonitor.trackStream(
+                        audited.ticket().withKind(ActiveQueryKind.EXPORT), bodyFactory.apply(q)));
     }
 
     private ResponseEntity<StreamingResponseBody> exportMatchWithQuery(
@@ -139,9 +152,11 @@ public class RecordMatchController {
 
     /** Aggregate comparison match rates over the full join result (not a streamed sample). */
     @PostMapping("/match/comparison-summary")
-    public ComparisonSummaryResponse comparisonSummary(@RequestBody RecordMatchRequest req) {
-        RecordMatchService.MatchQuery query = analysisAuditService.planMatchAudited(req);
-        return matchService.comparisonSummary(query, req);
+    public ComparisonSummaryResponse comparisonSummary(@RequestBody RecordMatchRequest req) throws Exception {
+        AuditedMatchQuery audited = analysisAuditService.planMatchAudited(req);
+        return queryMonitor.track(
+                audited.ticket().withKind(ActiveQueryKind.COMPARISON_SUMMARY),
+                () -> matchService.comparisonSummary(audited.query(), req));
     }
 
     /**
@@ -149,8 +164,13 @@ public class RecordMatchController {
      * optional bounded overlap probe when {@code probe: true}.
      */
     @PostMapping("/suggest-keys")
-    public List<JoinKeySuggestion> suggestKeys(@RequestBody SuggestJoinKeysRequest req) {
-        return joinKeySuggestService.suggest(req);
+    public List<JoinKeySuggestion> suggestKeys(@RequestBody SuggestJoinKeysRequest req) throws Exception {
+        if (!req.probeRequested()) {
+            return joinKeySuggestService.suggest(req);
+        }
+        String tables = req.sourceCatalog() + "." + req.sourceSchema() + "." + req.sourceTable()
+                + ", " + req.targetCatalog() + "." + req.targetSchema() + "." + req.targetTable();
+        return queryMonitor.trackStandalone(ActiveQueryKind.SUGGEST_KEYS, tables, () -> joinKeySuggestService.suggest(req));
     }
 
     /**
@@ -160,8 +180,8 @@ public class RecordMatchController {
      */
     @PostMapping(value = "/match-multi", produces = "application/x-ndjson")
     public StreamingResponseBody matchMulti(@RequestBody MultiTargetRecordMatchRequest req) {
-        analysisAuditService.planMultiMatchAudited(req);
-        return multiMatchService.matchMulti(req);
+        AuditedMultiMatch audited = analysisAuditService.planMultiMatchAudited(req);
+        return queryMonitor.trackStream(audited.ticket(), multiMatchService.matchMulti(req));
     }
 
     /**
@@ -169,14 +189,19 @@ public class RecordMatchController {
      */
     @PostMapping(value = "/match-multi.csv", produces = "text/csv")
     public ResponseEntity<StreamingResponseBody> matchMultiCsv(@RequestBody MultiTargetRecordMatchRequest req) {
-        analysisAuditService.planMultiMatchAudited(req);
+        AuditedMultiMatch audited = analysisAuditService.planMultiMatchAudited(req);
         String combinedShape = combinedMultiQueryShape(req);
         try {
             analysisAuditService.recordMultiExport(req, combinedShape);
         } catch (RuntimeException ex) {
             throw new AuditWriteFailureException("Export audit row could not be written", ex);
         }
-        return multiMatchService.matchMultiCsv(req);
+        ResponseEntity<StreamingResponseBody> response = multiMatchService.matchMultiCsv(req);
+        StreamingResponseBody tracked = queryMonitor.trackStream(
+                audited.ticket().withKind(ActiveQueryKind.EXPORT), response.getBody());
+        return ResponseEntity.status(response.getStatusCode())
+                .headers(response.getHeaders())
+                .body(tracked);
     }
 
     private String combinedMultiQueryShape(MultiTargetRecordMatchRequest req) {

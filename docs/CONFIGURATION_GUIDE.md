@@ -281,6 +281,15 @@ Copy `.env.example` to `.env` and set values per environment.
 
 > **Three different databases.** The operational store holds the application's own users and configuration (PostgreSQL by default; `SRSE_OPERATIONAL_JDBC_URL` in `.env.example`). Presto (this section) queries the lakehouse. A business database added in Admin → Data Sources is a third connection: read-only JDBC for questions that stay inside that one database, and an optional Presto catalog alias when a question must combine it with another source. Putting a business database's host into `SRSE_OPERATIONAL_JDBC_URL` would point the application at the wrong store. Do not do that.
 
+### 5.3.2 Active query monitoring (Aa1 / §7.3.9)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SRSE_MONITORING_MAX_RUNNING` | `1000` | Cap on concurrently tracked queries in the in-memory registry; beyond this, queries still run but are not listed |
+| `SRSE_MONITORING_RECENT_MINUTES` | `30` | How long finished queries stay in the Super Admin “recent” list (also capped at 100 entries) |
+
+The registry is **per backend JVM** — load-balanced deployments show one instance at a time.
+
 ### 5.3.1 Registered-table metadata snapshot (Aa1)
 
 | Variable | Default | Description |

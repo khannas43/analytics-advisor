@@ -55,6 +55,9 @@ public class AuditEvent {
     @Column(name = "scope_summary", length = 512)
     private String scopeSummary;
 
+    @Column(name = "duration_ms")
+    private Long durationMs;
+
     protected AuditEvent() {
     }
 
@@ -68,7 +71,8 @@ public class AuditEvent {
             String sourceIp,
             String targetTables,
             String queryShape,
-            String scopeSummary) {
+            String scopeSummary,
+            Long durationMs) {
         this.occurredAt = occurredAt;
         this.actorUserId = actorUserId;
         this.targetUserId = targetUserId;
@@ -79,6 +83,7 @@ public class AuditEvent {
         this.targetTables = targetTables;
         this.queryShape = queryShape;
         this.scopeSummary = scopeSummary;
+        this.durationMs = durationMs;
     }
 
     public Long getId() {
@@ -123,5 +128,9 @@ public class AuditEvent {
 
     public String getScopeSummary() {
         return scopeSummary;
+    }
+
+    public Long getDurationMs() {
+        return durationMs;
     }
 }

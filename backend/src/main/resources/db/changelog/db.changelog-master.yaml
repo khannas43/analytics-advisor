@@ -44,3 +44,6 @@ databaseChangeLog:
   - include:
       file: changes/015-metadata-snapshot.yaml
       relativeToChangelogFile: true
+  - include:
+      file: changes/016-audit-query-duration.yaml
+      relativeToChangelogFile: true

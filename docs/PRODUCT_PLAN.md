@@ -499,8 +499,10 @@ before 7.3.2 is built.
 | 7.3.6 | ✅ (AA-11) Store the query shape with placeholders; strip bound values before writing (A6) | N | 2 |
 | 7.3.7 | ✅ (AA-12) Access control and retention on the log. Lighter than it would have been: with values stripped it is not a personal-data store, but it still shows who looked at what | N | 2 |
 | 7.3.8 | ✅ (AA-12) Scope the log viewer to the requesting officer's subtree (A10) | N | 3 |
-| 7.3.9 | (Aa1 / 0.12) Record **query duration** on existing audit events for executed queries | N | 1 |
-| 7.3.10 | (Aa1 / 0.12) Super Admin **active queries** panel — in-memory registry of AA-started analytical work; shape/tables only | N | 3 |
+| 7.3.9 | (Aa1 / 0.12) Record **query duration** — `QUERY_FINISHED` + `duration_ms`; column-values on the same row | **Y** | 1 |
+| 7.3.10 | (Aa1 / 0.12) Super Admin **active queries** panel — in-memory registry; table names only | **Y** | 3 |
+
+**Known limits (7.3.9–10):** Registry and dashboard are **this JVM only** (0.12). Audit CSV/viewer unchanged (duration not added to UI). `QUERY_PREVIEWED` / planning-only paths do not emit `QUERY_FINISHED`. Excel row-count runs before the export stream and appears as separate `ESTIMATE` registry entries when fan-out/count helpers run during planning.
 
 ---
 

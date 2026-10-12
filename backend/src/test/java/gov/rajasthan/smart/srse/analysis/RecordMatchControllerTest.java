@@ -1,7 +1,11 @@
 package gov.rajasthan.smart.srse.analysis;
 
 import gov.rajasthan.smart.srse.config.ApiExceptionHandler;
+import gov.rajasthan.smart.srse.monitoring.ActiveQueryKind;
+import gov.rajasthan.smart.srse.monitoring.QueryExecutionMonitor;
+import gov.rajasthan.smart.srse.monitoring.QueryExecutionTicket;
 import gov.rajasthan.smart.srse.security.MockJwtService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -54,6 +58,22 @@ class RecordMatchControllerTest {
     @MockBean
     private MockJwtService mockJwtService;
 
+    @MockBean
+    private QueryExecutionMonitor queryMonitor;
+
+    @BeforeEach
+    void monitorPassThrough() throws Exception {
+        org.mockito.Mockito.lenient().when(queryMonitor.trackStream(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
+        org.mockito.Mockito.lenient().when(queryMonitor.track(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> ((java.util.concurrent.Callable<?>) invocation.getArgument(1)).call());
+    }
+
+    private static AuditedMatchQuery audited(RecordMatchService.MatchQuery query) {
+        return new AuditedMatchQuery(query, new QueryExecutionTicket(
+                "test-query-id", ActiveQueryKind.MATCH, "c.s.t", 1L, "tester", "BYPASS", true));
+    }
+
     private static RecordMatchService.MatchQuery stubQuery() {
         return new RecordMatchService.MatchQuery("SELECT ?", java.util.List.of(), java.util.List.of("c"));
     }
@@ -75,7 +95,7 @@ class RecordMatchControllerTest {
             out.write("{\"type\":\"done\",\"totalRows\":1}\n".getBytes(StandardCharsets.UTF_8));
         };
         RecordMatchService.MatchQuery query = stubQuery();
-        when(analysisAuditService.planMatchAudited(any())).thenReturn(query);
+        when(analysisAuditService.planMatchAudited(any())).thenReturn(audited(query));
         when(matchService.match(query)).thenReturn(body);
 
         MvcResult mvcResult = mockMvc.perform(post("/api/analysis/match")
@@ -116,7 +136,7 @@ class RecordMatchControllerTest {
     void matchJsonExportAuditsBeforeStreaming() throws Exception {
         StreamingResponseBody body = out -> out.write("[{\"source_district\":\"Jaipur\"}]".getBytes(StandardCharsets.UTF_8));
         RecordMatchService.MatchQuery query = stubQuery();
-        when(analysisAuditService.planMatchAudited(any())).thenReturn(query);
+        when(analysisAuditService.planMatchAudited(any())).thenReturn(audited(query));
         when(matchService.matchJson(query)).thenReturn(body);
 
         MvcResult mvcResult = mockMvc.perform(post("/api/analysis/match.json")
@@ -136,7 +156,7 @@ class RecordMatchControllerTest {
         StreamingResponseBody body = out ->
                 out.write("source_district,target_district\r\nJaipur,Jaipur\r\n".getBytes(StandardCharsets.UTF_8));
         RecordMatchService.MatchQuery query = stubQuery();
-        when(analysisAuditService.planMatchAudited(any())).thenReturn(query);
+        when(analysisAuditService.planMatchAudited(any())).thenReturn(audited(query));
         when(matchService.matchCsv(query)).thenReturn(body);
 
         MvcResult mvcResult = mockMvc.perform(post("/api/analysis/match.csv")
@@ -176,7 +196,7 @@ class RecordMatchControllerTest {
             out.write("{\"type\":\"done\",\"totalRows\":0}\n".getBytes(StandardCharsets.UTF_8));
         };
         RecordMatchService.MatchQuery query = stubQuery();
-        when(analysisAuditService.planMatchAudited(any())).thenReturn(query);
+        when(analysisAuditService.planMatchAudited(any())).thenReturn(audited(query));
         when(matchService.match(query)).thenReturn(body);
 
         String bodyJson = """
@@ -212,7 +232,8 @@ class RecordMatchControllerTest {
                     .getBytes(StandardCharsets.UTF_8));
             out.write("{\"type\":\"done\",\"totalRows\":0,\"perTarget\":[]}\n".getBytes(StandardCharsets.UTF_8));
         };
-        org.mockito.Mockito.doNothing().when(analysisAuditService).planMultiMatchAudited(any());
+        when(analysisAuditService.planMultiMatchAudited(any())).thenReturn(new AuditedMultiMatch(
+                new QueryExecutionTicket("multi-id", ActiveQueryKind.MULTI_MATCH, "c.s.t", 1L, "tester", "BYPASS", true)));
         when(multiMatchService.matchMulti(any())).thenReturn(body);
 
         String bodyJson = """

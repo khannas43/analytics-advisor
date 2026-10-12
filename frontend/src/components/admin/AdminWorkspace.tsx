@@ -18,6 +18,7 @@ import {
   ConfigBackupPanel,
   ConnectionsPanel,
   LakehouseRegistryPanel,
+  ActiveQueriesAdminPanel,
   MetadataSnapshotAdminPanel,
 } from "@/components/admin/lakehouseAdminPanels";
 import { AuditLogPanel } from "@/components/AuditLogPanel";
@@ -136,7 +137,12 @@ export function AdminWorkspace() {
               error={error}
               onChanged={refreshLakehouse}
             />
-            {session.superAdmin ? <MetadataSnapshotAdminPanel /> : null}
+            {session.superAdmin ? (
+              <>
+                <ActiveQueriesAdminPanel />
+                <MetadataSnapshotAdminPanel />
+              </>
+            ) : null}
           </>
         )}
         {section === "columns" && (

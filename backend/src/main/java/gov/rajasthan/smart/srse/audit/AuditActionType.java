@@ -10,6 +10,7 @@ public enum AuditActionType {
     MFA_VERIFIED,
     MFA_FAILED,
     QUERY_EXECUTED,
+    QUERY_FINISHED,
     QUERY_PREVIEWED,
     QUERY_REFUSED,
     EXPORT,

@@ -124,6 +124,9 @@ public class RecordMatchService {
     @Autowired(required = false)
     private AnalysisExecutionRouter executionRouter;
 
+    @Autowired(required = false)
+    private gov.rajasthan.smart.srse.monitoring.QueryExecutionMonitor queryMonitor;
+
     public RecordMatchService(@Qualifier("prestoJdbcTemplate") JdbcTemplate jdbc,
                               LakehouseRegistryService registry,
                               GuardrailProperties guardrails,
@@ -1568,6 +1571,10 @@ public class RecordMatchService {
     }
 
     private Long queryLong(String sql, List<Object> params, QualifiedTable table) {
+        return trackEstimate(table.qualifiedName(), () -> queryLongUnchecked(sql, params, table));
+    }
+
+    private Long queryLongUnchecked(String sql, List<Object> params, QualifiedTable table) {
         if (executionRouter == null) {
             return params.isEmpty()
                     ? jdbc.queryForObject(sql, Long.class)
@@ -1579,6 +1586,26 @@ public class RecordMatchService {
         return params.isEmpty()
                 ? executionJdbc.queryForObject(routed.sql(), Long.class)
                 : executionJdbc.queryForObject(routed.sql(), params.toArray(), Long.class);
+    }
+
+    private <T> T trackEstimate(String qualifiedTable, java.util.concurrent.Callable<T> work) {
+        if (queryMonitor == null) {
+            try {
+                return work.call();
+            } catch (RuntimeException ex) {
+                throw ex;
+            } catch (Exception ex) {
+                throw new IllegalStateException(ex);
+            }
+        }
+        try {
+            return queryMonitor.trackStandalone(
+                    gov.rajasthan.smart.srse.monitoring.ActiveQueryKind.ESTIMATE, qualifiedTable, work);
+        } catch (RuntimeException ex) {
+            throw ex;
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 
     private static long multiplyCap(long a, long b, long ceiling) {

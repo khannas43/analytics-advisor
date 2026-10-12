@@ -66,6 +66,7 @@ public class AuditCaptureService {
                 clientIpResolver.resolveClientIp(),
                 draft.targetTables(),
                 draft.queryShape(),
-                draft.scopeSummary()));
+                draft.scopeSummary(),
+                draft.durationMs()));
     }
 }
