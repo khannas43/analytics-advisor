@@ -12,7 +12,10 @@ public final class ExternalDataSourceDtos {
     private ExternalDataSourceDtos() {
     }
 
-    public record SourceTypeView(String code, String label, int defaultPort) {
+    public record SourceTypeView(String code, String label, int defaultPort, boolean federationCapable) {
+        public SourceTypeView(String code, String label, int defaultPort) {
+            this(code, label, defaultPort, true);
+        }
     }
 
     public record CreateRequest(
@@ -40,7 +43,8 @@ public final class ExternalDataSourceDtos {
             Instant lastTestedAt,
             String lastTestStatus,
             String lastTestMessage,
-            long registrationCount) {
+            long registrationCount,
+            boolean federationCapable) {
     }
 
     public record ConnectionTestView(boolean success, String message, String productName, String productVersion) {

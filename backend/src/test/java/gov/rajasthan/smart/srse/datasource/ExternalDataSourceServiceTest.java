@@ -140,6 +140,29 @@ class ExternalDataSourceServiceTest {
     }
 
     @Test
+    void db2IsMarkedAsNotFederationCapableAndPostgresqlAs() {
+        var offered = service.supportedTypes();
+        assertFalse(offered.stream().filter(t -> t.code().equals("DB2")).findFirst().orElseThrow().federationCapable());
+        assertTrue(offered.stream().filter(t -> t.code().equals("POSTGRESQL")).findFirst().orElseThrow().federationCapable());
+    }
+
+    @Test
+    void aPrestoAliasCannotBeSavedForDb2OnCreateOrUpdate() throws Exception {
+        var create = new ExternalDataSourceDtos.CreateRequest(
+                "Payroll DB2", "DB2", "db.internal", null, "SRCDB", "reader", SECRET, false, "db2_alias");
+        IllegalArgumentException refused = assertThrows(IllegalArgumentException.class, () -> service.create(create));
+        assertTrue(refused.getMessage().contains("no IBM DB2 connector"), refused.getMessage());
+        verify(repository, never()).save(any());
+
+        ExternalDataSource db2 = new ExternalDataSource("DB2 src", ExternalDataSourceType.DB2,
+                "jdbc:db2://db.internal:50000/SRCDB", "reader", "ciphertext-value", null);
+        ReflectionTestUtils.setField(db2, "id", 11L);
+        when(repository.findById(11L)).thenReturn(java.util.Optional.of(db2));
+        assertThrows(IllegalArgumentException.class, () -> service.updateFederationCatalog(11L, "db2_alias"));
+        verify(repository, never()).save(any());
+    }
+
+    @Test
     void onlyPostgresqlAndDb2AreOffered() {
         var offered = service.supportedTypes().stream().map(t -> t.code()).toList();
         assertEquals(java.util.List.of("POSTGRESQL", "DB2"), offered);

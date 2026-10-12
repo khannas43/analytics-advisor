@@ -201,12 +201,16 @@ export function ExternalDataSourcesPanel() {
                   <strong>{source.name}</strong>
                   <small>{source.databaseTypeLabel} · {source.username}</small>
                   {source.federationCatalog && <small>Presto: {source.federationCatalog}</small>}
+                  {source.federationCapable === false && (
+                    <small title="PrestoDB has no connector for this database">Single-source queries only</small>
+                  )}
                 </span>
                 <span className={`external-source-status ${source.lastTestStatus?.toLowerCase() ?? "unknown"}`}>
                   {source.lastTestStatus ?? "Not tested"}
                 </span>
               </button>
               <div className="external-source-actions">
+                {source.federationCapable !== false && (
                 <button
                   type="button"
                   className="srse-btn srse-btn-ghost srse-btn-sm"
@@ -219,6 +223,7 @@ export function ExternalDataSourcesPanel() {
                 >
                   Federation
                 </button>
+                )}
                 <button type="button" className="srse-btn srse-btn-ghost srse-btn-sm" disabled={busy} onClick={() => runTest(source)}>
                   Test
                 </button>
@@ -449,9 +454,16 @@ function ExternalSourceForm({
       <label className="field">Username<input className="srse-input" name="username" autoComplete="username" required /></label>
       <label className="field">Password<input className="srse-input" name="password" type="password" autoComplete="new-password" required /></label>
       <label className="checkbox-row"><input name="ssl" type="checkbox" /> Require SSL</label>
-      <label className="field">Presto catalog alias <span className="srse-text-muted">(optional)</span>
-        <input className="srse-input" name="federationCatalog" placeholder="For joins across data sources" pattern="[A-Za-z_][A-Za-z0-9_]*" />
-      </label>
+      {types.find((t) => t.code === databaseType)?.federationCapable === false ? (
+        <p className="srse-text-muted external-source-form-note">
+          PrestoDB has no connector for this database, so it answers single-source questions only
+          (no fuzzy matching, number-vs-text comparison, or joins to other sources).
+        </p>
+      ) : (
+        <label className="field">Presto catalog alias <span className="srse-text-muted">(optional)</span>
+          <input className="srse-input" name="federationCatalog" placeholder="For joins across data sources" pattern="[A-Za-z_][A-Za-z0-9_]*" />
+        </label>
+      )}
       <button type="submit" className="srse-btn srse-btn-primary" disabled={busy}>{busy ? "Testing…" : "Test & save"}</button>
       <p className="srse-text-muted external-source-form-note">The password is encrypted before storage and is never returned to the browser.</p>
     </form>

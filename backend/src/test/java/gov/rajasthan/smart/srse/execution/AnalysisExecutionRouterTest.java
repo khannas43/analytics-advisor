@@ -136,6 +136,51 @@ class AnalysisExecutionRouterTest {
     }
 
     @Test
+    void db2IsToldWhyItCannotRunPrestoOnlyFeaturesInsteadOfToConfigureAnAlias() {
+        QualifiedTable logical = new QualifiedTable("jdbc_7", "HR", "PEOPLE");
+        when(registrations.findByCatalogNameAndSchemaNameAndTableName("jdbc_7", "HR", "PEOPLE"))
+                .thenReturn(Optional.of(registration(7L, "HR", "PEOPLE", "SRCDB")));
+        when(sources.requireActiveInternal(7L)).thenReturn(source(ExternalDataSourceType.DB2, null, "Payroll DB2"));
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> router.route(
+                "SELECT * FROM jdbc_7.HR.PEOPLE src WHERE TRY_CAST(src.ref AS DOUBLE) = ?", List.of(logical)));
+
+        assertTrue(failure.getMessage().contains("no IBM DB2 connector"), failure.getMessage());
+        assertFalse(failure.getMessage().contains("Configure the source's Presto catalog alias"),
+                "advice that can never be followed: " + failure.getMessage());
+    }
+
+    @Test
+    void db2CannotBeCombinedWithAnotherSource() {
+        QualifiedTable lake = new QualifiedTable("iceberg", "gold", "people");
+        QualifiedTable db2 = new QualifiedTable("jdbc_7", "HR", "PEOPLE");
+        RegisteredTable lakeRegistration = mock(RegisteredTable.class);
+        when(lakeRegistration.isExternal()).thenReturn(false);
+        when(registrations.findByCatalogNameAndSchemaNameAndTableName("iceberg", "gold", "people"))
+                .thenReturn(Optional.of(lakeRegistration));
+        when(registrations.findByCatalogNameAndSchemaNameAndTableName("jdbc_7", "HR", "PEOPLE"))
+                .thenReturn(Optional.of(registration(7L, "HR", "PEOPLE", "SRCDB")));
+        when(sources.requireActiveInternal(7L)).thenReturn(source(ExternalDataSourceType.DB2, null, "Payroll DB2"));
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> router.route(
+                "SELECT * FROM iceberg.gold.people a JOIN jdbc_7.HR.PEOPLE b ON a.id=b.id", List.of(lake, db2)));
+
+        assertTrue(failure.getMessage().contains("Cannot combine IBM DB2"), failure.getMessage());
+    }
+
+    @Test
+    void aStoredDb2AliasIsNeverRoutedToPresto() {
+        QualifiedTable logical = new QualifiedTable("jdbc_7", "HR", "PEOPLE");
+        when(registrations.findByCatalogNameAndSchemaNameAndTableName("jdbc_7", "HR", "PEOPLE"))
+                .thenReturn(Optional.of(registration(7L, "HR", "PEOPLE", "SRCDB")));
+        // a row saved before the rule existed
+        when(sources.requireActiveInternal(7L)).thenReturn(source(ExternalDataSourceType.DB2, "old_alias", "Payroll DB2"));
+
+        assertThrows(IllegalArgumentException.class, () -> router.route(
+                "SELECT * FROM jdbc_7.HR.PEOPLE src WHERE TRY_CAST(src.ref AS DOUBLE) = ?", List.of(logical)));
+    }
+
+    @Test
     void tryCastRunsUnchangedThroughPrestoWhenTheSourceHasACatalogAlias() {
         QualifiedTable logical = new QualifiedTable("jdbc_7", "public", "people");
         when(registrations.findByCatalogNameAndSchemaNameAndTableName("jdbc_7", "public", "people"))

@@ -59,7 +59,8 @@ public class ExternalDataSourceService {
         requireSuperAdmin();
         return Arrays.stream(ExternalDataSourceType.values())
                 .filter(ExternalDataSourceType::supported)
-                .map(type -> new SourceTypeView(type.name(), type.label(), type.defaultPort()))
+                .map(type -> new SourceTypeView(
+                        type.name(), type.label(), type.defaultPort(), type.federationCapable()))
                 .toList();
     }
 
@@ -81,6 +82,7 @@ public class ExternalDataSourceService {
         String username = required("Username", request.username());
         String federationCatalog = normaliseOptional(request.federationCatalog());
         if (federationCatalog != null) {
+            requireFederationCapable(type);
             LakehouseIdentifiers.requireSafe("Presto catalog alias", federationCatalog);
         }
         String encryptedPassword = secretCodec.encrypt(request.password());
@@ -144,6 +146,7 @@ public class ExternalDataSourceService {
         ExternalDataSource source = requireSource(id);
         String catalog = normaliseOptional(requestedCatalog);
         if (catalog != null) {
+            requireFederationCapable(source.getDatabaseType());
             LakehouseIdentifiers.requireSafe("Presto catalog alias", catalog);
         }
         source.setFederationCatalog(catalog);
@@ -249,7 +252,17 @@ public class ExternalDataSourceService {
                 source.getLastTestedAt(),
                 source.getLastTestStatus(),
                 source.getLastTestMessage(),
-                registrationCount);
+                registrationCount,
+                source.getDatabaseType().federationCapable());
+    }
+
+    private static void requireFederationCapable(ExternalDataSourceType type) {
+        if (!type.federationCapable()) {
+            throw new IllegalArgumentException(
+                    "A Presto catalog alias cannot be set for " + type.label()
+                            + ": PrestoDB has no " + type.label() + " connector, so this source can only answer "
+                            + "single-source questions without fuzzy matching or number-vs-text comparison.");
+        }
     }
 
     private static String required(String label, String value) {

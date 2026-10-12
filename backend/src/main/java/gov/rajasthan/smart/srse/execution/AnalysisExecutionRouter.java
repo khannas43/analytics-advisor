@@ -72,6 +72,7 @@ public class AnalysisExecutionRouter {
         for (TableBinding binding : longestFirst(external)) {
             RegisteredTable row = binding.registration();
             ExternalDataSource source = externalSources.requireActiveInternal(row.getExternalDataSourceId());
+            requireFederationCapable(source, crossSource);
             String federationCatalog = source.getFederationCatalog();
             if (federationCatalog == null || federationCatalog.isBlank()) {
                 if (!crossSource) {
@@ -113,6 +114,7 @@ public class AnalysisExecutionRouter {
         RegisteredTable row = registration(table);
         if (!row.isExternal()) return table.qualifiedName();
         ExternalDataSource source = externalSources.requireActiveInternal(row.getExternalDataSourceId());
+        requireFederationCapable(source, true);
         if (source.getFederationCatalog() == null || source.getFederationCatalog().isBlank()) {
             throw new IllegalArgumentException(
                     "This operation requires the Presto catalog alias for data source “"
@@ -176,6 +178,26 @@ public class AnalysisExecutionRouter {
         return "[" + name.replace("]", "]]") + "]";
     }
 
+    /**
+     * Never route to Presto for a database Presto has no connector for, even if an alias was somehow
+     * stored: it would fail inside Presto with an opaque "catalog does not exist", and the usual advice
+     * ("configure the Presto catalog alias") cannot be followed.
+     */
+    private static void requireFederationCapable(ExternalDataSource source, boolean crossSource) {
+        ExternalDataSourceType type = source.getDatabaseType();
+        if (type.federationCapable()) {
+            return;
+        }
+        throw new IllegalArgumentException(crossSource
+                ? "Cannot combine " + type.label() + " data source “" + source.getName() + "” with another source: "
+                        + "PrestoDB has no " + type.label() + " connector, so a " + type.label()
+                        + " database can only answer questions about its own tables."
+                : "This analysis needs Presto-only features (fuzzy matching, number-vs-text comparison, "
+                        + "ANY_OF or date coercion), which are not available for " + type.label() + " sources: "
+                        + "PrestoDB has no " + type.label() + " connector. Compare columns of the same type, "
+                        + "or use an exact match.");
+    }
+
     private static String adaptDirectSql(String sql, ExternalDataSource source) {
         // TRY_CAST is deliberately NOT rewritten to CAST: PostgreSQL and DB2 have no TRY_CAST,
         // and a plain CAST turns one unparseable text value into a failure of the whole query
@@ -183,6 +205,7 @@ public class AnalysisExecutionRouter {
         // treats it as Presto-only, so such a query needs the source's Presto catalog alias.
         String adapted = sql;
         if (requiresPresto(adapted)) {
+            requireFederationCapable(source, false);
             throw new IllegalArgumentException(
                     "This analysis uses a Presto-only function. Configure the source's Presto catalog alias "
                             + "to run fuzzy, folded-group, or federated analysis.");

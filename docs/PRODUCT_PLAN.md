@@ -65,7 +65,7 @@ Full framing and the reasoning behind each in `docs/OPEN_DECISIONS.md`.
 | 0.6 | Row limits | **Keep the inherited limits** — 10,000 rendered, 200,000 streamed, complete CSV beyond. Measured at crore scale rather than guessed. |
 | 0.7 | Scope dimensions (was A16) | **Department is a SECOND AXIS, orthogonal to geography.** A deployment defines N dimensions, each its own tree; a user holds assignments in each; the predicate is AND across dimensions, OR within one. |
 | 0.8 | External databases | **A Super Admin connects a business database; that connection is not the application's own database.** Same-database questions run on the saved read-only JDBC connection. A question that mixes sources runs on Presto only when each involved database has a Presto catalog alias saved in Admin. Without that alias the question is refused. See §2.4. **Supported types: see 0.13** (this row used to list six). |
-| 0.13 | Supported database matrix (2026-10-12) | **PostgreSQL, DB2 and the Lakehouse (PrestoDB) are the supported matrix.** Every verification, test and document covers those three only. The MySQL, MariaDB, SQL Server and Oracle entries stay in `ExternalDataSourceType` as **dormant code**, and are **hidden from the Add Connection UI** (the API must also refuse them, not only the dropdown). Revisit when a client names a fourth database. The database choice is still open at product level, so nothing may imply the dormant four work. |
+| 0.13 | Supported database matrix (2026-10-12) | **PostgreSQL, DB2 and the Lakehouse (PrestoDB) are the supported matrix.** Every verification, test and document covers those three only. The MySQL, MariaDB, SQL Server and Oracle entries stay in `ExternalDataSourceType` as **dormant code**, and are **hidden from the Add Connection UI** (the API must also refuse them, not only the dropdown). **DB2 is direct-only (decided 2026-10-12):** PrestoDB 0.297 has no DB2 connector (verified against its plugin directory), so a DB2 source can never have a Presto catalog alias. A DB2 source answers plain single-source questions; fuzzy matching, number-vs-text comparison, date coercion, SUM over text, ANY_OF and any join to the lakehouse or another database are refused with a message that says why. The product enforces this (alias refused on create/update; the router never routes a DB2 table to Presto) and Admin hides the alias control for DB2. Revisit only if a client needs those features on DB2 — it would mean a different engine for DB2, not configuration. Revisit the matrix when a client names a fourth database. The database choice is still open at product level, so nothing may imply the dormant four work. |
 | 0.14 | Scheduled runs (6.8) | **Deferred** (2026-10-12). The scope question below stays recorded. |
 
 ### Product extension — metadata snapshot & performance (Aa1) — settled 2026-10-12
@@ -170,6 +170,8 @@ one JDBC connection reaches both, and cross-system joins work natively.
 | 2.3.3 | Decide behaviour when a catalog disappears (registered tables pointing at it) | N | 1 |
 
 ### 2.4 Connected business databases
+
+> **Capability by database (2026-10-12).** PostgreSQL can be federated (give it a Presto catalog alias, configured on the Presto server). **IBM DB2 cannot** — PrestoDB 0.297 has no DB2 connector — so a DB2 source is direct, single-source only; see decision 0.13.
 
 This is separate from both planes above.
 

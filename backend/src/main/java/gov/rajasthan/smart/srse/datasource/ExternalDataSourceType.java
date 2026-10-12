@@ -12,12 +12,14 @@ import java.util.regex.Pattern;
  * accepted by the API, and not covered by any verification.
  */
 public enum ExternalDataSourceType {
-    POSTGRESQL("PostgreSQL", 5432, "org.postgresql.Driver", true),
-    DB2("IBM DB2", 50000, "com.ibm.db2.jcc.DB2Driver", true),
-    MYSQL("MySQL", 3306, "com.mysql.cj.jdbc.Driver", false),
-    MARIADB("MariaDB", 3306, "org.mariadb.jdbc.Driver", false),
-    SQLSERVER("Microsoft SQL Server", 1433, "com.microsoft.sqlserver.jdbc.SQLServerDriver", false),
-    ORACLE("Oracle", 1521, "oracle.jdbc.OracleDriver", false);
+    POSTGRESQL("PostgreSQL", 5432, "org.postgresql.Driver", true, true),
+    // PrestoDB 0.297 ships no DB2 connector (verified against its plugin directory), so a DB2 source can
+    // never be given a Presto catalog alias: it answers plain single-source questions only.
+    DB2("IBM DB2", 50000, "com.ibm.db2.jcc.DB2Driver", true, false),
+    MYSQL("MySQL", 3306, "com.mysql.cj.jdbc.Driver", false, true),
+    MARIADB("MariaDB", 3306, "org.mariadb.jdbc.Driver", false, true),
+    SQLSERVER("Microsoft SQL Server", 1433, "com.microsoft.sqlserver.jdbc.SQLServerDriver", false, true),
+    ORACLE("Oracle", 1521, "oracle.jdbc.OracleDriver", false, true);
 
     private static final Pattern SAFE_HOST = Pattern.compile("^[A-Za-z0-9._:-]+$");
     private static final Pattern SAFE_DATABASE = Pattern.compile("^[A-Za-z0-9._-]+$");
@@ -26,12 +28,23 @@ public enum ExternalDataSourceType {
     private final int defaultPort;
     private final String driverClassName;
     private final boolean supported;
+    private final boolean federationCapable;
 
-    ExternalDataSourceType(String label, int defaultPort, String driverClassName, boolean supported) {
+    ExternalDataSourceType(
+            String label, int defaultPort, String driverClassName, boolean supported, boolean federationCapable) {
+        this.federationCapable = federationCapable;
         this.label = label;
         this.defaultPort = defaultPort;
         this.driverClassName = driverClassName;
         this.supported = supported;
+    }
+
+    /**
+     * Whether Presto has a connector for this database, i.e. whether a catalog alias can exist. False means
+     * fuzzy matching, number-vs-text comparison, ANY_OF and any join to another source can never run.
+     */
+    public boolean federationCapable() {
+        return federationCapable;
     }
 
     /** False for dormant types (decision 0.13): not offered, and refused on create. */

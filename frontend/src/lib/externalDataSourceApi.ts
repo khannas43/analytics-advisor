@@ -6,6 +6,8 @@ export type ExternalSourceType = {
   code: string;
   label: string;
   defaultPort: number;
+  // False when PrestoDB has no connector for this database (IBM DB2): no Presto alias can exist.
+  federationCapable?: boolean;
 };
 
 export type ExternalDataSource = {
@@ -22,6 +24,7 @@ export type ExternalDataSource = {
   lastTestStatus: string | null;
   lastTestMessage: string | null;
   registrationCount: number;
+  federationCapable?: boolean;
 };
 
 export type CreateExternalDataSource = {

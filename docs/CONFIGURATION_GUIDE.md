@@ -290,6 +290,8 @@ Copy `.env.example` to `.env` and set values per environment.
 
 The registry is **per backend JVM** — load-balanced deployments show one instance at a time.
 
+> **IBM DB2 sources are direct-only.** PrestoDB 0.297 has no DB2 connector, so a Presto catalog alias cannot be set for DB2 and the Admin screen does not offer one. A DB2 source answers plain single-source questions: no fuzzy matching, no number-vs-text comparison, no date coercion, no ANY_OF, and no joins to the lakehouse or to another database. PostgreSQL sources can be federated by configuring a Presto catalog and saving its alias.
+
 ### 5.3.1 Registered-table metadata snapshot (Aa1)
 
 | Variable | Default | Description |
