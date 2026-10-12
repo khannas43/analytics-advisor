@@ -54,6 +54,11 @@ srse:
     code-ttl-minutes: ${SRSE_OTP_TTL_MINUTES:5}
     max-verify-attempts: ${SRSE_OTP_MAX_ATTEMPTS:5}
     resend-cooldown-seconds: ${SRSE_OTP_RESEND_COOLDOWN_SECONDS:60}
+  # Session policy (decision A14). Idle timeout 0 disables the idle check.
+  session:
+    absolute-lifetime: ${SRSE_SESSION_ABSOLUTE_LIFETIME:8h}
+    idle-timeout: ${SRSE_SESSION_IDLE_TIMEOUT:30m}
+    activity-write-interval: ${SRSE_SESSION_ACTIVITY_WRITE_INTERVAL:1m}
   identity:
     lockout:
       max-failed-attempts: ${SRSE_IDENTITY_LOCKOUT_MAX_ATTEMPTS:5}

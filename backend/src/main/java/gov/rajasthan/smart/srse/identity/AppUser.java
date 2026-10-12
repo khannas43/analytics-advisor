@@ -48,6 +48,10 @@ public class AppUser {
     @Column(name = "session_version", nullable = false)
     private long sessionVersion = 0L;
 
+    /** Last authenticated request (throttled) — drives the idle timeout; null until first use. */
+    @Column(name = "last_activity_at")
+    private Instant lastActivityAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -160,6 +164,14 @@ public class AppUser {
 
     public void setSessionVersion(long sessionVersion) {
         this.sessionVersion = sessionVersion;
+    }
+
+    public Instant getLastActivityAt() {
+        return lastActivityAt;
+    }
+
+    public void setLastActivityAt(Instant lastActivityAt) {
+        this.lastActivityAt = lastActivityAt;
     }
 
     public Instant getCreatedAt() {

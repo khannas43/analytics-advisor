@@ -35,3 +35,6 @@ databaseChangeLog:
   - include:
       file: changes/012-external-table-registrations.yaml
       relativeToChangelogFile: true
+  - include:
+      file: changes/013-session-last-activity.yaml
+      relativeToChangelogFile: true

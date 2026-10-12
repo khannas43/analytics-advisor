@@ -146,6 +146,10 @@ public class LocalAuthenticationService {
     }
 
     private LoginResult completeSessionLogin(AppUser user) {
+        // A new session starts "active now". Without this, a user timed out 40 minutes ago
+        // would be rejected again the moment they signed back in on the stale stamp.
+        user.setLastActivityAt(Instant.now());
+        userRepository.save(user);
         boolean mustChange = user.isMustChangePassword() || isPasswordExpired(user);
         List<String> authorities = RoleAuthorityMapper.toAuthorities(
                 userRoleRepository.findRoleCodesByUserId(user.getId()));

@@ -4,6 +4,8 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
@@ -16,19 +18,29 @@ import java.util.List;
  * Signing key is generated per boot (acceptable for non-production modes).
  */
 @Component
+@EnableConfigurationProperties(SessionProperties.class)
 public class SessionTokenService {
 
     public static final String CLAIM_AUTHORITIES = "authorities";
     public static final String CLAIM_SESSION_VERSION = "sessionVersion";
     public static final String CLAIM_MUST_CHANGE_PASSWORD = "mustChangePassword";
 
-    private static final Duration TOKEN_TTL = Duration.ofHours(8);
-
     private final SecretKey signingKey = Keys.secretKeyFor(SignatureAlgorithm.HS256);
+    private final Duration tokenTtl;
+
+    /** Default policy (8-hour absolute lifetime) — for tests that do not care. */
+    public SessionTokenService() {
+        this(SessionProperties.defaults());
+    }
+
+    @Autowired
+    public SessionTokenService(SessionProperties properties) {
+        this.tokenTtl = properties.absoluteLifetime();
+    }
 
     public String issue(String subject, List<String> authorities, long sessionVersion, boolean mustChangePassword) {
         Instant now = Instant.now();
-        Instant expires = now.plus(TOKEN_TTL);
+        Instant expires = now.plus(tokenTtl);
         return Jwts.builder()
                 .setSubject(subject)
                 .claim(CLAIM_AUTHORITIES, List.copyOf(authorities))

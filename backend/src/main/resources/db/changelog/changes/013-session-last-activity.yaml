@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: 013-app-user-last-activity
+      author: analytics-advisor
+      changes:
+        - addColumn:
+            tableName: app_user
+            columns:
+              - column:
+                  name: last_activity_at
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: true
