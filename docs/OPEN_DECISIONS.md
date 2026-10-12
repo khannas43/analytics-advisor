@@ -11,6 +11,11 @@
 >
 > **One follow-on is open: Q5b (MFA/OTP).** "No SSO" does not answer it —
 > federation and MFA are separate. Assumed no for now.
+>
+> **Aa1 metadata snapshot (2026-10-12):** answered in `PRODUCT_PLAN.md` §0
+> (0.9–0.12) and `docs/briefs/AA-21-metadata-snapshot-and-monitoring.md`.
+> Bounded exception to live column lists: **display-only snapshot**, live
+> `validateColumn` at run time.
 
 This file states each as a question, says what each answer commits you to, and
 what it costs to decide later rather than now.

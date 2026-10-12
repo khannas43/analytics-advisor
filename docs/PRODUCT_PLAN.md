@@ -9,6 +9,21 @@ logic, six rows per table). Treat it as a picture of the destination, not a spec
 
 ---
 
+## Status at 2026-10-12
+
+Verified against the code on 2026-10-12. Since the 2026-09-25 status below, also
+built: AA-18 exports and saved queries, AA-19 gateway panels and backup/restore,
+AA-20 prototype layout (sidebar, theme toggle, i18n mechanism with an English and
+a Hindi catalog), and external-database onboarding with an execution router
+(Presto / direct JDBC / federation). **New work is in §10.** Scheduled runs (6.8)
+are **deferred by decision**.
+
+Verified **not** built: self-service password reset (`OtpPurpose` has no reset
+value), the 30-minute idle timeout (`TOKEN_TTL` is still a hardcoded 8 hours in
+`SessionTokenService`), `ANALYZE` scheduling, a per-catalog health panel, and
+active archiving of a deactivated user's audit entries (today it is only a
+read-time exclusion).
+
 ## Status at 2026-09-25
 
 **Built and verified against a running stack.** §1 fork cleanup (bar the package
@@ -26,10 +41,11 @@ Every product and audit decision is settled. `docs/OPEN_DECISIONS.md` and
 - **7.1d.3 idle timeout** — needs a choice between short-lived tokens with
   refresh and server-side activity tracking. Not a config value.
 
-**Remaining work, all of it unblocked:** §6.4–6.8 exports and saved queries, §8
-the UX shell (8.3 English/Hindi is the largest single item left at 10 days),
-§9.3 performance testing at realistic volumes, §9.5 backup and restore, and
-§2.3 source-system operations.
+**Remaining work, all of it unblocked:** §2.5 metadata snapshot (Aa1, settled
+2026-10-12), §6.4–6.8 exports and saved queries, §8 the UX shell (8.3
+English/Hindi is the largest single item left at 10 days), §9.3 performance
+testing at realistic volumes, §9.5 backup and restore, and §2.3 source-system
+operations.
 
 Legend in the tables below: ✅ done · ◐ partly done · ⏸ waiting on something else.
 
@@ -48,7 +64,20 @@ Full framing and the reasoning behind each in `docs/OPEN_DECISIONS.md`.
 | 0.5 | Users | **Built in-house from scratch.** No existing directory, no SSO at this stage, access limited to a small number of users. Local accounts with password management. Keep the existing `AuthMode` seam so SSO can be added without touching `SecurityConfig`. |
 | 0.6 | Row limits | **Keep the inherited limits** — 10,000 rendered, 200,000 streamed, complete CSV beyond. Measured at crore scale rather than guessed. |
 | 0.7 | Scope dimensions (was A16) | **Department is a SECOND AXIS, orthogonal to geography.** A deployment defines N dimensions, each its own tree; a user holds assignments in each; the predicate is AND across dimensions, OR within one. |
-| 0.8 | External databases | **A Super Admin connects a business database; that connection is not the application's own database.** Supported types are PostgreSQL, DB2, MySQL, MariaDB, SQL Server, and Oracle. Same-database questions run on the saved read-only JDBC connection. A question that mixes sources runs on Presto only when each involved database has a Presto catalog alias saved in Admin. Without that alias the question is refused. See §2.4. |
+| 0.8 | External databases | **A Super Admin connects a business database; that connection is not the application's own database.** Same-database questions run on the saved read-only JDBC connection. A question that mixes sources runs on Presto only when each involved database has a Presto catalog alias saved in Admin. Without that alias the question is refused. See §2.4. **Supported types: see 0.13** (this row used to list six). |
+| 0.13 | Supported database matrix (2026-10-12) | **PostgreSQL, DB2 and the Lakehouse (PrestoDB) are the supported matrix.** Every verification, test and document covers those three only. The MySQL, MariaDB, SQL Server and Oracle entries stay in `ExternalDataSourceType` as **dormant code**, and are **hidden from the Add Connection UI** (the API must also refuse them, not only the dropdown). Revisit when a client names a fourth database. The database choice is still open at product level, so nothing may imply the dormant four work. |
+| 0.14 | Scheduled runs (6.8) | **Deferred** (2026-10-12). The scope question below stays recorded. |
+
+### Product extension — metadata snapshot & performance (Aa1) — settled 2026-10-12
+
+Stakeholder note `docs/Aa1.pdf`. Full build spec: `docs/briefs/AA-21-metadata-snapshot-and-monitoring.md`.
+
+| # | Decision |
+|---|---|
+| 0.9 | **Authoritative store:** Liquibase snapshot tables in the operational DB (vendor-neutral, 0.1). Optional **JSON export** is generated from those tables for downstream consumers; **never read back** as source of truth. |
+| 0.10 | **Staleness:** snapshot is **display-only** for QB column names/types (7-day TTL). Operational overrides and scope apply immediately. **Live `validateColumn` on every run.** No snapshot or past TTL → live read (no hard sync gate). Sync on registration + Super Admin “Sync now”. UI: “Metadata as of …” and failed-sync badge. **Scope/deny checks before cache read.** |
+| 0.11 | **Distinct values:** always **live, scoped, not cached** initially. **`value_picker_enabled`** per column (default off); backend enforces. Admin **suggestions** from `approx_distinct`/count only — never auto-enable. Future distinct cache only on shared-reference tables if ever added. |
+| 0.12 | **Monitoring:** **AA-initiated queries only** (in-memory registry per backend instance; document single-instance limit). Super Admin only; shape/tables, never bound values (A6). Cluster-wide Presto UI stays with ops. **History:** add **duration** to existing audit rows, not a second store. |
 
 ### Answered since
 
@@ -110,6 +139,20 @@ into the app tier to be processed.
 | 2.2.8 | Trino support, if 0.2 says yes | N | 4 |
 | 2.2.9 | `ANALYZE` scheduling so the fan-out guard reads catalog statistics instead of computing them | N | 2 |
 
+### 2.5 Registered-table metadata snapshot (Aa1 — decisions 0.9–0.10)
+
+Sync **physical column names and types** for **registered tables only** (plus
+`jdbc_*` registrations via the external metadata path). Reduces Presto
+`information_schema` / `DESCRIBE` traffic on every QB cascade open.
+
+| # | Activity | Type | Est |
+|---|---|---|---|
+| 2.5.1 | Liquibase: snapshot header + column rows (plain types); sync run log (success/failure per table) | N | 2 |
+| 2.5.2 | `MetadataSyncService`: sync all registered tables; on table registration; cron default weekly | N | 3 |
+| 2.5.3 | `LakehouseRegistryService.listColumns`: scope + registration first; then snapshot if fresh else live | R+ | 3 |
+| 2.5.4 | Super Admin: “Sync now”, last run status, optional JSON manifest download | N | 2 |
+| 2.5.5 | QB UI: “Metadata as of …”, warning if last sync failed | N | 1 |
+
 ### 2.3 How source systems connect
 
 **Each source system is a Presto catalog**, configured on the Presto server, not
@@ -163,6 +206,7 @@ works exactly this way in SRSE.
 | 3.1.3 | ✅ (AA-15) Browse hierarchy driven by labels, addresses unchanged underneath | R+ | 2 |
 | 3.1.4 | ✅ (AA-15) Database Overview page — drill down to attributes and data types | N | 3 |
 | 3.1.5 | ✅ Column metadata: business name, hide, fuzzy flag, comparison mode | R | 0 |
+| 3.1.6 | (Aa1 / 0.11) `value_picker_enabled` on column metadata; admin UI + sync job cardinality **suggestions** (never auto-enable) | N | 2 |
 
 ---
 
@@ -206,7 +250,7 @@ works exactly this way in SRSE.
 | 6.5 | ✅ (AA-18) JSON export | N | 1 |
 | 6.6 | ✅ (AA-18) XML export | N | 1 |
 | 6.7 | ✅ (AA-18) Saved queries — name, reopen, share | N | 5 |
-| 6.8 | ⏸ Scheduled runs / delivery — **needs a decision first: whose scope does a scheduled run execute under?** The author's is a standing scope leak; the recipient's means the same schedule yields different data per viewer. | N | ? |
+| 6.8 | ⏸ **DEFERRED by decision (0.14).** Scheduled runs / delivery. When reopened, settle first: whose scope does a scheduled run execute under? The author's is a standing scope leak; the recipient's means the same schedule yields different data per viewer. Working lean: the recipient's scope, evaluated at delivery. | N | ? |
 
 ---
 
@@ -451,6 +495,8 @@ before 7.3.2 is built.
 | 7.3.6 | ✅ (AA-11) Store the query shape with placeholders; strip bound values before writing (A6) | N | 2 |
 | 7.3.7 | ✅ (AA-12) Access control and retention on the log. Lighter than it would have been: with values stripped it is not a personal-data store, but it still shows who looked at what | N | 2 |
 | 7.3.8 | ✅ (AA-12) Scope the log viewer to the requesting officer's subtree (A10) | N | 3 |
+| 7.3.9 | (Aa1 / 0.12) Record **query duration** on existing audit events for executed queries | N | 1 |
+| 7.3.10 | (Aa1 / 0.12) Super Admin **active queries** panel — in-memory registry of AA-started analytical work; shape/tables only | N | 3 |
 
 ---
 
@@ -493,6 +539,59 @@ Two rules carry over with it:
 | 9.3 | Performance testing at realistic volumes (not 200k synthetic rows) | N | 5 |
 | 9.4 | ✅ Containerised deployment, environment configuration | R | 0 |
 | 9.5 | Backup and restore of the operational database | N | 2 |
+
+---
+
+## 10. Post-AA-20 slices (added 2026-10-12)
+
+From a code review against this plan. Aa1 work (§2.5, 3.1.6, 7.3.9–7.3.10, brief
+AA-21) is tracked where it already sits and is not repeated here. Supported
+databases for every item: **PostgreSQL, DB2, Lakehouse (0.13).**
+
+### 10.A Correctness and security (do first)
+
+| # | Activity | Type | Est |
+|---|---|---|---|
+| 10.A.1 | **Scope enforcement on the direct-JDBC route.** `AnalysisExecutionRouter` sends single-source external queries straight to JDBC, bypassing Presto. Prove scope predicate, deny-by-default and identifier gates hold on that path. Negative tests as 7.2.9: a scoped officer must not reach out-of-scope rows through a PostgreSQL or DB2 registration via match, export, SQL preview, value lists and suggest-keys. **Silent-leak risk — highest priority.** | N | 4 |
+| 10.A.2 | Dialect check on the direct route for PostgreSQL and DB2 (quoting, row limiting, cast). Presto-only constructs (fuzzy, folded groups) must refuse clearly when no catalog alias exists, not fail with a driver error. | N | 3 |
+| 10.A.3 | **Hide the four dormant types (0.13).** Remove MySQL, MariaDB, SQL Server and Oracle from the Add Connection UI **and** make the API refuse them. Keep the enum entries. Scrub docs and tests that imply they work. | N | 1 |
+| 10.A.4 | Re-run the manual real-Presto checks (CLAUDE.md "Testing discipline") with a PostgreSQL and a DB2 source added; record results. | N | 2 |
+
+### 10.B Identity
+
+| # | Activity | Type | Est |
+|---|---|---|---|
+| 10.B.1 | Move `TOKEN_TTL` (hardcoded 8h) into configuration; also covers 7.1d.1 / 7.1d.4 | R+ | 1 |
+| 10.B.2 | **Idle timeout (7.1d.3)** — recommend server-side last-activity tracking with a throttled write (≤ once a minute), reusing the session-version machinery. Rejected: refresh tokens (second token type, interacts with the MFA challenge flow). | N | 3 |
+| 10.B.3 | **Self-service password reset (7.1.4)** — add a `PASSWORD_RESET` value to `OtpPurpose` and reuse the existing sender, 5-minute window and cooldown. Identical response whether or not the account exists (no enumeration). Audited. | N | 4 |
+| 10.B.4 | **Audit archival on deactivation (7.1c.3)** — explicit archive state, retained and SuperAdmin-only; replaces today's read-time exclusion. | N | 3 |
+| 10.B.5 | Saved queries owned by a deactivated user: admin reassign action (7.1c.4) | N | 2 |
+| 10.B.6 | Verify scope applies before aggregation under Group By (7.2.6 — 5.5 now exists); add negative tests | N | 2 |
+
+### 10.C Operability
+
+| # | Activity | Type | Est |
+|---|---|---|---|
+| 10.C.1 | Per-catalog and per-saved-connection health panel (2.3.2), plus the behaviour when a catalog disappears (2.3.3) — registered tables stay listed but flagged unavailable | N | 3 |
+| 10.C.2 | `ANALYZE` scheduling (2.2.9), admin-controlled, so the fan-out guard reads statistics instead of computing live | N | 2 |
+| 10.C.3 | Document the catalog-per-source model and the Presto catalog-alias setup for ops (2.3.1) | N | 1 |
+
+### 10.D Polish and housekeeping
+
+| # | Activity | Type | Est |
+|---|---|---|---|
+| 10.D.1 | **Hindi coverage audit.** These files do not reference the i18n catalog and probably carry hardcoded English: `AdminIdentityPanel`, `AuditLogPanel`, `OtpGatewayPanel`, `TableScopeBindingEditor`, `LakehouseCascade`, `ValueFilterPicker`, `AnalysisResultsGrid`, `ComparisonPairsEditor`, `MultiTargetJoinCanvas`, `ChartsSection`, `VennDiagram`, `MultiSelectDropdown`. Not yet opened — some may only render data. Then native-speaker review (8.3). | N | 6 |
+| 10.D.2 | Repair the frontend toolchain (`npm run lint` crashed loading ESLint's `ajv` on 2026-10-12 — likely a broken `node_modules`; try `npm ci`), then fix the pre-existing `react-hooks` errors | N | 1 |
+| 10.D.3 | Route-level guard for `/admin456`; remove dead `srse.guardrails.*` and `age-band-column` config | N | 1 |
+| 10.D.4 | Reconcile `CLAUDE.md` with this plan: its "Known broken" note on `RuleCompiler` is stale since AA-13, and its data-sources paragraph names two database types where 0.13 names three platforms | N | 0 |
+
+**Order:** 10.A → 10.B → Aa1 (AA-21: value-picker flag first, then snapshot,
+then QB read switch, then active queries) → 10.C → 10.D. 10.A comes first
+because the direct-JDBC path is new and is the only item where a defect leaks
+data silently.
+
+**Deferred, not scheduled:** 6.8 scheduled runs (0.14); 7.1a.7 SMS sender (awaiting
+a gateway contract); 1.6 package rename; 2.2.8 Trino.
 
 ---
 

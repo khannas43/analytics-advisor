@@ -126,12 +126,20 @@ than one.
     discovery.
   - `LakehouseRegistryService` — the admin-registered subset, persisted
     operationally (`registered_table`). **Everything officer-facing reads this.**
-- **Registration is per TABLE; columns are never copied into the operational
-  store.** Registering exposes all of a table's live columns, re-read on every
-  call — so a column added upstream appears without re-registration, and a
-  dropped one disappears instead of lingering as a reference that compiles into
-  a broken query. Individual columns are hidden, given business names, fuzzy
-  flags and comparison modes via `analysis_column_metadata`.
+- **Registration is per TABLE; column *types* for pickers may be snapshotted
+  (Aa1, settled 2026-10-12).** Registering still does not copy column lists into
+  the operational store as the source of truth. **`listColumns` for Query Builder
+  display** may read a Liquibase-managed snapshot (7-day TTL) after scope and
+  registration checks; if there is no snapshot or it is stale, fall back to a
+  live read. **Never snapshotted:** registration, hidden columns, business names,
+  fuzzy flags, compare-as, scope bindings — operational DB only, immediate effect.
+  **`validateColumn` at run time stays live** (registered, live-existing, not
+  hidden) so a column dropped after sync fails with 400, not wrong SQL. Optional
+  JSON export of snapshots is download-only, never imported as authority. See
+  `docs/briefs/AA-21-metadata-snapshot-and-monitoring.md`.
+- **Value pickers (`column-values`) stay live and scoped** — distinct values are
+  data, not metadata; no distinct cache at first. **`value_picker_enabled`** on
+  `analysis_column_metadata` (default off) gates the picker; backend enforces.
 - **`layer` (BRONZE/SILVER/GOLD/…) is a display TAG, not a hierarchy level.**
   Registration requires a layer tag for new rows; legacy null-layer rows stay
   reachable under the wire sentinel `UNTAGGED` (a filter only, never a stored

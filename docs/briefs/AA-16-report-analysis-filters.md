@@ -37,6 +37,10 @@ column.
   a parameter) rather than pretending the list is complete.
 - NULL is a legitimate value to filter on. Offer it explicitly; do not drop it.
 
+**Aa1 (2026-10-12):** distinct lists stay **live and scoped** — no cache in the
+first slice. Add **`value_picker_enabled`** on column metadata (default off);
+backend refuses `column-values` when false. See `AA-21-metadata-snapshot-and-monitoring.md` Part 3.
+
 ## Part 2 — Fuzzy options (5.3): normalise in exactly one place
 
 Case-sensitivity and ignore-spaces are one-line changes that will break matching
