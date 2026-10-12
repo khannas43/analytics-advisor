@@ -177,7 +177,11 @@ public class AnalysisExecutionRouter {
     }
 
     private static String adaptDirectSql(String sql, ExternalDataSource source) {
-        String adapted = sql.replace("TRY_CAST(", "CAST(");
+        // TRY_CAST is deliberately NOT rewritten to CAST: PostgreSQL and DB2 have no TRY_CAST,
+        // and a plain CAST turns one unparseable text value into a failure of the whole query
+        // (the compiler uses TRY_CAST precisely so that cannot happen). requiresPresto()
+        // treats it as Presto-only, so such a query needs the source's Presto catalog alias.
+        String adapted = sql;
         if (requiresPresto(adapted)) {
             throw new IllegalArgumentException(
                     "This analysis uses a Presto-only function. Configure the source's Presto catalog alias "
@@ -228,7 +232,8 @@ public class AnalysisExecutionRouter {
 
     private static boolean requiresPresto(String sql) {
         String upper = sql.toUpperCase(Locale.ROOT);
-        return upper.contains("LEVENSHTEIN_DISTANCE(")
+        return upper.contains("TRY_CAST(")
+                || upper.contains("LEVENSHTEIN_DISTANCE(")
                 || upper.contains("APPROX_DISTINCT(")
                 || upper.contains(" UNNEST(")
                 || upper.contains("DATE_DIFF(")

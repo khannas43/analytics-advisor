@@ -8,6 +8,8 @@ import gov.rajasthan.smart.srse.lakehouse.RegisteredTable;
 import gov.rajasthan.smart.srse.lakehouse.RegisteredTableRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
@@ -116,6 +118,38 @@ class AnalysisExecutionRouterTest {
                 "SELECT levenshtein_distance(a, b) FROM jdbc_7.public.people", List.of(logical)));
         assertTrue(failure.getMessage().contains("Presto-only"));
         assertFalse(failure.getMessage().contains("Cross-source"));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ExternalDataSourceType.class, names = {"POSTGRESQL", "DB2"})
+    void tryCastIsNeverDowngradedToCastOnTheDirectRoute(ExternalDataSourceType type) {
+        QualifiedTable logical = new QualifiedTable("jdbc_7", "public", "people");
+        when(registrations.findByCatalogNameAndSchemaNameAndTableName("jdbc_7", "public", "people"))
+                .thenReturn(Optional.of(registration(7L, "public", "people", "egov_db")));
+        when(sources.requireActiveInternal(7L)).thenReturn(source(type, null, "Payroll"));
+
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () -> router.route(
+                "SELECT src.id FROM jdbc_7.public.people src WHERE TRY_CAST(src.ref AS DOUBLE) = ?",
+                List.of(logical)));
+
+        assertTrue(failure.getMessage().contains("Presto-only"), failure.getMessage());
+    }
+
+    @Test
+    void tryCastRunsUnchangedThroughPrestoWhenTheSourceHasACatalogAlias() {
+        QualifiedTable logical = new QualifiedTable("jdbc_7", "public", "people");
+        when(registrations.findByCatalogNameAndSchemaNameAndTableName("jdbc_7", "public", "people"))
+                .thenReturn(Optional.of(registration(7L, "public", "people", "egov_db")));
+        when(sources.requireActiveInternal(7L))
+                .thenReturn(source(ExternalDataSourceType.POSTGRESQL, "egov", "Payroll"));
+
+        AnalysisExecutionRouter.RoutedSql routed = router.route(
+                "SELECT src.id FROM jdbc_7.public.people src WHERE TRY_CAST(src.ref AS DOUBLE) = ?",
+                List.of(logical));
+
+        assertEquals(AnalysisExecutionRoute.Mode.FEDERATED_PRESTO, routed.route().mode());
+        assertTrue(routed.sql().contains("TRY_CAST(src.ref AS DOUBLE)"), routed.sql());
+        assertTrue(routed.sql().contains("\"egov\".\"public\".\"people\""), routed.sql());
     }
 
     @Test
