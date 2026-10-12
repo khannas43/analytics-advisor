@@ -1335,15 +1335,21 @@ class RecordMatchServiceTest {
     }
 
     @Test
-    void leftJoinAnyOfOnPreservedSourceUsesLeftJoinUnnest() {
+    void anyOfNeverUsesLeftJoinUnnestWhateverTheJoinType() {
         MatchGroup anyOf = new MatchGroup(
                 List.of(exact("beneficiary", "a1"), exact("beneficiary", "a2")),
                 List.of(exact("beneficiary", "b")),
                 GroupMode.ANY_OF, null, null);
-        RecordMatchRequest req = new RecordMatchRequest(
-                List.of(), List.of(), null, null, List.of(anyOf), false, null, JoinType.LEFT);
-        String sql = service.planMatch(req).sql();
-        assertTrue(sql.contains("LEFT JOIN UNNEST"), sql);
+        // PrestoDB 0.297 fails at analysis on LEFT JOIN UNNEST, and the SQL parses, so only the real
+        // engine notices (LakehouseRealEngineIT). A row with all-NULL candidates survives a CROSS JOIN
+        // UNNEST anyway because the array is positional and never empty.
+        for (JoinType type : JoinType.values()) {
+            RecordMatchRequest req = new RecordMatchRequest(
+                    List.of(), List.of(), null, null, List.of(anyOf), false, null, type);
+            String sql = service.planMatch(req).sql();
+            assertFalse(sql.contains("LEFT JOIN UNNEST"), type + ": " + sql);
+            assertTrue(sql.contains("CROSS JOIN UNNEST"), type + ": " + sql);
+        }
     }
 
     // ---- post-join column comparison (Package 12) ----

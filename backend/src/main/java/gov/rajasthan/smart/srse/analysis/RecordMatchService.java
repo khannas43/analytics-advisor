@@ -873,8 +873,7 @@ public class RecordMatchService {
         // computed over different expressions than the join matched on.
         List<UnnestSide> sourceUnnests = new ArrayList<>();
         List<UnnestSide> targetUnnests = new ArrayList<>();
-        List<GroupPlan> groups = planGroups(join, sides, sourceUnnests, targetUnnests,
-                joinType.preservesSourceSide(), joinType.preservesTargetSide());
+        List<GroupPlan> groups = planGroups(join, sides, sourceUnnests, targetUnnests);
         ScopeFilteredFrom sourceScope = applySideRules(
                 scopeFrom.planFrom(sides.sourceTable()), req.sourceRules(), sides.sourceTable()).scope();
         ScopeFilteredFrom targetScope = applySideRules(
@@ -1064,15 +1063,12 @@ public class RecordMatchService {
      * it can be written.
      */
     private List<GroupPlan> planGroups(JoinPlan join, Sides sides,
-                                       List<UnnestSide> sourceUnnests, List<UnnestSide> targetUnnests,
-                                       boolean preserveSourceSide, boolean preserveTargetSide) {
+                                       List<UnnestSide> sourceUnnests, List<UnnestSide> targetUnnests) {
         List<GroupPlan> plans = new ArrayList<>();
         for (int i = 0; i < join.groups().size(); i++) {
             MatchGroup g = join.groups().get(i);
-            SideSql src = sideSql(g, g.source(), "src", sides.sourceColumns(), i, sourceUnnests,
-                    preserveSourceSide);
-            SideSql tgt = sideSql(g, g.target(), "tgt", sides.targetColumns(), i, targetUnnests,
-                    preserveTargetSide);
+            SideSql src = sideSql(g, g.source(), "src", sides.sourceColumns(), i, sourceUnnests);
+            SideSql tgt = sideSql(g, g.target(), "tgt", sides.targetColumns(), i, targetUnnests);
 
             if (isGroupFuzzy(g)) {
                 // CompareAs does not enter into a fuzzy group: Levenshtein
@@ -1102,7 +1098,7 @@ public class RecordMatchService {
      */
     private SideSql sideSql(MatchGroup group, List<MatchCriterion> columns, String alias,
                             Map<String, RegisteredColumn> described, int groupIndex,
-                            List<UnnestSide> unnests, boolean preserveSideRows) {
+                            List<UnnestSide> unnests) {
         if (columns.size() == 1) {
             String column = columns.get(0).column();
             return new SideSql(alias + "." + column, familyOf(described, column));
@@ -1118,7 +1114,7 @@ public class RecordMatchService {
             String keyAlias = "g" + groupIndex + "_key";
             String matchedAlias = "g" + groupIndex + "_matched_on";
             unnests.add(new UnnestSide(keyAlias, matchedAlias, ColumnGroupSql.unnestClause(
-                    "t", names, !uniform, "u" + groupIndex, keyAlias, matchedAlias, preserveSideRows)));
+                    "t", names, !uniform, "u" + groupIndex, keyAlias, matchedAlias)));
             return new SideSql(alias + "." + keyAlias, uniform ? first : SqlTypeFamily.TEXT);
         }
         List<String> refs = names.stream().map(n -> alias + "." + n).toList();

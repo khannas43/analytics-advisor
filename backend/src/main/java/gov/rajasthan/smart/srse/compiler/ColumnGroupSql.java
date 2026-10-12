@@ -69,17 +69,6 @@ public final class ColumnGroupSql {
      */
     public static String unnestClause(String sourceAlias, List<String> columns, boolean castToText,
                                       String unnestAlias, String keyAlias, String matchedAlias) {
-        return unnestClause(sourceAlias, columns, castToText, unnestAlias, keyAlias, matchedAlias, false);
-    }
-
-    /**
-     * @param preserveSideRows when true, use {@code LEFT JOIN UNNEST ... ON TRUE}
-     *                         so rows with all-null ANY_OF candidates survive an
-     *                         outer join on the preserved side
-     */
-    public static String unnestClause(String sourceAlias, List<String> columns, boolean castToText,
-                                      String unnestAlias, String keyAlias, String matchedAlias,
-                                      boolean preserveSideRows) {
         String values = String.join(", ", columns.stream()
                 .map(c -> {
                     String ref = sourceAlias + "." + c;
@@ -91,9 +80,13 @@ public final class ColumnGroupSql {
                 .toList());
         String unnest = "UNNEST(ARRAY[" + values + "], ARRAY[" + names + "]) AS "
                 + unnestAlias + " (" + keyAlias + ", " + matchedAlias + ")";
-        if (preserveSideRows) {
-            return "LEFT JOIN " + unnest + " ON TRUE";
-        }
+        // ALWAYS CROSS JOIN, for every join type. PrestoDB 0.297 rejects LEFT JOIN UNNEST at analysis
+        // ("UNNEST on other than the right side of CROSS JOIN is not supported") - the SQL parses, so
+        // EmittedSqlParsesTest cannot see it - and it is unnecessary: this array is positional
+        // (ARRAY[a, b], never empty), so a row whose candidates are all NULL yields N null-keyed rows
+        // and survives the cross join, and therefore survives an outer join on the preserved side.
+        // This was re-added once (ed49544) and broke every ANY_OF + LEFT/RIGHT/FULL match on the real
+        // engine; LakehouseRealEngineIT and the test beside this method guard it.
         return "CROSS JOIN " + unnest;
     }
 
