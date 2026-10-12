@@ -292,6 +292,32 @@ class ExternalScopeEnforcementTest {
         assertFalse(display.contains("?"), display);
     }
 
+    @ParameterizedTest
+    @EnumSource(value = ExternalDataSourceType.class, names = {"POSTGRESQL", "DB2"})
+    void groupedCountIsScopedBeforeAggregationOnTheDirectRoute(ExternalDataSourceType type) {
+        useDatabase(type);
+        officerScopedToOneDistrict();
+        RecordMatchRequest grouped = new RecordMatchRequest(
+                List.of(new MatchCriterion("jdbc_7", "public", "people", "id", null)),
+                List.of(new MatchCriterion("jdbc_7", "public", "addresses", "person_id", null)),
+                List.of(), List.of(), List.of(), false, null, null, List.of(), false,
+                null, null, false,
+                List.of(new DisplayColumn("jdbc_7", "public", "people", "district")),
+                List.of(new AggregateSpec(AggregateFunction.COUNT, null, false, null)),
+                null, false);
+
+        RecordMatchService.MatchQuery planned = matchService.planMatch(grouped);
+
+        String routed = planned.routedSql();
+        int people = routed.indexOf("(SELECT * FROM \"public\".\"people\" t WHERE " + SCOPE_SQL + ") src");
+        int addresses = routed.indexOf("(SELECT * FROM \"public\".\"addresses\" t WHERE " + SCOPE_SQL + ") tgt");
+        assertTrue(people > 0, routed);
+        assertTrue(addresses > people, routed);
+        assertTrue(routed.indexOf(" GROUP BY ") > addresses, routed);
+        assertFalse(routed.contains("jdbc_7"), routed);
+        assertEquals(List.of(DISTRICT, DISTRICT), planned.params());
+    }
+
     private void stubRegistration(String table) {
         RegisteredTable row = mock(RegisteredTable.class);
         lenient().when(row.isExternal()).thenReturn(true);

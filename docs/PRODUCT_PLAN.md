@@ -566,7 +566,7 @@ databases for every item: **PostgreSQL, DB2, Lakehouse (0.13).**
 | 10.B.3 | **Self-service password reset (7.1.4)** — add a `PASSWORD_RESET` value to `OtpPurpose` and reuse the existing sender, 5-minute window and cooldown. Identical response whether or not the account exists (no enumeration). Audited. | N | 4 |
 | 10.B.4 | **Audit archival on deactivation (7.1c.3)** — explicit archive state, retained and SuperAdmin-only; replaces today's read-time exclusion. | N | 3 |
 | 10.B.5 | Saved queries owned by a deactivated user: admin reassign action (7.1c.4) | N | 2 |
-| 10.B.6 | Verify scope applies before aggregation under Group By (7.2.6 — 5.5 now exists); add negative tests | N | 2 |
+| 10.B.6 | ✅ Verify scope applies before aggregation under Group By (7.2.6 — 5.5 now exists); add negative tests. *Verified 2026-10-12, no leak: both the single-source and two-table builders put each side's scope in its own derived table in FROM, and GROUP BY is appended after the join, so the filter applies before aggregation and cannot be nullified by an outer join. `GroupedScopeEnforcementTest` pins it for INNER/LEFT/FULL (distinct per-side bind values, GROUP BY after both derived tables, outer WHERE stays `TRUE`), for an unentitled officer (`1 = 0`, never the raw table) and for the grouped CSV; `ExternalScopeEnforcementTest` adds the grouped case on PostgreSQL and DB2. Mutation-checked: dropping one side's scope fails 17 of 23. Not covered: small-group disclosure (a group of 1 reveals one record) — a product question, not a scope bug.* | N | 2 |
 
 ### 10.C Operability
 
