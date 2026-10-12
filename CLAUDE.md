@@ -419,6 +419,7 @@ mismatch.
   no target match under LEFT), both column-group modes cross-catalog, and the
   post-join comparison NULL semantics. Recorded results are in `FORK.md` history
   and SRSE's `CLAUDE.md` at `srse-pre-fork`.
+- **Connected-database real-engine check** (PostgreSQL + DB2 direct route, Presto federation): `docker compose -f docker/verify/docker-compose.yml up -d`, then `SRSE_REAL_ENGINE_IT=true mvn -f backend/pom.xml test -Dtest=ExternalDirectRealEngineIT -Djacoco.skip=true`. DB2 is amd64-only (slow under emulation on Apple Silicon). PrestoDB 0.297 has **no DB2 connector**, so a DB2 source can never be federated.
 - Build commands: `mvn -f backend/pom.xml test` (there is **no root pom**;
   `-pl backend` does not work), and `npm run build` / `npm run test` in
   `frontend/`. The backend needs **JDK 17** — the enforcer rejects anything else.
