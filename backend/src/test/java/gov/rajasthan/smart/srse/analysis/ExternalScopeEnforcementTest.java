@@ -233,6 +233,65 @@ class ExternalScopeEnforcementTest {
         assertEquals(List.of(DISTRICT), planned.params());
     }
 
+    @ParameterizedTest
+    @EnumSource(value = ExternalDataSourceType.class, names = {"POSTGRESQL", "DB2"})
+    void multiTargetSubMatchesKeepScopeOnHubAndEachTarget(ExternalDataSourceType type) {
+        useDatabase(type);
+        officerScopedToOneDistrict();
+        stubRegistration("phones");
+
+        MultiTargetRecordMatchRequest multi = new MultiTargetRecordMatchRequest(
+                List.of(new MatchCriterion("jdbc_7", "public", "people", "id", null)),
+                List.of(),
+                HubSide.SOURCE,
+                List.of(
+                        new TargetMatchSpec(
+                                "addrs",
+                                "jdbc_7",
+                                "public",
+                                "addresses",
+                                List.of(new MatchCriterion("jdbc_7", "public", "addresses", "person_id", null)),
+                                List.of()),
+                        new TargetMatchSpec(
+                                "phones",
+                                "jdbc_7",
+                                "public",
+                                "phones",
+                                List.of(new MatchCriterion("jdbc_7", "public", "phones", "person_id", null)),
+                                List.of())),
+                false,
+                null,
+                false);
+
+        for (TargetMatchSpec target : multi.targets()) {
+            RecordMatchRequest single = MultiTargetRecordMatchService.toSingleMatch(multi, target);
+            RecordMatchService.MatchQuery planned = matchService.planMatch(single);
+            String routed = planned.routedSql();
+            assertTrue(routed.contains("(SELECT * FROM \"public\".\"people\" t WHERE " + SCOPE_SQL + ") src"), routed);
+            assertTrue(routed.contains("(SELECT * FROM \"public\".\"" + target.table() + "\" t WHERE " + SCOPE_SQL + ") tgt"),
+                    routed);
+            assertFalse(routed.contains("jdbc_7"), routed);
+            assertEquals(List.of(DISTRICT, DISTRICT), planned.params());
+        }
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ExternalDataSourceType.class, names = {"POSTGRESQL", "DB2"})
+    void sqlPreviewInlinesScopeBindAfterDirectRouting(ExternalDataSourceType type) {
+        useDatabase(type);
+        officerScopedToOneDistrict();
+
+        RecordMatchService.MatchQuery planned = matchService.planMatch(joinRequest());
+        String display = matchService.renderQueryForDisplay(planned);
+
+        assertTrue(display.contains("(SELECT * FROM \"public\".\"people\" t WHERE district_code IN ('" + DISTRICT + "')) src"),
+                display);
+        assertTrue(display.contains("(SELECT * FROM \"public\".\"addresses\" t WHERE district_code IN ('" + DISTRICT + "')) tgt"),
+                display);
+        assertFalse(display.contains("jdbc_7"), display);
+        assertFalse(display.contains("?"), display);
+    }
+
     private void stubRegistration(String table) {
         RegisteredTable row = mock(RegisteredTable.class);
         lenient().when(row.isExternal()).thenReturn(true);

@@ -3,6 +3,7 @@ package gov.rajasthan.smart.srse.analysis;
 import gov.rajasthan.smart.srse.compiler.CompareAs;
 import gov.rajasthan.smart.srse.compiler.SqlTypeFamily;
 import gov.rajasthan.smart.srse.compiler.TypeCoercion;
+import gov.rajasthan.smart.srse.execution.AnalysisExecutionRouter;
 import gov.rajasthan.smart.srse.execution.GuardrailProperties;
 import gov.rajasthan.smart.srse.lakehouse.AnalysisScopeFromService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
@@ -13,6 +14,7 @@ import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadata;
 import gov.rajasthan.smart.srse.metadata.AnalysisColumnMetadataRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -70,6 +72,7 @@ public class JoinKeySuggestService {
     private final GuardrailProperties guardrails;
     private final JdbcTemplate jdbc;
     private final AnalysisScopeFromService scopeFrom;
+    private final AnalysisExecutionRouter executionRouter;
 
     public JoinKeySuggestService(LakehouseRegistryService registry,
                                  AnalysisColumnMetadataRepository columnMetadata,
@@ -77,17 +80,34 @@ public class JoinKeySuggestService {
                                  GuardrailProperties guardrails,
                                  @Qualifier("prestoJdbcTemplate") JdbcTemplate jdbc,
                                  AnalysisScopeFromService scopeFrom) {
+        this(registry, columnMetadata, analysisProperties, guardrails, jdbc, scopeFrom, null);
+    }
+
+    @Autowired
+    public JoinKeySuggestService(LakehouseRegistryService registry,
+                                 AnalysisColumnMetadataRepository columnMetadata,
+                                 AnalysisProperties analysisProperties,
+                                 GuardrailProperties guardrails,
+                                 @Qualifier("prestoJdbcTemplate") JdbcTemplate jdbc,
+                                 AnalysisScopeFromService scopeFrom,
+                                 @Autowired(required = false) AnalysisExecutionRouter executionRouter) {
         this.registry = registry;
         this.columnMetadata = columnMetadata;
         this.analysisProperties = analysisProperties;
         this.guardrails = guardrails;
         this.jdbc = jdbc;
         this.scopeFrom = scopeFrom;
+        this.executionRouter = executionRouter;
     }
 
     public List<JoinKeySuggestion> suggest(SuggestJoinKeysRequest req) {
         QualifiedTable source = new QualifiedTable(req.sourceCatalog(), req.sourceSchema(), req.sourceTable());
         QualifiedTable target = new QualifiedTable(req.targetCatalog(), req.targetSchema(), req.targetTable());
+
+        if (executionRouter != null && executionRouter.containsExternal(source, target)) {
+            throw new IllegalArgumentException(
+                    "Join key suggestions are not available for connected database tables yet");
+        }
 
         List<RegisteredColumn> sourceCols = registry.listColumns(
                 source.catalog(), source.schema(), source.table());

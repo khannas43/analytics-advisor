@@ -1,6 +1,10 @@
 package gov.rajasthan.smart.srse.analysis;
 
+import gov.rajasthan.smart.srse.datasource.ExternalDataSourceService;
+import gov.rajasthan.smart.srse.execution.AnalysisExecutionRouter;
 import gov.rajasthan.smart.srse.execution.GuardrailProperties;
+import gov.rajasthan.smart.srse.lakehouse.RegisteredTable;
+import gov.rajasthan.smart.srse.lakehouse.RegisteredTableRepository;
 import gov.rajasthan.smart.srse.lakehouse.AnalysisScopeFromService;
 import gov.rajasthan.smart.srse.lakehouse.LakehouseRegistryService;
 import gov.rajasthan.smart.srse.lakehouse.QualifiedTable;
@@ -23,6 +27,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -47,6 +52,10 @@ class JoinKeySuggestServiceTest {
     private JdbcTemplate jdbc;
     @Mock
     private AnalysisScopeFromService scopeFrom;
+    @Mock
+    private RegisteredTableRepository registrations;
+    @Mock
+    private ExternalDataSourceService externalSources;
 
     private JoinKeySuggestService service;
 
@@ -63,6 +72,29 @@ class JoinKeySuggestServiceTest {
                 new GuardrailProperties(1000, 30, 50),
                 jdbc,
                 scopeFrom);
+    }
+
+    @Test
+    void connectedDatabaseTablesRefusedBeforePresto() {
+        RegisteredTable external = org.mockito.Mockito.mock(RegisteredTable.class);
+        org.mockito.Mockito.when(external.isExternal()).thenReturn(true);
+        org.mockito.Mockito.when(registrations.findByCatalogNameAndSchemaNameAndTableName(
+                "jdbc_7", "public", "people")).thenReturn(java.util.Optional.of(external));
+
+        AnalysisExecutionRouter router = new AnalysisExecutionRouter(registrations, externalSources, jdbc);
+        JoinKeySuggestService routed = new JoinKeySuggestService(
+                registry,
+                columnMetadata,
+                new AnalysisProperties(5, 120, 4, 2, 10, 3, 50_000_000L, 10, 100, 100_000),
+                new GuardrailProperties(1000, 30, 50),
+                jdbc,
+                scopeFrom,
+                router);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> routed.suggest(
+                new SuggestJoinKeysRequest("jdbc_7", "public", "people", CATALOG, SCHEMA, TGT, false)));
+        assertTrue(ex.getMessage().contains("connected database"));
+        verify(registry, never()).listColumns(anyString(), anyString(), anyString());
     }
 
     @Test
