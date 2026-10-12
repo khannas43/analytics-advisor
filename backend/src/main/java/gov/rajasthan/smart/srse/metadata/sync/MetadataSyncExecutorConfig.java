@@ -12,9 +12,11 @@ class MetadataSyncExecutorConfig {
     TaskExecutor metadataSyncExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         executor.setThreadNamePrefix("metadata-sync-");
-        executor.setCorePoolSize(1);
+        // Bounded, but roomy: a bulk config import registers many tables at once. Core == max, because
+        // ThreadPoolExecutor only grows past core when the queue is FULL.
+        executor.setCorePoolSize(2);
         executor.setMaxPoolSize(2);
-        executor.setQueueCapacity(4);
+        executor.setQueueCapacity(500);
         executor.initialize();
         return executor;
     }

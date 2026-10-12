@@ -584,10 +584,14 @@ public class LakehouseRegistryService {
         return decorateAndFilterVisible(livePhysicalColumns(registration).stream(), byColumn);
     }
 
-    /** @deprecated use {@link #listColumnsForDisplay} or {@link #listColumnsLive} explicitly */
+    /**
+     * @deprecated pick {@link #listColumnsForDisplay} (Query Builder pickers) or {@link #listColumnsLive}
+     *     (anything that feeds SQL). Defaults to LIVE: a caller that forgot to choose must never be handed
+     *     a possibly-stale snapshot on an execution path.
+     */
     @Deprecated
     public List<RegisteredColumn> listColumns(String catalog, String schema, String table) {
-        return listColumnsForDisplay(catalog, schema, table);
+        return listColumnsLive(catalog, schema, table);
     }
 
     /**

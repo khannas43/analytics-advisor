@@ -7,8 +7,11 @@ import gov.rajasthan.smart.srse.lakehouse.RegisteredTableRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionOperations;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
@@ -18,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 @Service
 public class MetadataSyncService {
@@ -32,7 +36,9 @@ public class MetadataSyncService {
     private final MetadataSyncTableResultRepository tableResults;
     private final TableColumnSnapshotRepository snapshots;
     private final Executor metadataSyncExecutor;
+    private final TransactionOperations tx;
 
+    /** Tests that mock every repository (no transaction to open). Spring uses the @Autowired one. */
     public MetadataSyncService(
             RegisteredTableRepository registrations,
             LakehouseBrowseService browse,
@@ -40,8 +46,35 @@ public class MetadataSyncService {
             MetadataSyncRunRepository runs,
             MetadataSyncTableResultRepository tableResults,
             TableColumnSnapshotRepository snapshots,
-            @org.springframework.beans.factory.annotation.Qualifier("metadataSyncExecutor")
             Executor metadataSyncExecutor) {
+        this(registrations, browse, externalMetadata, runs, tableResults, snapshots,
+                metadataSyncExecutor, TransactionOperations.withoutTransaction());
+    }
+
+    @Autowired
+    public MetadataSyncService(
+            RegisteredTableRepository registrations,
+            LakehouseBrowseService browse,
+            ExternalDataSourceMetadataService externalMetadata,
+            MetadataSyncRunRepository runs,
+            MetadataSyncTableResultRepository tableResults,
+            TableColumnSnapshotRepository snapshots,
+            @Qualifier("metadataSyncExecutor") Executor metadataSyncExecutor,
+            PlatformTransactionManager transactionManager) {
+        this(registrations, browse, externalMetadata, runs, tableResults, snapshots,
+                metadataSyncExecutor, new TransactionTemplate(transactionManager));
+    }
+
+    private MetadataSyncService(
+            RegisteredTableRepository registrations,
+            LakehouseBrowseService browse,
+            ExternalDataSourceMetadataService externalMetadata,
+            MetadataSyncRunRepository runs,
+            MetadataSyncTableResultRepository tableResults,
+            TableColumnSnapshotRepository snapshots,
+            Executor metadataSyncExecutor,
+            TransactionOperations tx) {
+        this.tx = tx;
         this.registrations = registrations;
         this.browse = browse;
         this.externalMetadata = externalMetadata;
@@ -61,7 +94,12 @@ public class MetadataSyncService {
             return new SyncStartResult(skipped.get(), true);
         }
         Long runId = createRunningRun(trigger);
-        metadataSyncExecutor.execute(() -> executeRun(runId));
+        try {
+            metadataSyncExecutor.execute(() -> executeRun(runId));
+        } catch (RejectedExecutionException ex) {
+            finishRun(runId, MetadataSyncOutcome.FAILED);
+            throw new IllegalStateException("The metadata sync queue is full - try again shortly");
+        }
         return new SyncStartResult(runId, false);
     }
 
@@ -74,15 +112,28 @@ public class MetadataSyncService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    metadataSyncExecutor.execute(task);
+                    submitBestEffort(task, table);
                 }
             });
         } else {
-            metadataSyncExecutor.execute(task);
+            submitBestEffort(task, table);
         }
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    /**
+     * A registration must never fail or throw because of its metadata sync. If the queue is full (a
+     * bulk import registers many tables at once) the table simply waits for the next scheduled or
+     * manual sync; until then Query Builder reads it live.
+     */
+    private void submitBestEffort(Runnable task, RegisteredTable table) {
+        try {
+            metadataSyncExecutor.execute(task);
+        } catch (RuntimeException ex) {
+            log.warn("Metadata sync not queued for {} (queue full?) - it will be picked up by the next sync",
+                    table.toQualifiedTable().qualifiedName());
+        }
+    }
+
     public void syncOneTableBestEffort(RegisteredTable table, MetadataSyncTrigger trigger) {
         try {
             Long runId = createRunningRun(trigger);
@@ -108,14 +159,12 @@ public class MetadataSyncService {
         finishRun(runId, anyFailed ? MetadataSyncOutcome.DEGRADED : MetadataSyncOutcome.SUCCESS);
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     Long createRunningRun(MetadataSyncTrigger trigger) {
         MetadataSyncRun run = runs.save(new MetadataSyncRun(
                 Instant.now(), trigger, MetadataSyncOutcome.RUNNING));
         return run.getId();
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     void finishRun(long runId, MetadataSyncOutcome outcome) {
         runs.findById(runId).ifPresent(run -> {
             run.setFinishedAt(Instant.now());
@@ -124,24 +173,31 @@ public class MetadataSyncService {
         });
     }
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     boolean syncTableInRun(long runId, RegisteredTable table) {
         String catalog = table.getCatalogName();
         String schema = table.getSchemaName();
         String tableName = table.getTableName();
         try {
+            // The network call happens OUTSIDE any database transaction.
             List<LakehouseBrowseService.ColumnInfo> columns = introspect(table);
             Instant syncedAt = Instant.now();
-            snapshots.deleteAllForTable(catalog, schema, tableName);
-            int ordinal = 0;
-            for (LakehouseBrowseService.ColumnInfo column : columns) {
-                snapshots.save(new TableColumnSnapshot(
-                        catalog, schema, tableName,
-                        column.name(), column.dataType(),
-                        ordinal++, syncedAt, runId));
-            }
-            tableResults.save(new MetadataSyncTableResult(
-                    runId, catalog, schema, tableName, MetadataTableOutcome.SUCCESS, null));
+            // One explicit transaction for the replace-all. This class calls its own methods, where
+            // Spring's @Transactional proxy does not apply - and deleteAllForTable is a @Modifying
+            // query that fails outright without a transaction. If any insert fails, the delete rolls
+            // back too, so the last good snapshot survives.
+            tx.executeWithoutResult(status -> {
+                snapshots.deleteAllForTable(catalog, schema, tableName);
+                int ordinal = 0;
+                for (LakehouseBrowseService.ColumnInfo column : columns) {
+                    snapshots.save(new TableColumnSnapshot(
+                            catalog, schema, tableName,
+                            column.name(), column.dataType(),
+                            ordinal++, syncedAt, runId));
+                }
+                snapshots.flush();
+                tableResults.save(new MetadataSyncTableResult(
+                        runId, catalog, schema, tableName, MetadataTableOutcome.SUCCESS, null));
+            });
             return true;
         } catch (RuntimeException ex) {
             log.warn("Metadata sync failed for {}.{}: {}",
