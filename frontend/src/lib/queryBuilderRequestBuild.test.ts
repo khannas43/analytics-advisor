@@ -8,6 +8,7 @@ import {
   retainValidDisplayColumns,
   selectAllDisplayColumns,
   toggleDisplayColumnSelection,
+  withoutCountOnly,
 } from "@/lib/queryBuilderRequestBuild";
 import {
   EMPTY_EXTRACT_CONFIG,
@@ -148,6 +149,23 @@ describe("ordinary source rules", () => {
     expect(single.singleSource).toBe(true);
     expect(single.sourceDisplayColumns?.map((column) => column.column)).toEqual(["district", "full_name"]);
     expect(single.targetDisplayColumns).toBeUndefined();
+  });
+
+  it("sets countOnly on a report apply and strips it for export", () => {
+    const counted = buildMergedRequest(true, extract(), report({ countOnly: true }))!;
+    expect(counted.countOnly).toBe(true);
+    const exported = withoutCountOnly(counted);
+    expect(exported.countOnly).toBeUndefined();
+  });
+
+  it("does not send countOnly when group-by is on", () => {
+    const grouped = buildMergedRequest(
+      true,
+      extract(),
+      report({ countOnly: true, groupEnabled: true, groupByCol: "district" }),
+    )!;
+    expect(grouped.countOnly).toBeUndefined();
+    expect(grouped.groupByColumns?.[0]?.column).toBe("district");
   });
 
   it("restores both sides when grouping cleared them on the wire", () => {

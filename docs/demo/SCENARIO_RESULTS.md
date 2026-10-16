@@ -1,5 +1,7 @@
 # DEMO-02 scenario results
 
+Row counts below are **API** results (`countOnly` or a complete CSV), not what the Query Builder grid displays — the UI stops parsing at 200,000 and shows `200,001+`.
+
 Generated 2026-10-16 11:45:13Z by `scripts/demo/run-scenarios.py`.
 
 - API: `http://localhost:8080`

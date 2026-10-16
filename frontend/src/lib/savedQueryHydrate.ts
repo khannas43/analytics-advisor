@@ -428,6 +428,7 @@ export function hydrateReportConfigFromRequest(req: RecordMatchRequest): ReportC
     aggregateFn: agg?.function ?? "COUNT",
     aggregateCol: agg?.column?.column ?? "",
     countDistinct: agg?.distinct ?? false,
+    countOnly: false,
     joinFuzzyThresholdPercent: joinFuzzy,
     joinFuzzyIgnoreSpaces: fuzzyOpts?.ignoreSpaces ?? false,
     joinFuzzyCaseSensitive: fuzzyOpts?.caseSensitive ?? false,

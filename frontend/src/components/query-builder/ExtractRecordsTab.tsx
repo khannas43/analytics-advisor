@@ -736,7 +736,7 @@ export default function ExtractRecordsTab({ onGoReport }: Readonly<ExtractRecord
               checked={countOnly}
               onChange={(e) => patchExtract({ countOnly: e.target.checked })}
             />
-            Count records only (no row preview)
+            {t("lblCountOnly")}
           </label>
         </div>
       </section>

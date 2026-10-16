@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Idempotent DEMO-02 setup. Re-run is a no-op. --reset removes only what we created.
+# --clean-saved deletes leftover DEMO-02 / acceptance- / sq- saved queries.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"

@@ -9,6 +9,11 @@ scoped, then the rest of the engine, then governance.
 
 ### Measured results (M2, product API)
 
+Figures above 200,000 are API / count-only / CSV. An un-ticked Run on Extract
+or Report shows **200,001+** on screen (parse cap). Tick **Count records only**
+on Extract Records or Report Analysis for the exact figure; CSV/Excel still
+re-run the full match.
+
 | # | What | Rows | Wall | Fan-out guard |
 |---|---|---:|---:|---|
 | 1 | INNER / LEFT / RIGHT / FULL (id, cross-type) | 855,000 / 1,004,250 / 900,000 / 1,049,250 | 14s / 12s / 12s / 11s | passed |
@@ -37,11 +42,10 @@ scoped, then the rest of the engine, then governance.
    # ROWS=1000000 ./docker/demo/seed.sh      # M2 show
    ./docker/demo/smoke.sh
    ```
-3. **Backend flags** (local auth, demo Presto, 20-minute timeout, OTP in the log):
+3. **Backend flags** (local auth, demo Presto, 20-minute timeout):
    ```bash
    # in repo-root .env  (see scripts/demo/demo.env.example)
    SRSE_AUTH_MODE=local
-   SRSE_OTP_SENDER=log
    SRSE_QUERY_TIMEOUT_SECONDS=1200
    SPRING_MVC_ASYNC_REQUEST_TIMEOUT=1260000
    SRSE_PRESTO_URL=jdbc:presto://localhost:8083   # host-run backend
@@ -50,22 +54,21 @@ scoped, then the rest of the engine, then governance.
    Restart backend after changing any of these. Inventory: `scripts/demo/TIMEOUTS.md`.
 4. **Product setup** (idempotent): `./scripts/demo/setup.sh`
    - Second run must be a no-op. `--reset` then `setup.sh` restores the contract.
-5. **OTP**: `jaipurofficer` has MFA on. Login returns a challenge; the six digits
-   are in the backend log (`OTP [EMAIL] to … — Your SRSE verification code is: ######`).
-   `docker logs --since 2m <srse-backend-container>`
-6. **Warm-up** (do this before the room sits down): run scenario 1 INNER and
+   - Run `./scripts/demo/setup.sh --clean-saved` after any scenario run.
+   - Re-run after pulling so `jaipurofficer` is MFA-off with password `demo123`.
+5. **Warm-up** (do this before the room sits down): run scenario 1 INNER and
    scenario 2 so Presto has the pages hot —
    `./scripts/demo/run-scenarios.sh --include-fuzzy --only 1 2`
-7. Frontend at http://localhost:3000 with `NEXT_PUBLIC_AUTH_MODE=local`.
+6. Frontend at http://localhost:3000 with `NEXT_PUBLIC_AUTH_MODE=local`.
 
-### Accounts (passwords in `docs/RUNNING_LOCALLY.md`)
+### Accounts (passwords in `scripts/demo/demo.env.example`)
 
-| User | Role | Scope | MFA |
-|---|---|---|---|
-| `superadmin` | Super Admin | none (sees every district) | off |
-| `jaipurofficer` | Officer | Jaipur (`JP`) subtree | **on** |
-| `sanganeruser` | Officer | Sanganer taluka (`SG`) | off |
-| `jaipuradmin` | Admin + audit reader | Jaipur subtree | off |
+| User | Password | Role | Scope | MFA |
+|---|---|---|---|---|
+| `superadmin` | `Supradmin@123` | Super Admin | none (sees every district) | off |
+| `jaipurofficer` | `demo123` | Officer | Jaipur (`JP`) subtree | **off** |
+| `sanganeruser` | `Officer$New1` | Officer | Sanganer taluka (`SG`) | off |
+| `jaipuradmin` | `JaipurNew$1` | Admin + audit reader | Jaipur subtree | off |
 
 Officer-facing tables live at `demo_pg.demo.*`. The Data Source also registered
 `jdbc_<id>.demo.*` and left those **unbound** — that is the deny-by-default exhibit.
@@ -116,15 +119,17 @@ override them. If a picker column is missing, it was not flagged
 
 ### 3. Users and MFA — `/admin456?section=users`
 
-**Pick:** `jaipurofficer` — Jaipur, MFA on. Mention `sanganeruser` (taluka) and
-`jaipuradmin` (scoped admin + audit).
+**Pick:** `jaipurofficer` — Jaipur, MFA **off**, password `demo123`. Mention
+`sanganeruser` (taluka) and `jaipuradmin` (scoped admin + audit).
 
 **Say:** Scope is a subtree. A district officer sees the district and everything
-under it. MFA is a per-user toggle; the code is emailed and SMSed.
+under it. MFA is a per-user toggle; this presenter account has it off.
 
 ### 4. Scenario 1 — join types, cross-type key (superadmin)
 
-**Screen:** `/query-builder` → Report Analysis.
+**Screen:** `/query-builder` → **Extract Records** (Dual Source). Join type and
+the single id key live here. Report Analysis is locked until Extract has run
+once; the COMBINE / fuzzy group builder is on that later tab (scenario 4).
 
 **Pick:** Source `demo_pg.demo.beneficiary.beneficiary_id` (bigint). Target
 `demo_pg.demo.bank_account.beneficiary_ref` (varchar, zero-padded). Display
@@ -133,9 +138,11 @@ name, district, income, status. Run INNER, then LEFT, then mention RIGHT/FULL.
 **Say:** Same identifier, two types. Presto will not coerce that; we `TRY_CAST`
 the text side as a number so one dirty row cannot fail the match.
 
-**Expect:** INNER **855,000** (~14s) < LEFT **1,004,250** (~12s) < FULL
-**1,049,250** (~11s). RIGHT **900,000**. LEFT unmatched rows carry
-`match_status = NO_TARGET` and **NULL** comparison verdicts, not false.
+**Expect:** Tick **Count records only** to show INNER **855,000** (~14s) < LEFT
+**1,004,250** < FULL **1,049,250**. RIGHT **900,000**. An un-ticked Run shows
+**200,001+** on screen; the exact figures are that count-only cell or the CSV.
+LEFT unmatched rows carry `match_status = NO_TARGET` and **NULL** comparison
+verdicts, not false.
 
 **Fallback:** if the query 400s on types, `beneficiary_ref` lost its NUMBER
 override — re-run `setup.sh`. If it 503s, Presto 8083 is down.
@@ -146,18 +153,21 @@ override — re-run `setup.sh`. If it 503s, Presto 8083 is down.
 1. `full_name` vs `account_holder_name`, fuzzy **85%**
 2. `beneficiary.mobile` vs `bank.mobile`, **exact**
 
-Display both names and both mobiles. Run. **Do not** run name-only (2b) —
-prefix-3 name fan-out is ~735 million, above the 50 million guard.
+Display both names and both mobiles. Tick **Count records only** beside Run
+on Report Analysis, then Run. **Do not** run name-only (2b) — prefix-3 name
+fan-out is ~735 million, above the 50 million guard.
 
 **Say:** A million beneficiaries, nine hundred thousand accounts, names with
 planted typos. Blocking is the first three characters. The mobile AND is what
 keeps the candidate set honest and the fan-out guard quiet. This is the
 question that used to mean a data-science engagement.
 
-**Expect:** **675,387** rows in **14.7s**. Fan-out guard **passed** (the query
-ran; it was not refused). Same count as Agent A's Presto-direct rehearsal
-(675,387 in ~3s, `DATA_PROFILE.md`) — the extra ~12s is product planning.
-If it refuses with an estimated-row message, the guard fired — do not raise it.
+**Expect:** **675,387 matching rows** on Report Analysis (~14.7s) with
+**Count records only** ticked — not **200,001+**. Fan-out guard **passed**.
+Same count as Agent A's Presto-direct rehearsal (675,387 in ~3s,
+`DATA_PROFILE.md`) — the extra ~12s is product planning. CSV/Excel still
+re-run the full match. If it refuses with an estimated-row message, do not
+raise the guard.
 
 **Fallback:** still running at 10 minutes — leave it, talk through scenarios 5
 on a second tab (ANY_OF is ~13s). If Tomcat returns 503 at ~30s,
@@ -165,20 +175,27 @@ on a second tab (ANY_OF is ~13s). If Tomcat returns 503 at ~30s,
 
 ### 6. Scenario 3 — same fuzzy+mobile, scoped (jaipurofficer)
 
-**Pick:** Log out. Log in as `jaipurofficer`. Read OTP from the backend log.
-Re-run the *exact* same two groups (name ≥85% + exact mobile).
+**Pick:** Log out. Log in as `jaipurofficer` / `demo123` (no OTP). Re-run the
+*exact* same two groups (name ≥85% + exact mobile) with **Count records only**
+ticked on Report Analysis.
 
 **Say:** Same SQL shape. The engine added `district_code IN ('JP')`. The count
 must be strictly smaller. That is the product, not a filter the officer remembered
 to apply.
 
-**Expect:** **222,170** rows in **10.6s**, strictly less than unscoped 675,387.
-Fan-out guard **passed**. SQL carries `district_code IN ('JP')` on both sides.
+**Expect:** **222,170 matching rows** on Report Analysis (~10.6s) with
+**Count records only** ticked, strictly less than unscoped 675,387. Fan-out
+guard **passed**. SQL carries `district_code IN ('JP')` on both sides.
 
-**Fallback:** MFA code missing → `--srse.otp.sender=log`. Zero rows → node code
-is not `JP` (scope matches codes, not names).
+**Fallback:** login still asks for OTP → `setup.sh` has not been re-run after
+the MFA-off change. Zero rows → node code is not `JP` (scope matches codes,
+not names).
 
 ### 7. Scenario 4 — COMBINE (superadmin)
+
+**Screen:** `/query-builder` → **Report Analysis**. The join / fuzzy / COMBINE
+group builder lives on this tab (Extract Records is a single key pair only).
+Run a cheap Extract first so the Report tab unlocks.
 
 **Pick:** Two join groups, INNER:
 1. `beneficiary.full_name` vs pension `first_name` + `last_name`, COMBINE,
@@ -190,8 +207,9 @@ and it matters — Levenshtein is order-sensitive. We fold with `array_join`,
 not `concat_ws`, so a missing middle name is not charged an edit. The mobile
 AND keeps the candidate set in the same league as scenario 2.
 
-**Expect:** **36,274** rows in **20.4s**, under 10 million. SQL contains
-`array_join` and `src.mobile = tgt.phone_primary`.
+**Expect:** Tick **Count records only** to show **36,274 matching rows** in
+**20.4s**, under 10 million. SQL contains `array_join` and
+`src.mobile = tgt.phone_primary`.
 
 ### 8. Scenario 5 — ANY_OF (superadmin)
 
@@ -203,7 +221,8 @@ ON clause — that costs Presto the hash join. We `CROSS JOIN UNNEST`. Under LEF
 ANY_OF also returns extra rows for unmatched candidate columns; that is why
 this demo stays on INNER.
 
-**Expect:** **300,000** rows in **13s**. SQL contains `CROSS JOIN UNNEST`, no OR.
+**Expect:** Tick **Count records only** on Report Analysis to show
+**300,000 matching rows** (~13s). SQL contains `CROSS JOIN UNNEST`, no OR.
 
 ### 9. Scenario 6 — post-join compare (superadmin)
 
@@ -214,7 +233,9 @@ fuzzy name compare. Toggle mismatch-only.
 get NULL verdicts. Mismatch-only keeps no-counterpart rows — three-valued logic
 would otherwise drop them.
 
-**Expect:** mismatch-only **328,815** < all LEFT **1,004,250** (~41s).
+**Expect:** Tick **Count records only** on Report Analysis for both runs:
+mismatch-only **328,815 matching rows** < all LEFT **1,004,250 matching rows**
+(~41s). An un-ticked Run still shows **200,001+**.
 
 ### 10. Scenario 7 — dedup, group-by, filters, pickers (superadmin)
 
@@ -225,7 +246,8 @@ via the value picker. Group by `district_code`, COUNT(*).
 **Say:** Dedup is a view — nothing is deleted. The picker is live distincts,
 admin-gated, and already scoped.
 
-**Expect:** 7 district rows; picker lists `JP`; ration dedup **370,515** (~23s).
+**Expect:** 7 district rows on screen (group-by). Picker lists `JP`. Ration
+dedup is **200,001+** on screen; **370,515** in the CSV / count-only (~23s).
 Dedup cannot be combined with group-by — run them as two requests.
 
 **Fallback:** picker 400 "not available" → column is not `value_picker_enabled`.
@@ -244,8 +266,10 @@ multi-match budget is the wall clock for the whole stream.
 *before* the stream, so the whole request is HTTP 400 with the estimate — not
 an in-band NDJSON error. CSV export of a multi-target is all-or-nothing.
 
-**Expect:** bank **855,000** + pension **300,000** in **28s**. The status target
-is HTTP 400 with the ~450-billion estimate.
+**Expect:** Tick **Count records only** on Report Analysis for the per-target
+figures: bank **855,000 matching rows** + pension **300,000 matching rows**
+(~28s). An un-ticked Run shows **200,001+**. The status target is HTTP 400
+with the ~450-billion estimate.
 
 ### 12. Scenario 9 — suggest keys (superadmin)
 
@@ -270,7 +294,9 @@ to time out. That guard was **not** raised for this demo.
 the complete result, re-run from the engine.”
 
 **Expect:** refusal contains “about 450,000,000,000 rows” (limit 50,000,000).
-CSV of the id match is **855,000** rows / ~87 MB in **21s**, not 10,000.
+An un-ticked id-match Run shows **200,001+** on screen; the CSV is the complete
+**855,000** rows / ~87 MB in **21s** (not the 10,000 render cutoff). Tick
+**Count records only** on Extract to show 855,000.
 
 ### 14. Scenario 11 — three users, deny-by-default, shared reference
 
@@ -287,9 +313,10 @@ bound). Jaipur officer is refused.
 **Then:** join beneficiary to `district_master` (shared). Jaipur still sees only
 Jaipur. A shared reference never relaxes the scoped side.
 
-**Expect:** superadmin **855,000**; jaipurofficer **273,579**; sanganeruser
-**HTTP 400** (bank not visible at taluka). Shared-ref join still scoped: Jaipur
-**320,000** < superadmin **1,000,000**. Unbound `jdbc_*` denied.
+**Expect:** On screen each surviving match is **200,001+**. Count-only / CSV:
+superadmin **855,000**; jaipurofficer **273,579**; sanganeruser **HTTP 400**
+(bank not visible at taluka). Shared-ref join still scoped: Jaipur **320,000**
+< superadmin **1,000,000**. Unbound `jdbc_*` denied.
 
 ### 15. Scenario 12 — audit (`/admin456?section=audit`)
 
@@ -312,7 +339,8 @@ verification run). jaipuradmin sees the Jaipur subtree including `sanganeruser`
 
 **Say:** A saved query is the request, not a cached result. Export re-runs.
 
-**Expect:** Re-run returns the 500-row slice in **17s**; CSV and XLSX both
+**Expect:** Re-run is a 500-row slice (**17s**) — under both the 10,000 render
+cap and the 200,000 parse cap, so the grid shows all 500. CSV and XLSX both
 non-empty.
 
 ---
@@ -323,7 +351,7 @@ non-empty.
 |---|---|---|
 | “Failed to fetch” / CORS 403 | `SRSE_FRONTEND_ORIGINS` ≠ the browser origin | Use http://localhost:3000; restart backend |
 | Login 404 | `SRSE_AUTH_MODE` is still `mock` | Restart with `local` |
-| No OTP in the log | sender is not `log`, or wrong container | `docker logs --since 2m` on the backend container |
+| Login asks for OTP | `jaipurofficer` MFA was not turned off | Re-run `./scripts/demo/setup.sh` |
 | `demo_pg` missing | backend still on Iceberg Presto :8081 | `SRSE_PRESTO_URL=jdbc:presto://localhost:8083` |
 | Fuzzy dies at ~30s | Tomcat async timeout | `SPRING_MVC_ASYNC_REQUEST_TIMEOUT=1260000` |
 | Fuzzy refused with a huge estimate | name-only (2b) or `status` join | Do not raise the guard; add exact mobile as in scenario 2 |

@@ -59,7 +59,10 @@ import {
   buildMultiTargetRequestFromCanvas,
   canvasTargetNodes,
 } from "@/lib/joinCanvasModel";
-import { buildMultiTargetRecordMatchRequest } from "@/lib/multiTargetMatchBuild";
+import {
+  buildMultiTargetRecordMatchRequest,
+  singleTargetMatchRequestFromMulti,
+} from "@/lib/multiTargetMatchBuild";
 import {
   createSavedQuery,
   getSavedQuery,
@@ -72,7 +75,12 @@ import {
 } from "@/lib/savedQueryHydrate";
 import { useQueryBuilderPipeline } from "@/lib/queryBuilderPipelineStore";
 import type { ReportConfig } from "@/lib/queryBuilderPipelineTypes";
-import { buildMergedRequest, preserveExtractDisplayColumnsOnSave } from "@/lib/queryBuilderRequestBuild";
+import {
+  buildMergedRequest,
+  preserveExtractDisplayColumnsOnSave,
+  rowCountFromMatchRow,
+  withoutCountOnly,
+} from "@/lib/queryBuilderRequestBuild";
 import { requestsEqual } from "@/lib/queryBuilderPipelineTypes";
 import { initTargetProgress, mergeTargetProgress, phaseLabel } from "@/lib/multiTargetProgress";
 import LakehouseCascade, {
@@ -231,6 +239,17 @@ const MAX_DISPLAYED_ROWS = 10000;
  * download is still complete, since the backend re-runs the query uncapped.
  */
 const MAX_ROWS_TO_PARSE = 200000;
+
+type CountOnlyResult =
+  | { kind: "single"; rows: number }
+  | { kind: "multi"; targets: { label: string; rows: number }[] };
+
+function fillCatalog(template: string, values: Record<string, string | number>): string {
+  return template.replaceAll(/\{(\w+)\}/g, (_match, name: string) => {
+    const value = values[name];
+    return value === undefined ? "" : String(value);
+  });
+}
 
 function updateRowById(rows: CriterionRow[], id: string, patch: Partial<CriterionRow>): CriterionRow[] {
   return rows.map((r) => (r.id === id ? { ...r, ...patch } : r));
@@ -745,6 +764,8 @@ export default function ReportAnalysisTab({
   const [sqlPreviewError, setSqlPreviewError] = useState<string | null>(null);
   const [sqlPreviewLoading, setSqlPreviewLoading] = useState(false);
 
+  const [standaloneCountOnly, setStandaloneCountOnly] = useState(false);
+  const [countOnlyResult, setCountOnlyResult] = useState<CountOnlyResult | null>(null);
   const [dedupEnabled, setDedupEnabled] = useState(false);
   const multiDedupBlockedByJoin =
     multiMatchMode && targetBlocks.some((b) => b.joinType === "RIGHT" || b.joinType === "FULL");
@@ -752,6 +773,9 @@ export default function ReportAnalysisTab({
     multiDedupBlockedByJoin || (!multiMatchMode && (joinType === "RIGHT" || joinType === "FULL"));
 
   const dedupActive = dedupEnabled && !dedupBlockedByJoin;
+  const countOnlyBlocked = Boolean(pipelineReport.groupEnabled && pipelineReport.groupByCol);
+  const countOnly = embedded ? pipelineReport.countOnly : standaloneCountOnly;
+  const countOnlyActive = countOnly && !countOnlyBlocked;
 
   useEffect(() => {
     listSavedQueries()
@@ -870,6 +894,7 @@ export default function ReportAnalysisTab({
       aggregateFn: pipelineReport.aggregateFn,
       aggregateCol: pipelineReport.aggregateCol,
       countDistinct: pipelineReport.countDistinct,
+      countOnly: countOnlyActive,
       joinFuzzyThresholdPercent:
         sourceRows.find(isRowFilled)?.fuzzyThresholdPercent ?? pipelineReport.joinFuzzyThresholdPercent,
       joinFuzzyIgnoreSpaces: pipelineReport.joinFuzzyIgnoreSpaces,
@@ -896,6 +921,7 @@ export default function ReportAnalysisTab({
       aggregateFn: pipelineReport.aggregateFn,
       aggregateCol: pipelineReport.aggregateCol,
       countDistinct: pipelineReport.countDistinct,
+      countOnly: countOnlyActive,
       joinFuzzyThresholdPercent:
         sourceRows.find(isRowFilled)?.fuzzyThresholdPercent ?? pipelineReport.joinFuzzyThresholdPercent,
     });
@@ -1276,6 +1302,9 @@ export default function ReportAnalysisTab({
     if (mismatchOnly && req.comparisonGroups && req.comparisonGroups.length > 0) {
       req.mismatchOnly = true;
     }
+    if (countOnlyActive) {
+      req.countOnly = true;
+    }
     return req;
   }
 
@@ -1433,6 +1462,7 @@ export default function ReportAnalysisTab({
     setMatchTooManyToDisplay(false);
     setComparisonSummary(null);
     setComparisonSummaryError(null);
+    setCountOnlyResult(null);
     pendingRowsRef.current = [];
     rowsSeenRef.current = 0;
     if (flushIntervalRef.current !== null) {
@@ -1502,7 +1532,7 @@ export default function ReportAnalysisTab({
       throw new Error("Run a match first.");
     }
     const ext = format === "xlsx" ? "xlsx" : format;
-    const blob = await downloadRecordMatchExport(req, format);
+    const blob = await downloadRecordMatchExport(withoutCountOnly(req), format);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1532,6 +1562,60 @@ export default function ReportAnalysisTab({
       setTargetRunStatus(initTargetProgress(labels));
       beginMatchStream();
       const controller = new AbortController();
+      if (countOnlyActive) {
+        const targets: { label: string; rows: number }[] = [];
+        try {
+          for (let i = 0; i < multiReq.targets.length; i++) {
+            const single = singleTargetMatchRequestFromMulti(multiReq, i);
+            if (!single) {
+              continue;
+            }
+            let captured: Record<string, unknown> | null = null;
+            await runRecordMatchStream(
+              { ...single, countOnly: true },
+              {
+                onMeta: (meta) => {
+                  if (meta.sql) {
+                    setMatchSql((prev) => (prev ? `${prev}\n\n---\n\n${meta.sql}` : meta.sql));
+                  }
+                },
+                onRow: (row) => {
+                  captured = row;
+                },
+                onDone: () => {
+                  const n = rowCountFromMatchRow(captured) ?? 0;
+                  const label = labels[i];
+                  targets.push({ label, rows: n });
+                  setTargetRunStatus((prev) =>
+                    mergeTargetProgress(prev, { targetIndex: i, label, phase: "done", rows: n }, labels),
+                  );
+                },
+                onError: (message) => {
+                  setTargetRunStatus((prev) =>
+                    mergeTargetProgress(
+                      prev,
+                      { targetIndex: i, label: labels[i], phase: "error", message },
+                      labels,
+                    ),
+                  );
+                  throw new Error(message);
+                },
+              },
+              controller.signal,
+            );
+          }
+          setCountOnlyResult({ kind: "multi", targets });
+          setMatchColumns([]);
+          setMatchRows([]);
+          setMatchTotalRows(targets.reduce((sum, t) => sum + t.rows, 0));
+          setMatchStatus("ok");
+        } catch (err: unknown) {
+          handleStreamAbort(err, controller);
+        } finally {
+          finishStreamFlush();
+        }
+        return;
+      }
       try {
         await runMultiTargetMatchStream(
           multiReq,
@@ -1592,18 +1676,38 @@ export default function ReportAnalysisTab({
 
     const controller = new AbortController();
     let streamSucceeded = false;
+    let countOnlyRow: Record<string, unknown> | null = null;
     try {
       await runRecordMatchStream(
         req,
         {
           onMeta: (meta) => {
-            streamColumnsRef.current = meta.columns;
-            setMatchColumns(meta.columns);
+            streamColumnsRef.current = req.countOnly ? [] : meta.columns;
+            if (!req.countOnly) {
+              setMatchColumns(meta.columns);
+            }
             setMatchSql(meta.sql);
             lastStreamSqlRef.current = meta.sql;
           },
-          onRow: (row) => appendStreamRow(row, controller),
+          onRow: (row) => {
+            if (req.countOnly) {
+              countOnlyRow = row;
+              return;
+            }
+            appendStreamRow(row, controller);
+          },
           onDone: (totalRows) => {
+            if (req.countOnly) {
+              const n = rowCountFromMatchRow(countOnlyRow) ?? 0;
+              lastStreamTotalRowsRef.current = n;
+              setCountOnlyResult({ kind: "single", rows: n });
+              setMatchColumns([]);
+              setMatchRows([]);
+              setMatchTotalRows(n);
+              setMatchStatus("ok");
+              streamSucceeded = true;
+              return;
+            }
             lastStreamTotalRowsRef.current = totalRows;
             setMatchTotalRows(totalRows);
             setMatchStatus("ok");
@@ -1638,14 +1742,16 @@ export default function ReportAnalysisTab({
           sql: lastStreamSqlRef.current,
         };
         commitReportSuccess(req, snapshot);
-        setLastResult({
-          columns: snapshot.columns,
-          rows: snapshot.rows,
-          totalRows: snapshot.totalRows ?? rowsSeenRef.current,
-          source: "report",
-          matchExportRequest: req,
-        });
-        onRunComplete?.();
+        if (!req.countOnly) {
+          setLastResult({
+            columns: snapshot.columns,
+            rows: snapshot.rows,
+            totalRows: snapshot.totalRows ?? rowsSeenRef.current,
+            source: "report",
+            matchExportRequest: withoutCountOnly(req),
+          });
+          onRunComplete?.();
+        }
       }
     }
   }
@@ -2685,6 +2791,34 @@ export default function ReportAnalysisTab({
             {t("btnToggleControls")}
           </button>
         )}
+        <label
+          className={embedded ? "checkbox-row" : undefined}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            margin: 0,
+            fontSize: "0.9rem",
+            opacity: countOnlyBlocked ? 0.6 : 1,
+          }}
+          title={countOnlyBlocked ? t("tipCountOnlyGrouped") : undefined}
+        >
+          <input
+            type="checkbox"
+            data-testid="report-count-only"
+            checked={countOnly}
+            disabled={countOnlyBlocked}
+            onChange={(e) => {
+              const next = e.target.checked && !countOnlyBlocked;
+              if (embedded) {
+                patchPipelineReport({ countOnly: next });
+              } else {
+                setStandaloneCountOnly(next);
+              }
+            }}
+          />
+          {t("lblCountOnly")}
+        </label>
         <button
           type="button"
           className={embedded ? "btn" : "srse-btn srse-btn-primary"}
@@ -2758,6 +2892,49 @@ export default function ReportAnalysisTab({
         </ul>
       )}
 
+      {countOnlyResult && matchStatus === "ok" && (
+        <div
+          data-testid="report-count-only-result"
+          className={embedded ? undefined : "srse-card"}
+          style={{ marginTop: "1.25rem", padding: embedded ? "0.5rem 0" : "1rem 1.25rem" }}
+        >
+          {countOnlyResult.kind === "single" ? (
+            <p style={{ margin: 0, fontSize: "1.35rem", fontWeight: 650 }}>
+              {fillCatalog(t("msgCountOnlyRows"), { count: countOnlyResult.rows.toLocaleString() })}
+            </p>
+          ) : (
+            <ul style={{ margin: 0, padding: 0, listStyle: "none" }}>
+              {countOnlyResult.targets.map((target) => (
+                <li key={target.label} style={{ fontSize: "1.15rem", fontWeight: 650, marginBottom: "0.35rem" }}>
+                  {target.label}:{" "}
+                  {fillCatalog(t("msgCountOnlyRows"), { count: target.rows.toLocaleString() })}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.85rem", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className={embedded ? "btn sm" : "srse-btn srse-btn-primary srse-btn-sm"}
+              aria-label="Download CSV"
+              onClick={() => void downloadFullExport("csv")}
+            >
+              CSV
+            </button>
+            {!multiMatchMode && (
+              <button
+                type="button"
+                className={embedded ? "btn sm" : "srse-btn srse-btn-primary srse-btn-sm"}
+                aria-label="Download Excel"
+                onClick={() => void downloadFullExport("xlsx")}
+              >
+                Excel
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {comparisonSummaryError && (
         <p className="srse-text-danger" style={{ marginTop: "1rem" }}>
           Comparison summary: {comparisonSummaryError}
@@ -2790,7 +2967,7 @@ export default function ReportAnalysisTab({
         </section>
       )}
 
-      {matchColumns.length > 0 && (
+      {matchColumns.length > 0 && !countOnlyResult && (
         <div style={{ marginTop: "1.5rem" }}>
           {embedded && matchStatus === "ok" && (
             <div className="row" style={{ justifyContent: "flex-end", marginBottom: 12, gap: 8 }}>

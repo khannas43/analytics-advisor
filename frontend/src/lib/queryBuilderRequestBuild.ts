@@ -384,7 +384,35 @@ export function buildMergedRequest(
     req.sourceRules = combineSourceRules(req.sourceRules, extraSourceFilters);
   }
 
+  const grouped = Boolean(report.groupEnabled && report.groupByCol);
+  if (report.countOnly && !grouped) {
+    req.countOnly = true;
+  } else {
+    delete req.countOnly;
+  }
+
   return req;
+}
+
+/** Full-result export — never carries count-only or the on-screen row cap. */
+export function withoutCountOnly(req: RecordMatchRequest): RecordMatchRequest {
+  const next = { ...req };
+  delete next.countOnly;
+  delete next.resultLimit;
+  return next;
+}
+
+/** Exact join size from a count-only stream row (`COUNT(*) AS row_count`). */
+export function rowCountFromMatchRow(row: Record<string, unknown> | undefined | null): number | null {
+  if (!row) return null;
+  const raw = row.row_count ?? row.ROW_COUNT;
+  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+  if (typeof raw === "bigint") return Number(raw);
+  if (typeof raw === "string" && raw.trim() !== "") {
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
 
 /** Persist extract attribute picks on saved queries even when report grouping clears display columns on the wire. */

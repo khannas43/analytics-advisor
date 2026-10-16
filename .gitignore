@@ -10,6 +10,7 @@ backend/target/
 *.class
 
 # Node / Next.js
+node_modules/
 frontend/node_modules/
 docs/scripts/node_modules/
 docs/node_modules/

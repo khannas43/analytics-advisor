@@ -828,40 +828,48 @@ def scenario_13(res: ScenarioResult) -> None:
         "description": "Created by scripts/demo/run-scenarios.py",
         "request": body,
     }
-    created = None
-    for attempt in range(2):
-        try:
-            created = admin.post("/api/saved-queries", save_body)
-            break
-        except HttpError as exc:
-            if attempt == 0 and exc.status == 500 and "timed out" in exc.body.lower():
-                res.notes.append(f"saved-query create retry after Presto timeout: {exc.body[:160]}")
-                time.sleep(3)
-                continue
-            raise
-    qid = (created or {}).get("id")
-    res.check(qid is not None, f"saved query created id={qid}")
-    loaded = admin.get(f"/api/saved-queries/{qid}")
-    res.check(loaded.get("id") == qid, "saved query reloads")
-    events, wall, sql = run_match(admin, loaded["request"])
-    n = count_from_events(events)
-    res.check(n is not None and n > 0, f"re-running saved query returned rows ({n})")
-    csv_bytes = admin.request(
-        "POST", "/api/analysis/match.csv", body=loaded["request"], raw=True, accept="text/csv"
-    )
-    xlsx = admin.request(
-        "POST",
-        "/api/analysis/match.xlsx",
-        body=loaded["request"],
-        raw=True,
-        accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-    res.check(isinstance(csv_bytes, (bytes, bytearray)) and len(csv_bytes) > 20, "CSV export non-empty")
-    res.check(isinstance(xlsx, (bytes, bytearray)) and len(xlsx) > 20, "XLSX export non-empty")
-    res.row_count = n
-    res.wall_s = wall
-    res.sql = sql
-    res.detail = f"savedQueryId={qid} rerun_rows={n} csv={len(csv_bytes)} xlsx={len(xlsx)}"
+    qid = None
+    try:
+        created = None
+        for attempt in range(2):
+            try:
+                created = admin.post("/api/saved-queries", save_body)
+                break
+            except HttpError as exc:
+                if attempt == 0 and exc.status == 500 and "timed out" in exc.body.lower():
+                    res.notes.append(f"saved-query create retry after Presto timeout: {exc.body[:160]}")
+                    time.sleep(3)
+                    continue
+                raise
+        qid = (created or {}).get("id")
+        res.check(qid is not None, f"saved query created id={qid}")
+        loaded = admin.get(f"/api/saved-queries/{qid}")
+        res.check(loaded.get("id") == qid, "saved query reloads")
+        events, wall, sql = run_match(admin, loaded["request"])
+        n = count_from_events(events)
+        res.check(n is not None and n > 0, f"re-running saved query returned rows ({n})")
+        csv_bytes = admin.request(
+            "POST", "/api/analysis/match.csv", body=loaded["request"], raw=True, accept="text/csv"
+        )
+        xlsx = admin.request(
+            "POST",
+            "/api/analysis/match.xlsx",
+            body=loaded["request"],
+            raw=True,
+            accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        res.check(isinstance(csv_bytes, (bytes, bytearray)) and len(csv_bytes) > 20, "CSV export non-empty")
+        res.check(isinstance(xlsx, (bytes, bytearray)) and len(xlsx) > 20, "XLSX export non-empty")
+        res.row_count = n
+        res.wall_s = wall
+        res.sql = sql
+        res.detail = f"savedQueryId={qid} rerun_rows={n} csv={len(csv_bytes)} xlsx={len(xlsx)}"
+    finally:
+        if qid is not None:
+            try:
+                admin.delete(f"/api/saved-queries/{qid}")
+            except HttpError as exc:
+                res.notes.append(f"cleanup DELETE /api/saved-queries/{qid}: {exc}")
 
 
 def _result_to_dict(r: ScenarioResult) -> dict[str, Any]:
@@ -893,7 +901,12 @@ def _result_from_dict(d: dict[str, Any]) -> ScenarioResult:
     return r
 
 
-def write_results(results: list[ScenarioResult], header_notes: list[str]) -> None:
+def write_results(
+    results: list[ScenarioResult],
+    header_notes: list[str],
+    *,
+    partial: bool = False,
+) -> None:
     RESULTS_PATH.parent.mkdir(parents=True, exist_ok=True)
     prior: dict[int, dict[str, Any]] = {}
     if RESULTS_JSON.exists():
@@ -909,6 +922,9 @@ def write_results(results: list[ScenarioResult], header_notes: list[str]) -> Non
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
     lines = [
         "# DEMO-02 scenario results",
+        "",
+        "Row counts below are **API** results (`countOnly` or a complete CSV), not what "
+        "the Query Builder grid displays — the UI stops parsing at 200,000 and shows `200,001+`.",
         "",
         f"Generated {now} by `scripts/demo/run-scenarios.py`.",
         "",
@@ -949,8 +965,13 @@ def write_results(results: list[ScenarioResult], header_notes: list[str]) -> Non
             lines.append(r.sql.strip())
             lines.append("```")
         lines.append("")
-    RESULTS_PATH.write_text("\n".join(lines) + "\n")
-    print(f"wrote {RESULTS_PATH}")
+    out = (
+        ROOT / "docs" / "demo" / "scenario-results.partial.md"
+        if partial
+        else RESULTS_PATH
+    )
+    out.write_text("\n".join(lines) + "\n")
+    print(f"wrote {out}")
 
 
 def main() -> int:
@@ -1029,7 +1050,7 @@ def main() -> int:
         res.finish()
         results.append(res)
         print(f"    {'PASS' if res.ok else 'FAIL'} {res.detail}")
-    write_results(results, header)
+    write_results(results, header, partial=bool(only))
     failed = sum(1 for r in results if not r.ok and not r.skipped)
     held = sum(1 for r in results if r.skipped)
     passed = sum(1 for r in results if r.ok)

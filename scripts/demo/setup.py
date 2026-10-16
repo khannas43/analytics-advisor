@@ -476,7 +476,7 @@ def ensure_users(admin: ApiClient, state: dict[str, Any], hierarchy: dict[str, A
             "mobile": "9800000001",
             "roles": ["OFFICER"],
             "scope_codes": ["JP"],
-            "mfa": True,
+            "mfa": False,
             "password": PASSWORDS["jaipurofficer"],
         },
         {
@@ -535,6 +535,7 @@ def ensure_users(admin: ApiClient, state: dict[str, Any], hierarchy: dict[str, A
         )
         admin.put(f"/api/admin/users/{uid}/scopes", {"scopeNodeIds": node_ids})
         _verify_and_maybe_mfa(admin, uid, spec)
+        _ensure_password(admin, uid, spec["username"], spec["password"])
         print(f"user updated {spec['username']} id={uid} scopes={spec['scope_codes']} mfa={spec['mfa']}")
 
 
@@ -550,6 +551,17 @@ def _verify_and_maybe_mfa(admin: ApiClient, user_id: int, spec: dict[str, Any]) 
             "mobileVerified": True,
         },
     )
+
+
+def _ensure_password(admin: ApiClient, user_id: int, username: str, password: str) -> None:
+    """Idempotent: reset only when the documented password does not already work."""
+    try:
+        login_ready(username, password)
+        return
+    except Exception:
+        pass
+    admin.post(f"/api/admin/users/{user_id}/reset-password", {"newPassword": password})
+    _clear_must_change(username, password)
 
 
 def _clear_must_change(username: str, password: str) -> None:
@@ -575,7 +587,39 @@ def warn_timeouts(admin: ApiClient) -> None:
         print(f"  could not read /api/analysis/limits: {exc}")
 
 
+# Leftovers from scenario_13 and backend tests. Prefix match only; never
+# delete a query we do not own, even if the name matches.
+SAVED_QUERY_CLEAN_PREFIXES = ("DEMO-02 ", "acceptance-", "sq-")
+
+
+def clean_saved_queries(admin: ApiClient) -> tuple[int, int]:
+    items = admin.get("/api/saved-queries") or []
+    if not isinstance(items, list):
+        print(f"clean-saved: unexpected list payload {type(items)}")
+        return 0, 0
+    deleted = 0
+    for row in items:
+        name = str(row.get("name") or "")
+        if not name.startswith(SAVED_QUERY_CLEAN_PREFIXES):
+            continue
+        if row.get("ownedByMe") is False:
+            print(f"clean-saved: skip not-owned id={row.get('id')} {name!r}")
+            continue
+        qid = row.get("id")
+        try:
+            admin.delete(f"/api/saved-queries/{qid}")
+            print(f"clean-saved: deleted id={qid} {name!r}")
+            deleted += 1
+        except HttpError as exc:
+            print(f"clean-saved: skip id={qid} {name!r}: {exc}")
+    remaining = admin.get("/api/saved-queries") or []
+    remain_n = len(remaining) if isinstance(remaining, list) else 0
+    print(f"clean-saved: removed {deleted}, {remain_n} remain")
+    return deleted, remain_n
+
+
 def reset(admin: ApiClient, state: dict[str, Any]) -> None:
+    clean_saved_queries(admin)
     created = state.get("created", {})
     # Unregister tables we created (jdbc then presto).
     for key in ("jdbc_registration", "presto_registration"):
@@ -617,6 +661,11 @@ def main() -> int:
         action="store_true",
         help="Remove only objects this script created, then exit",
     )
+    parser.add_argument(
+        "--clean-saved",
+        action="store_true",
+        help="Delete leftover saved queries named DEMO-02 / acceptance- / sq-, then exit",
+    )
     args = parser.parse_args()
     try:
         admin = login_ready(
@@ -640,6 +689,9 @@ def main() -> int:
     state = load_state()
     if args.reset:
         reset(admin, state)
+        return 0
+    if args.clean_saved:
+        clean_saved_queries(admin)
         return 0
 
     warn_timeouts(admin)

@@ -28,7 +28,7 @@ SCHEMA = "demo"
 
 PASSWORDS = {
     "superadmin": os.environ.get("DEMO_SUPERADMIN_PASSWORD", "Supradmin@123"),
-    "jaipurofficer": os.environ.get("DEMO_JAIPUR_OFFICER_PASSWORD", "JaiOffic$1x"),
+    "jaipurofficer": os.environ.get("DEMO_JAIPUR_OFFICER_PASSWORD", "demo123"),
     "sanganeruser": os.environ.get("DEMO_SANGANER_PASSWORD", "Officer$New1"),
     "jaipuradmin": os.environ.get("DEMO_JAIPUR_ADMIN_PASSWORD", "JaipurNew$1"),
 }

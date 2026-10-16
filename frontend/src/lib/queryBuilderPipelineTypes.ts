@@ -70,6 +70,8 @@ export type ReportConfig = {
   aggregateFn: AggregateFunction;
   aggregateCol: string;
   countDistinct: boolean;
+  /** When true, run COUNT(*) instead of projecting rows. Disabled with group-by. */
+  countOnly: boolean;
   /** Per-side fuzzy threshold on the primary join key (source side). */
   joinFuzzyThresholdPercent: number;
   joinFuzzyIgnoreSpaces: boolean;
@@ -138,6 +140,7 @@ export const EMPTY_REPORT_CONFIG: ReportConfig = {
   aggregateFn: "COUNT",
   aggregateCol: "",
   countDistinct: false,
+  countOnly: false,
   joinFuzzyThresholdPercent: 80,
   joinFuzzyIgnoreSpaces: false,
   joinFuzzyCaseSensitive: false,
