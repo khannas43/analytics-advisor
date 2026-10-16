@@ -1,0 +1,5 @@
+.setup-state.json
+.last-run.json
+.scenario-results.json
+__pycache__/
+*.pyc

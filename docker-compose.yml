@@ -61,9 +61,12 @@ services:
       # Signs session tokens. Required when SRSE_AUTH_MODE=local; deploy-docker.sh generates it.
       - SRSE_SESSION_SIGNING_KEY=${SRSE_SESSION_SIGNING_KEY:-}
       - SRSE_FRONTEND_ORIGINS=${SRSE_FRONTEND_ORIGINS:-http://localhost:3000}
-      # Guardrails
+      # Guardrails. Demo fuzzy (DEMO-02) needs 1200s — set SRSE_QUERY_TIMEOUT_SECONDS
+      # in the git-ignored .env (see scripts/demo/demo.env.example). Do not raise
+      # the fan-out guard or blocking prefix.
       - SRSE_COHORT_CAP=1000
-      - SRSE_QUERY_TIMEOUT_SECONDS=180
+      - SRSE_QUERY_TIMEOUT_SECONDS=${SRSE_QUERY_TIMEOUT_SECONDS:-180}
+      - SPRING_MVC_ASYNC_REQUEST_TIMEOUT=${SPRING_MVC_ASYNC_REQUEST_TIMEOUT:-1260000}
       - SRSE_ANALYSIS_ROW_CAP=1000
       - SRSE_AGE_BAND_COLUMN=${SRSE_AGE_BAND_COLUMN:-age_band}
       - SRSE_CONNECTION_OVERRIDE_PATH=/app/config/connection-overrides.properties
