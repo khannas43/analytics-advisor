@@ -1,0 +1,17 @@
+# Minimal Presto 0.297 for the Postgres-only demo (DEMO-01).
+# Business data lives in analytics_demo on the root compose postgres — start that first:
+#   docker compose up -d postgres
+#
+# Presto reaches Postgres via host.docker.internal:5433 (macOS/Windows/Linux host-gateway).
+name: aa-demo
+services:
+  presto:
+    image: prestodb/presto:0.297
+    ports:
+      - "8083:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./presto-catalog:/opt/presto-server/etc/catalog:ro
+      - ./presto/jvm.config:/opt/presto-server/etc/jvm.config:ro
+      - ./presto/config.properties:/opt/presto-server/etc/config.properties:ro
